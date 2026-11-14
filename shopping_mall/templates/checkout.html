@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}💳 주문/결제 — 골라방 LIVE 몰{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.65rem; font-weight:900; margin-bottom:20px;">💳 주문서 작성 및 결제</h1>
+
+<form id="checkoutForm" onsubmit="submitCheckoutForm(event)" style="display:grid; grid-template-columns:1fr 380px; gap:24px; align-items:start;">
+    <div style="background:#fff; border-radius:20px; padding:26px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
+        <h3 style="font-size:1.12rem; font-weight:900; margin-bottom:16px;">📦 배송지 정보</h3>
+        <div class="form-group">
+            <label class="form-label">수령인 성함 *</label>
+            <input type="text" id="coBuyerName" class="form-input" required placeholder="홍길동">
+        </div>
+        <div class="form-group">
+            <label class="form-label">연락처 *</label>
+            <input type="tel" id="coBuyerPhone" class="form-input" required placeholder="010-1234-5678">
+        </div>
+        <div class="form-group">
+            <label class="form-label">배송지 주소 *</label>
+            <input type="text" id="coAddress" class="form-input" required placeholder="기본 주소 입력" style="margin-bottom:8px;">
+            <input type="text" id="coAddressDetail" class="form-input" placeholder="상세 주소 입력">
+        </div>
+        <div class="form-group">
+            <label class="form-label">배송 메모</label>
+            <input type="text" id="coMemo" class="form-input" placeholder="부재 시 문 앞에 놓아주세요">
+        </div>
+
+        <h3 style="font-size:1.12rem; font-weight:900; margin:24px 0 12px;">💳 결제 수단 선택</h3>
+        <select id="coPaymentMethod" class="form-input" style="font-weight:800;">
+            <option value="CARD">💳 신용/체크카드 결제</option>
+            <option value="KAKAOPAY">🟡 카카오페이 간편결제</option>
+            <option value="NAVERPAY">🟢 네이버페이 간편결제</option>
+            <option value="BANK">🏦 무통장 입금</option>
+        </select>
+    </div>
+
+    <div style="background:#fff; border-radius:20px; padding:26px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
+        <h3 style="font-size:1.1rem; font-weight:900; margin-bottom:14px;">🛍️ 주문 상품 확인</h3>
+        <div id="coOrderItemsSummary" style="margin-bottom:16px; max-height:280px; overflow-y:auto;"></div>
+        <div style="border-top:2px solid #f1f5f9; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
+            <span style="font-weight:900;">최종 결제 금액</span>
+            <span id="coTotalAmount" style="font-size:1.5rem; font-weight:900; color:#e11d48;">0원</span>
+        </div>
+        <button type="submit" id="coSubmitBtn" style="width:100%; padding:16px; border-radius:14px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:1.02rem; font-weight:900; cursor:pointer; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
+            ⚡ 결제 및 주문 완료하기
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function initCheckoutPage() {
+        const cart = getMallCart();
+        if (cart.length === 0) {
+            window.location.href = '/cart';
+            return;
+        }
+        let sub = 0;
+        const box = document.getElementById('coOrderItemsSummary');
+        box.innerHTML = cart.map(it => {
+            const line = (Number(it.price) || 0) * (Number(it.quantity) || 1);
+            sub += line;
+            return `
+                <div style="padding:10px 0; border-bottom:1px solid #f1f5f9; font-size:0.86rem;">
+                    <div style="font-weight:900; color:#0f172a;">#${it.num} ${it.name}</div>
+                    <div style="color:#64748b;">${it.color}/${it.size} × ${it.quantity}개 = <strong>${line.toLocaleString()}원</strong></div>
+                </div>
+            `;
+        }).join('');
+        const ship = sub >= 50000 ? 0 : 3000;
+        document.getElementById('coTotalAmount').innerText = `${(sub + ship).toLocaleString()}원`;
+    }
+
+    async function submitCheckoutForm(e) {
+        e.preventDefault();
+        const cart = getMallCart();
+        if (cart.length === 0) return;
+        const btn = document.getElementById('coSubmitBtn');
+        try {
+            btn.disabled = true;
+            btn.innerText = '⏳ 결제 처리 중...';
+            const res = await fetch('/api/orders/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    buyer_name: document.getElementById('coBuyerName').value.trim(),
+                    buyer_phone: document.getElementById('coBuyerPhone').value.trim(),
+                    address: document.getElementById('coAddress').value.trim(),
+                    address_detail: document.getElementById('coAddressDetail').value.trim(),
+                    delivery_memo: document.getElementById('coMemo').value.trim(),
+                    payment_method: document.getElementById('coPaymentMethod').value,
+                    source_page: 'CART_CHECKOUT',
+                    items: cart
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '주문 처리에 실패했습니다.');
+                return;
+            }
+            saveMallCart([]);
+            window.location.href = `/orders?order_code=${encodeURIComponent(data.order.order_code)}`;
+        } catch (err) {
+            alert('오류: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = '⚡ 결제 및 주문 완료하기';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', initCheckoutPage);
+</script>
+{% endblock %}

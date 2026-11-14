@@ -1,0 +1,1535 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📱 라이브 방송 무선 스마트폰 카메라 송출기</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            background-color: #0f172a;
+            color: #fff;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 뷰파인더 비디오 */
+        #cameraVideo {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            background-color: #0f172a;
+        }
+
+        /* 미러링 (전면 카메라일 때) */
+        #cameraVideo.mirrored {
+            transform: scaleX(-1);
+        }
+
+        /* 숨겨진 전송용 캔버스 */
+        #captureCanvas {
+            display: none;
+        }
+
+        /* 상단 상태 바 */
+        .top-status-overlay {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            right: 14px;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.82);
+            backdrop-filter: blur(12px);
+            padding: 8px 14px;
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            gap: 8px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: #34d399;
+            white-space: nowrap;
+        }
+
+        .live-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulseDot 1s infinite alternate;
+            flex-shrink: 0;
+        }
+
+        @keyframes pulseDot {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+
+        .fps-badge {
+            font-size: 0.74rem;
+            color: #bae6fd;
+            font-weight: 800;
+            background: rgba(14, 165, 233, 0.18);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            padding: 3px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+
+        /* 프레임 수(FPS) 및 해상도 실시간 조절 바 */
+        .perf-controls-bar {
+            position: absolute;
+            bottom: 86px;
+            left: 14px;
+            right: 14px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .perf-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .perf-label {
+            font-size: 0.74rem;
+            font-weight: 800;
+            color: #94a3b8;
+            white-space: nowrap;
+            min-width: 56px;
+        }
+
+        .perf-chips {
+            display: flex;
+            gap: 5px;
+            flex: 1;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .perf-chip {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #cbd5e1;
+            padding: 5px 10px;
+            border-radius: 14px;
+            font-size: 0.74rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .perf-chip.active {
+            background: linear-gradient(135deg, #0ea5e9, #6366f1);
+            border-color: #7dd3fc;
+            color: #fff;
+            box-shadow: 0 0 12px rgba(14, 165, 233, 0.45);
+        }
+
+        /* 하단 컨트롤러 바 */
+        .bottom-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 14px;
+            right: 14px;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-ctrl {
+            background: rgba(15, 23, 42, 0.88);
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 24px;
+            font-size: 0.85rem;
+            font-weight: 800;
+            cursor: pointer;
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            transition: all 0.15s;
+        }
+
+        .btn-ctrl:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-stream-toggle {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border-color: #f87171;
+            padding: 13px 22px;
+            font-size: 0.95rem;
+            border-radius: 30px;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        }
+
+        .btn-stream-toggle.streaming {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-color: #6ee7b7;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+        }
+
+        /* 시작 전 안내 및 상태 레이어 */
+        .start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            text-align: center;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #fff;
+            border: none;
+            padding: 16px 32px;
+            font-size: 1.1rem;
+            font-weight: 900;
+            border-radius: 30px;
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5);
+            cursor: pointer;
+            width: 100%;
+            max-width: 340px;
+            transition: transform 0.15s;
+        }
+
+        .start-btn:active {
+            transform: scale(0.97);
+        }
+
+        .https-btn {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            color: #fff;
+            border: 1.5px solid #7dd3fc;
+            padding: 15px 24px;
+            font-size: 1rem;
+            font-weight: 900;
+            border-radius: 28px;
+            box-shadow: 0 8px 20px rgba(14, 165, 233, 0.45);
+            cursor: pointer;
+            width: 100%;
+            max-width: 340px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .notice-box {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(248, 113, 113, 0.45);
+            border-radius: 16px;
+            padding: 16px;
+            max-width: 360px;
+            width: 100%;
+            font-size: 0.84rem;
+            line-height: 1.5;
+            color: #e2e8f0;
+            text-align: left;
+        }
+
+        .notice-box.info {
+            border-color: rgba(56, 189, 248, 0.45);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 카메라 비디오 뷰파인더 -->
+    <video id="cameraVideo" autoplay playsinline webkit-playsinline muted></video>
+    <canvas id="captureCanvas"></canvas>
+
+    <!-- 2. 상단 상태 바 -->
+    <div class="top-status-overlay">
+        <div class="status-badge" id="connStatus">
+            <span class="live-dot" id="statusDot"></span>
+            <span id="statusText">송출 준비 중</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:5px;">
+            <button type="button" id="btnTopCam1" onclick="selectCamChannel(1)" style="border:1.5px solid #38bdf8; background:rgba(14,165,233,0.32); color:#fff; font-size:0.72rem; font-weight:900; padding:4px 9px; border-radius:14px; cursor:pointer;">🎥 CAM 1</button>
+            <button type="button" id="btnTopCam2" onclick="selectCamChannel(2)" style="border:1px solid rgba(255,255,255,0.22); background:rgba(255,255,255,0.08); color:#cbd5e1; font-size:0.72rem; font-weight:800; padding:4px 9px; border-radius:14px; cursor:pointer;">🔎 CAM 2</button>
+        </div>
+        <div class="fps-badge" id="statsText">
+            30 FPS • 720p HD
+        </div>
+    </div>
+
+    <!-- 3. 프레임 수(FPS) 및 해상도 실시간 조절 컨트롤 패널 -->
+    <div class="perf-controls-bar" id="perfControlsBar">
+        <div class="perf-row">
+            <span class="perf-label">🎞️ 프레임 수</span>
+            <div class="perf-chips" id="fpsChipsGroup">
+                <button type="button" class="perf-chip" data-fps="15" onclick="setTargetFps(15)">15 FPS</button>
+                <button type="button" class="perf-chip" data-fps="24" onclick="setTargetFps(24)">24 FPS</button>
+                <button type="button" class="perf-chip active" data-fps="30" onclick="setTargetFps(30)">30 FPS</button>
+                <button type="button" class="perf-chip" data-fps="60" onclick="setTargetFps(60)">60 FPS</button>
+            </div>
+        </div>
+        <div class="perf-row">
+            <span class="perf-label">📐 화질/속도</span>
+            <div class="perf-chips" id="resChipsGroup">
+                <button type="button" class="perf-chip" data-res="360" onclick="setTargetResolution(360, 0.58)">⚡ 360p 초고속</button>
+                <button type="button" class="perf-chip" data-res="480" onclick="setTargetResolution(480, 0.68)">⚖️ 480p 표준</button>
+                <button type="button" class="perf-chip active" data-res="720" onclick="setTargetResolution(720, 0.74)">💎 720p HD</button>
+                <button type="button" class="perf-chip" data-res="1080" onclick="setTargetResolution(1080, 0.80)">✨ 1080p FHD</button>
+            </div>
+        </div>
+        <div class="perf-row">
+            <span class="perf-label">🎙️ 음성 수음</span>
+            <div class="perf-chips" id="micModeChipsGroup">
+                <button type="button" class="perf-chip active" data-micmode="broadcast" onclick="setMicPickupMode('broadcast')">🎙️ 방송 고감도 (끊김방지·권장)</button>
+                <button type="button" class="perf-chip" data-micmode="denoise" onclick="setMicPickupMode('denoise')">🛡️ 강제 소음차단</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 하단 컨트롤 바 -->
+    <div class="bottom-controls">
+        <!-- 전면 / 후면 카메라 전환 -->
+        <button type="button" class="btn-ctrl" onclick="switchCamera()">
+            🔄 <span id="cameraFaceText">후면 카메라</span>
+        </button>
+
+        <!-- 마이크 음성 송출 ON / OFF -->
+        <button type="button" class="btn-ctrl" id="btnMicToggle" onclick="toggleMicMute()" style="border-color: rgba(56, 189, 248, 0.6); background: rgba(14, 165, 233, 0.25);">
+            🎤 <span id="micStatusText">마이크 ON</span>
+        </button>
+
+        <!-- 송출 시작 / 일시정지 -->
+        <button type="button" class="btn-ctrl btn-stream-toggle streaming" id="btnStreamToggle" onclick="toggleStreaming()">
+            🔴 무선 송출 중
+        </button>
+    </div>
+
+    <!-- 5. 최초 시작 허용 및 보안/권한 안내 오버레이 -->
+    <div class="start-overlay" id="startOverlay">
+        <div style="font-size:3rem;">📱</div>
+        <h2 style="font-size:1.35rem; font-weight:900;">스마트폰 무선 카메라 송출</h2>
+        <p style="font-size:0.88rem; color:#94a3b8; line-height:1.5; max-width:340px;">
+            <strong>⚡ WebRTC Wi-Fi P2P 직결 엔진</strong>으로<br>PC 스튜디오 및 OBS 화면에 무지연 실시간 전송됩니다.
+        </p>
+
+        <!-- 🎥 듀얼 카메라 채널(CAM 1 / CAM 2) 선택 -->
+        <div style="display:flex; gap:8px; width:100%; max-width:340px; justify-content:center;">
+            <button type="button" id="btnStartCam1" onclick="selectCamChannel(1)" style="flex:1; padding:11px 10px; border-radius:16px; border:2px solid #38bdf8; background:rgba(14,165,233,0.28); color:#fff; font-size:0.86rem; font-weight:900; cursor:pointer;">
+                🎥 CAM 1 (메인/정면)
+            </button>
+            <button type="button" id="btnStartCam2" onclick="selectCamChannel(2)" style="flex:1; padding:11px 10px; border-radius:16px; border:1.5px solid rgba(255,255,255,0.2); background:rgba(255,255,255,0.06); color:#cbd5e1; font-size:0.86rem; font-weight:800; cursor:pointer;">
+                🔎 CAM 2 (서브/디테일)
+            </button>
+        </div>
+
+        <!-- HTTP 비보안 접속 시 자동 표시되는 HTTPS 전환 안내 박스 -->
+        <div class="notice-box info" id="httpsRedirectBox" style="display:none;">
+            <div style="font-weight:900; color:#38bdf8; margin-bottom:6px; font-size:0.92rem;">
+                🔒 모바일 카메라 보안(HTTPS) 연결 필요
+            </div>
+            <div style="color:#cbd5e1; margin-bottom:12px;">
+                스마트폰 브라우저는 보안 정책상 <strong>HTTPS 보안 연결</strong>에서만 실시간 카메라 권한을 허용합니다.<br>
+                아래 버튼을 누르면 즉시 보안 카메라 모드로 연결됩니다.
+            </div>
+            <a id="btnGoHttps" href="#" class="https-btn" style="text-align:center;">
+                🔒 보안(HTTPS) 카메라 모드로 이동
+            </a>
+        </div>
+
+        <!-- 카메라 오류/권한 안내 박스 -->
+        <div class="notice-box" id="cameraErrorBox" style="display:none;">
+            <div style="font-weight:900; color:#f87171; margin-bottom:6px;" id="cameraErrorTitle">
+                ⚠️ 카메라를 시작할 수 없습니다
+            </div>
+            <div id="cameraErrorMsg" style="color:#cbd5e1;"></div>
+        </div>
+
+        <button type="button" class="start-btn" id="btnStartCam" onclick="initAndStartCamera()">
+            📷 카메라 켜고 송출 시작
+        </button>
+
+        <!-- 인앱 브라우저/비상시 기본 카메라 앱 캡처 폴백 -->
+        <div style="margin-top:4px;">
+            <label for="nativeCamInput" style="font-size:0.8rem; color:#94a3b8; text-decoration:underline; cursor:pointer;">
+                카메라 권한이 안 뜰 때: 기본 카메라로 즉시 사진 송출하기
+            </label>
+            <input type="file" id="nativeCamInput" accept="image/*" capture="environment" style="display:none;" onchange="handleNativeCamCapture(this)">
+        </div>
+    </div>
+
+    <script>
+        const HTTPS_PORT = {{ https_port | default(5443) }};
+        const LOCAL_WIFI_IP = {{ (local_ip or '') | tojson }};
+        const PUBLIC_TUNNEL_URL = {{ (public_tunnel_url or '') | tojson }};
+        const INITIAL_CAM_ID = {{ cam_id | default(1) }};
+        const IS_TUNNEL_HOST = window.location.hostname.endsWith('.lhr.life') || window.location.hostname.endsWith('.localhost.run') || window.location.hostname.endsWith('.trycloudflare.com');
+        let currentCamId = (new URLSearchParams(window.location.search).get('cam') === '2' || INITIAL_CAM_ID === 2) ? 2 : 1;
+        let currentFacing = 'environment'; // 'environment'(후면) or 'user'(전면)
+        let currentStream = null;
+        let isStreaming = true;
+        let frameLoopStarted = false;
+
+        function reportClientLog(state, message) {
+            try {
+                fetch(`/api/camera/client-log?cam=${currentCamId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cam: currentCamId,
+                        state: state,
+                        message: message || '',
+                        protocol: window.location.protocol,
+                        ua: navigator.userAgent || ''
+                    })
+                }).catch(() => {});
+            } catch (e) {}
+        }
+
+        function dataUrlToUint8Array(dataUrl) {
+            try {
+                const commaIdx = dataUrl.indexOf(',');
+                if (commaIdx < 0) return null;
+                const b64 = dataUrl.slice(commaIdx + 1);
+                const binStr = atob(b64);
+                const len = binStr.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binStr.charCodeAt(i);
+                }
+                return bytes;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // 카메라 시작 즉시 첫 연결 확인 프레임을 전송하여 스튜디오에서 0.3초 내에 '연결됨'으로 전환
+        function sendInitialConnectionFrame() {
+            try {
+                const video = document.getElementById('cameraVideo');
+                const canvas = document.getElementById('captureCanvas');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d', { alpha: false });
+                const vw = (video && video.videoWidth > 0) ? video.videoWidth : 640;
+                const vh = (video && video.videoHeight > 0) ? video.videoHeight : 360;
+                canvas.width = vw;
+                canvas.height = vh;
+                if (video && video.readyState >= 2 && video.videoWidth > 0) {
+                    ctx.drawImage(video, 0, 0, vw, vh);
+                } else {
+                    ctx.fillStyle = '#0f172a';
+                    ctx.fillRect(0, 0, vw, vh);
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.font = 'bold 24px sans-serif';
+                    ctx.fillText(`CAM ${currentCamId} 카메라 스트림 연결됨`, 36, Math.round(vh / 2));
+                }
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+                const payload = dataUrlToUint8Array(dataUrl);
+                if (payload) {
+                    const mySeq = ++frameSeq;
+                    fetch(`/api/camera/frame?cam=${currentCamId}&seq=${mySeq}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'image/jpeg' },
+                        body: payload
+                    }).catch(() => {});
+                }
+            } catch (e) {}
+        }
+
+        function updateCamChannelButtons() {
+            const top1 = document.getElementById('btnTopCam1');
+            const top2 = document.getElementById('btnTopCam2');
+            const st1 = document.getElementById('btnStartCam1');
+            const st2 = document.getElementById('btnStartCam2');
+            const isC1 = (currentCamId === 1);
+            if (top1) {
+                top1.style.border = isC1 ? '1.5px solid #38bdf8' : '1px solid rgba(255,255,255,0.22)';
+                top1.style.background = isC1 ? 'rgba(14,165,233,0.35)' : 'rgba(255,255,255,0.08)';
+                top1.style.color = isC1 ? '#fff' : '#cbd5e1';
+            }
+            if (top2) {
+                top2.style.border = !isC1 ? '1.5px solid #c084fc' : '1px solid rgba(255,255,255,0.22)';
+                top2.style.background = !isC1 ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.08)';
+                top2.style.color = !isC1 ? '#fff' : '#cbd5e1';
+            }
+            if (st1) {
+                st1.style.border = isC1 ? '2px solid #38bdf8' : '1.5px solid rgba(255,255,255,0.2)';
+                st1.style.background = isC1 ? 'rgba(14,165,233,0.28)' : 'rgba(255,255,255,0.06)';
+                st1.style.color = isC1 ? '#fff' : '#cbd5e1';
+            }
+            if (st2) {
+                st2.style.border = !isC1 ? '2px solid #c084fc' : '1.5px solid rgba(255,255,255,0.2)';
+                st2.style.background = !isC1 ? 'rgba(168,85,247,0.28)' : 'rgba(255,255,255,0.06)';
+                st2.style.color = !isC1 ? '#fff' : '#cbd5e1';
+            }
+        }
+
+        function selectCamChannel(camNum) {
+            currentCamId = (Number(camNum) === 2) ? 2 : 1;
+            frameSeq = 0;
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('cam', String(currentCamId));
+                window.history.replaceState({}, '', url.toString());
+            } catch (e) {}
+            updateCamChannelButtons();
+            updateStatusDisplay();
+        }
+
+        // 사용자 조절 가능한 FPS / 해상도 / 압축 품질 설정 (터널 경유 시 버퍼블로트 30초 지연 방지를 위해 초경량 무지연 모드 자동 적용)
+        let targetFps = IS_TUNNEL_HOST ? 15 : 30;
+        let targetResHeight = IS_TUNNEL_HOST ? 480 : 720; // 360, 480, 720, 1080
+        let targetJpegQuality = IS_TUNNEL_HOST ? 0.56 : 0.72;
+
+        // 파이프라이닝 및 통계 변수 (MAX_IN_FLIGHT = 1 로 최신 프레임만 무지연 전송하여 30초 TCP 큐 적체 원천 차단)
+        let inFlightCount = 0;
+        let encodingInProgress = false;
+        const MAX_IN_FLIGHT = 1;
+        let frameSeq = 0;
+        let sentFramesInSec = 0;
+        let lastFpsTime = Date.now();
+        let measuredFps = 0;
+        let lastRttMs = 0;
+        let lastCaptureTime = 0;
+
+        // 🎤 스마트폰 마이크 실시간 오디오 캡처 및 전송 상태 (CAM 2 서브 카메라는 CAM 1 오디오 충돌 및 권한 블로킹 방지를 위해 기본 음소거/비디오 전용 시작)
+        let isMicMuted = (currentCamId === 2);
+        let micPickupMode = 'broadcast'; // 'broadcast'(원거리 음절끊김 방지 고감도) | 'denoise'(브라우저 노이즈억제)
+        let hasAudioTrack = false;
+        let audioCtx = null;
+        let audioSourceNode = null;
+        let audioProcessorNode = null;
+        let audioGainNode = null;
+        let audioInFlightCount = 0;
+        const MAX_AUDIO_IN_FLIGHT = 1;
+        let audioSeq = 0;
+        let pendingPcmChunks = [];
+        let pendingPcmSamples = 0;
+        const TARGET_AUDIO_SAMPLE_RATE = 48000; // 48kHz 16-bit Mono PCM -> 서버 FFmpeg AAC 160kbps 1:1 무변조 직결
+        const AUDIO_PACKET_SAMPLES = 1920; // 40ms 단위 전송 (48kHz * 0.04s = 1920 샘플, 초당 25패킷)
+
+        // WebRTC P2P 직접 연결 관리 (peer_id -> RTCPeerConnection)
+        const activePeers = new Map();
+        let webrtcConnectedCount = 0;
+        let webrtcPollTimer = null;
+
+        const RTC_CONFIG = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+        };
+
+        function getLocalDirectHttpsUrl() {
+            const host = LOCAL_WIFI_IP || window.location.hostname;
+            return `https://${host}:${HTTPS_PORT}/cam?cam=${currentCamId}`;
+        }
+
+        function getHttpsCamUrl() {
+            const host = LOCAL_WIFI_IP || window.location.hostname;
+            if (host && !host.endsWith('.lhr.life') && !host.endsWith('.localhost.run')) {
+                return `https://${host}:${HTTPS_PORT}/cam?cam=${currentCamId}`;
+            }
+            if (PUBLIC_TUNNEL_URL && PUBLIC_TUNNEL_URL.startsWith('https://')) {
+                const base = PUBLIC_TUNNEL_URL.replace(/([?&])cam=[12]/g, '');
+                const sep = base.includes('?') ? '&' : '?';
+                return `${base}${sep}cam=${currentCamId}`;
+            }
+            return `https://${window.location.hostname}:${HTTPS_PORT}/cam?cam=${currentCamId}`;
+        }
+
+        // 페이지 로드 시 HTTP(비보안) 접속 여부 점검 및 이전 카메라 송출 상태 자동 복원
+        window.addEventListener('DOMContentLoaded', () => {
+            updateCamChannelButtons();
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+            if (!hasMediaDevices && window.location.protocol === 'http:' && !isLocalhost) {
+                const httpsUrl = getHttpsCamUrl();
+                reportClientLog('no_mediadevices', `HTTP 비보안 접속 -> 보안 HTTPS(${httpsUrl})로 전환 필요`);
+                const redirectBox = document.getElementById('httpsRedirectBox');
+                const btnGoHttps = document.getElementById('btnGoHttps');
+                if (redirectBox && btnGoHttps) {
+                    btnGoHttps.href = httpsUrl;
+                    redirectBox.style.display = 'block';
+                }
+                setTimeout(() => {
+                    window.location.href = httpsUrl;
+                }, 250);
+                return;
+            }
+
+            // 이전에 설정했던 화질/프레임/카메라 방향/마이크 상태 복원
+            try {
+                const savedFps = Number(localStorage.getItem('live_cam_fps'));
+                const savedRes = Number(localStorage.getItem('live_cam_res'));
+                const savedQual = Number(localStorage.getItem('live_cam_qual'));
+                const savedFacing = localStorage.getItem('live_cam_facing');
+                const savedMicMute = localStorage.getItem(`live_cam_mic_muted_cam${currentCamId}`);
+                if (!IS_TUNNEL_HOST && savedFps && [15, 24, 30, 60].includes(savedFps)) {
+                    targetFps = savedFps;
+                    document.querySelectorAll('#fpsChipsGroup .perf-chip').forEach(btn => {
+                        btn.classList.toggle('active', Number(btn.dataset.fps) === targetFps);
+                    });
+                }
+                if (!IS_TUNNEL_HOST && savedRes && [360, 480, 720, 1080].includes(savedRes)) {
+                    targetResHeight = savedRes;
+                    if (savedQual > 0.3 && savedQual <= 0.80) {
+                        targetJpegQuality = savedQual;
+                    } else {
+                        targetJpegQuality = targetResHeight >= 1080 ? 0.80 : (targetResHeight >= 720 ? 0.74 : 0.68);
+                    }
+                    document.querySelectorAll('#resChipsGroup .perf-chip').forEach(btn => {
+                        btn.classList.toggle('active', Number(btn.dataset.res) === targetResHeight);
+                    });
+                }
+                if (IS_TUNNEL_HOST && LOCAL_WIFI_IP) {
+                    const directUrl = getLocalDirectHttpsUrl();
+                    const banner = document.createElement('a');
+                    banner.href = directUrl;
+                    banner.style.cssText = 'position:fixed; top:54px; left:12px; right:12px; z-index:45; background:linear-gradient(135deg,#0284c7,#2563eb); color:#fff; text-decoration:none; padding:9px 12px; border-radius:12px; font-size:0.78rem; font-weight:900; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,0.45); border:1.5px solid #7dd3fc;';
+                    banner.innerHTML = '⚡ 현재 해외 터널 경유 중 ➔ 터치하여 초고속 Wi-Fi 직결(0.04초 무지연) 전환';
+                    document.body.appendChild(banner);
+                }
+                if (savedFacing === 'user' || savedFacing === 'environment') {
+                    currentFacing = savedFacing;
+                }
+                if (currentCamId === 2) {
+                    isMicMuted = (savedMicMute === '0') ? false : true;
+                } else if (savedMicMute === '1') {
+                    isMicMuted = true;
+                }
+                const savedMicMode = localStorage.getItem('live_cam_mic_mode');
+                if (savedMicMode === 'broadcast' || savedMicMode === 'denoise') {
+                    micPickupMode = savedMicMode;
+                    document.querySelectorAll('#micModeChipsGroup .perf-chip').forEach(btn => {
+                        btn.classList.toggle('active', btn.dataset.micmode === micPickupMode);
+                    });
+                }
+                updateMicButtonUi();
+            } catch (e) {}
+
+            // 새로고침 시 버튼 클릭 없이 즉시 카메라 자동 재연결 시도
+            if (hasMediaDevices) {
+                initAndStartCamera();
+            } else {
+                reportClientLog('no_mediadevices', '브라우저에서 mediaDevices API가 차단됨');
+            }
+        });
+
+        // 1. 프레임 수(FPS) 실시간 변경
+        async function setTargetFps(fpsVal) {
+            targetFps = Number(fpsVal) || 30;
+            try { localStorage.setItem('live_cam_fps', String(targetFps)); } catch (e) {}
+            document.querySelectorAll('#fpsChipsGroup .perf-chip').forEach(btn => {
+                btn.classList.toggle('active', Number(btn.dataset.fps) === targetFps);
+            });
+            if (currentStream) {
+                const videoTrack = currentStream.getVideoTracks()[0];
+                if (videoTrack && videoTrack.applyConstraints) {
+                    try {
+                        await videoTrack.applyConstraints({ frameRate: { ideal: targetFps, max: targetFps } });
+                    } catch (e) {}
+                }
+            }
+            updateStatusDisplay();
+        }
+
+        // 2. 해상도 및 압축률 실시간 변경
+        async function setTargetResolution(resH, quality) {
+            targetResHeight = Number(resH) || 720;
+            targetJpegQuality = Number(quality) || 0.74;
+            try {
+                localStorage.setItem('live_cam_res', String(targetResHeight));
+                localStorage.setItem('live_cam_qual', String(targetJpegQuality));
+            } catch (e) {}
+            document.querySelectorAll('#resChipsGroup .perf-chip').forEach(btn => {
+                btn.classList.toggle('active', Number(btn.dataset.res) === targetResHeight);
+            });
+            if (currentStream) {
+                const videoTrack = currentStream.getVideoTracks()[0];
+                if (videoTrack && videoTrack.applyConstraints) {
+                    const idealW = Math.round(targetResHeight * (16 / 9));
+                    try {
+                        await videoTrack.applyConstraints({
+                            width: { ideal: idealW },
+                            height: { ideal: targetResHeight },
+                            frameRate: { ideal: targetFps }
+                        });
+                    } catch (e) {}
+                }
+            }
+            updateStatusDisplay();
+        }
+
+        async function setMicPickupMode(mode) {
+            micPickupMode = (mode === 'denoise') ? 'denoise' : 'broadcast';
+            try { localStorage.setItem('live_cam_mic_mode', micPickupMode); } catch (e) {}
+            document.querySelectorAll('#micModeChipsGroup .perf-chip').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.micmode === micPickupMode);
+            });
+            if (currentStream) {
+                const audioTrack = currentStream.getAudioTracks()[0];
+                if (audioTrack && audioTrack.applyConstraints) {
+                    try {
+                        await audioTrack.applyConstraints({
+                            echoCancellation: false,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        });
+                        return;
+                    } catch (e) {}
+                }
+                await startCamera(currentFacing);
+            }
+        }
+
+        function updateMicButtonUi() {
+            const btn = document.getElementById('btnMicToggle');
+            const txt = document.getElementById('micStatusText');
+            if (!btn || !txt) return;
+            if (!hasAudioTrack) {
+                if (currentCamId === 2 && isMicMuted) {
+                    btn.style.borderColor = 'rgba(245, 158, 11, 0.6)';
+                    btn.style.background = 'rgba(245, 158, 11, 0.22)';
+                    btn.innerHTML = '🔇 <span id="micStatusText">서브캠 마이크 OFF</span>';
+                } else {
+                    txt.innerText = '마이크 권한없음';
+                    btn.style.borderColor = 'rgba(248, 113, 113, 0.5)';
+                    btn.style.background = 'rgba(15, 23, 42, 0.88)';
+                    btn.innerHTML = '🔇 <span id="micStatusText">음소거(권한)</span>';
+                }
+            } else if (isMicMuted) {
+                btn.style.borderColor = 'rgba(245, 158, 11, 0.6)';
+                btn.style.background = 'rgba(245, 158, 11, 0.22)';
+                btn.innerHTML = '🔇 <span id="micStatusText">마이크 꺼짐</span>';
+            } else {
+                btn.style.borderColor = 'rgba(56, 189, 248, 0.75)';
+                btn.style.background = 'rgba(14, 165, 233, 0.32)';
+                btn.innerHTML = '🎤 <span id="micStatusText">마이크 ON</span>';
+            }
+        }
+
+        async function toggleMicMute() {
+            isMicMuted = !isMicMuted;
+            try { localStorage.setItem(`live_cam_mic_muted_cam${currentCamId}`, isMicMuted ? '1' : '0'); } catch (e) {}
+            if (!isMicMuted && !hasAudioTrack && currentStream) {
+                await startCamera(currentFacing, true);
+                return;
+            }
+            if (currentStream) {
+                currentStream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted && isStreaming; });
+            }
+            if (audioCtx && audioCtx.state === 'suspended' && !isMicMuted) {
+                audioCtx.resume().catch(() => {});
+            }
+            updateMicButtonUi();
+            updateStatusDisplay();
+        }
+
+        function updateStatusDisplay() {
+            const statsEl = document.getElementById('statsText');
+            const statusTextEl = document.getElementById('statusText');
+            const micTag = (hasAudioTrack && !isMicMuted) ? ' • 🎤음성ON' : '';
+            const camBadge = `CAM ${currentCamId}`;
+            if (webrtcConnectedCount > 0) {
+                if (statusTextEl && isStreaming) {
+                    statusTextEl.innerText = `⚡ ${camBadge} P2P 직결 (${webrtcConnectedCount}대)`;
+                }
+                if (statsEl) {
+                    const fpsShow = measuredFps > 0 ? measuredFps : targetFps;
+                    statsEl.innerText = `${fpsShow} FPS • ${targetResHeight}p${micTag}`;
+                }
+            } else {
+                if (statusTextEl && isStreaming) {
+                    statusTextEl.innerText = `${camBadge} 무선 송출 중`;
+                }
+                if (statsEl) {
+                    const fpsShow = measuredFps > 0 ? measuredFps : targetFps;
+                    const rttShow = lastRttMs > 0 ? ` • ${lastRttMs}ms` : '';
+                    statsEl.innerText = `${fpsShow} FPS • ${targetResHeight}p${rttShow}${micTag}`;
+                }
+            }
+        }
+
+        // WakeLock 화면 꺼짐 방지
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    await navigator.wakeLock.request('screen');
+                }
+            } catch(e) {}
+        }
+
+        function showCameraError(title, htmlMsg) {
+            const errBox = document.getElementById('cameraErrorBox');
+            const errTitle = document.getElementById('cameraErrorTitle');
+            const errMsg = document.getElementById('cameraErrorMsg');
+            if (errTitle) errTitle.innerText = title;
+            if (errMsg) errMsg.innerHTML = htmlMsg;
+            if (errBox) errBox.style.display = 'block';
+            document.getElementById('startOverlay').style.display = 'flex';
+        }
+
+        async function initAndStartCamera() {
+            const btn = document.getElementById('btnStartCam');
+            const errBox = document.getElementById('cameraErrorBox');
+            if (errBox) errBox.style.display = 'none';
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                    const httpsUrl = getHttpsCamUrl();
+                    document.getElementById('httpsRedirectBox').style.display = 'block';
+                    document.getElementById('btnGoHttps').href = httpsUrl;
+                    window.location.href = httpsUrl;
+                    return;
+                }
+                showCameraError(
+                    '⚠️ 브라우저에서 카메라 API가 차단되었습니다',
+                    '현재 앱 내장 브라우저에서는 카메라 사용이 제한될 수 있습니다.<br>우측 상단 메뉴에서 <strong>[Safari로 열기]</strong> 또는 <strong>[Chrome으로 열기]</strong>를 선택해 주세요.'
+                );
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = '⏳ 카메라 연결 중...';
+            }
+
+            const ok = await startCamera(currentFacing);
+
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = '📷 카메라 켜고 송출 시작';
+            }
+
+            if (ok) {
+                document.getElementById('startOverlay').style.display = 'none';
+                requestWakeLock();
+                startWebRtcSignalingLoop();
+                if (!frameLoopStarted) {
+                    frameLoopStarted = true;
+                    startFrameLoop();
+                }
+            }
+        }
+
+        // ==========================================
+        // 🎤 스마트폰 마이크 실시간 PCM 오디오 캡처 & 서버(유튜브 RTMP) 송출
+        // ==========================================
+        let audioWorkletReady = false;
+        async function setupAudioCapture(stream) {
+            try {
+                const audioTracks = stream ? stream.getAudioTracks() : [];
+                hasAudioTrack = audioTracks.length > 0;
+                if (!hasAudioTrack) {
+                    updateMicButtonUi();
+                    return;
+                }
+                audioTracks.forEach(t => { t.enabled = !isMicMuted && isStreaming; });
+                updateMicButtonUi();
+
+                if (audioProcessorNode) {
+                    try { audioProcessorNode.disconnect(); } catch (e) {}
+                }
+                if (audioSourceNode) {
+                    try { audioSourceNode.disconnect(); } catch (e) {}
+                }
+
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+                if (!audioCtx) {
+                    audioCtx = new AudioContextClass();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(() => {});
+                }
+
+                audioSourceNode = audioCtx.createMediaStreamSource(stream);
+                audioGainNode = audioCtx.createGain();
+                audioGainNode.gain.value = 0; // 폰 스피커 하울링 방지 (무음 출력 노드)
+
+                // 1순위: 전용 실시간 오디오 스레드(AudioWorkletNode) 사용 -> 메인 스레드 캔버스 인코딩 부하와 무관하게 100% 무손실 캡처
+                if (audioCtx.audioWorklet && window.AudioWorkletNode) {
+                    try {
+                        if (!audioWorkletReady) {
+                            try {
+                                await audioCtx.audioWorklet.addModule('/api/camera/mic-worklet.js');
+                                audioWorkletReady = true;
+                            } catch (modErr) {
+                                const workletCode = `
+                                    class MicPcmWorklet extends AudioWorkletProcessor {
+                                        constructor() {
+                                            super();
+                                            this.outBuf = new Int16Array(1920);
+                                            this.outIdx = 0;
+                                            this.srcPos = 0;
+                                            this.dcX = 0;
+                                            this.dcY = 0;
+                                            this.prevSample = 0;
+                                            this.hasPrev = false;
+                                            this.filteredBuf = new Float32Array(256);
+                                        }
+                                        process(inputs) {
+                                            const input = inputs[0];
+                                            if (!input || !input[0] || input[0].length === 0) return true;
+                                            const ch = input[0];
+                                            const inLen = ch.length;
+                                            if (this.filteredBuf.length < inLen) {
+                                                this.filteredBuf = new Float32Array(inLen);
+                                            }
+                                            let dcX = this.dcX, dcY = this.dcY;
+                                            for (let i = 0; i < inLen; i++) {
+                                                const x = ch[i];
+                                                dcY = x - dcX + 0.995 * dcY;
+                                                dcX = x;
+                                                this.filteredBuf[i] = dcY;
+                                            }
+                                            this.dcX = dcX;
+                                            this.dcY = dcY;
+
+                                            const ratio = sampleRate / 48000;
+                                            const fBuf = this.filteredBuf;
+                                            while (this.srcPos < inLen) {
+                                                const idx = Math.floor(this.srcPos);
+                                                const frac = this.srcPos - idx;
+                                                let s0, s1;
+                                                if (idx < 0) {
+                                                    s0 = this.hasPrev ? this.prevSample : fBuf[0];
+                                                    s1 = fBuf[0];
+                                                } else if (idx >= inLen - 1) {
+                                                    s0 = fBuf[inLen - 1];
+                                                    s1 = fBuf[inLen - 1];
+                                                } else {
+                                                    s0 = fBuf[idx];
+                                                    s1 = fBuf[idx + 1];
+                                                }
+                                                let s = (s0 * (1 - frac) + s1 * frac);
+                                                if (s > 0.98) s = 0.98;
+                                                else if (s < -0.98) s = -0.98;
+                                                this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                                                if (this.outIdx >= 1920) {
+                                                    this.port.postMessage(this.outBuf.slice(0));
+                                                    this.outIdx = 0;
+                                                }
+                                                this.srcPos += ratio;
+                                            }
+                                            this.prevSample = fBuf[inLen - 1];
+                                            this.hasPrev = true;
+                                            this.srcPos -= inLen;
+                                            return true;
+                                        }
+                                    }
+                                    registerProcessor('mic-pcm-worklet', MicPcmWorklet);
+                                `;
+                                const blob = new Blob([workletCode], { type: 'application/javascript' });
+                                const url = URL.createObjectURL(blob);
+                                await audioCtx.audioWorklet.addModule(url);
+                                audioWorkletReady = true;
+                            }
+                        }
+                        audioProcessorNode = new AudioWorkletNode(audioCtx, 'mic-pcm-worklet');
+                        audioProcessorNode.port.onmessage = (ev) => {
+                            if (!isStreaming || isMicMuted || !hasAudioTrack) return;
+                            const pcm16 = ev.data;
+                            if (!pcm16 || !pcm16.length) return;
+                            pendingPcmChunks.push(pcm16);
+                            pendingPcmSamples += pcm16.length;
+                            if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                                flushAudioPcmChunks();
+                            }
+                        };
+                        audioSourceNode.connect(audioProcessorNode);
+                        audioProcessorNode.connect(audioGainNode);
+                        audioGainNode.connect(audioCtx.destination);
+                        return;
+                    } catch (wErr) {
+                        // AudioWorklet 지원 불가 시 아래 ScriptProcessor로 즉시 폴백
+                    }
+                }
+
+                // 폴백: 4096 샘플(85ms) 버퍼를 사용하여 메인스레드 JPEG 인코딩 중에도 버퍼 드롭 원천 차단
+                audioProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+                const inRate = audioCtx.sampleRate || 48000;
+                audioProcessorNode.onaudioprocess = (event) => {
+                    if (!isStreaming || isMicMuted || !hasAudioTrack) return;
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    if (!inputData || inputData.length === 0) return;
+
+                    // inRate(44.1kHz/48kHz) -> 24000Hz 16-bit Signed Mono PCM (타임 스트레칭 왜곡 없이 정배율 안티앨리어싱 변환)
+                    const outLength = Math.max(1, Math.floor(inputData.length / (inRate / TARGET_AUDIO_SAMPLE_RATE)));
+                    const ratio = inputData.length / outLength;
+
+                    const pcm16 = new Int16Array(outLength);
+                    const inLen = inputData.length;
+                    for (let i = 0; i < outLength; i++) {
+                        const startF = i * ratio;
+                        const endF = startF + ratio;
+                        const startIdx = Math.min(inLen - 1, Math.floor(startF));
+                        const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
+                        let sum = 0;
+                        let cnt = 0;
+                        for (let j = startIdx; j < endIdx; j++) {
+                            sum += inputData[j];
+                            cnt++;
+                        }
+                        let sample = (cnt > 0 ? (sum / cnt) : inputData[startIdx]);
+                        if (sample > 0.98) sample = 0.98;
+                        else if (sample < -0.98) sample = -0.98;
+                        pcm16[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
+                    }
+
+                    pendingPcmChunks.push(pcm16);
+                    pendingPcmSamples += pcm16.length;
+
+                    if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                        flushAudioPcmChunks();
+                    }
+                };
+
+                audioSourceNode.connect(audioProcessorNode);
+                audioProcessorNode.connect(audioGainNode);
+                audioGainNode.connect(audioCtx.destination);
+            } catch (e) {}
+        }
+
+        async function flushAudioPcmChunks() {
+            if (audioInFlightCount >= MAX_AUDIO_IN_FLIGHT || pendingPcmChunks.length === 0) return;
+            audioInFlightCount++;
+            const myAudioSeq = ++audioSeq;
+            try {
+                const chunks = pendingPcmChunks;
+                const totalSamples = pendingPcmSamples;
+                pendingPcmChunks = [];
+                pendingPcmSamples = 0;
+
+                // 최대 0.75초(18000 샘플) 이하로 유지하여 일시적 Wi-Fi 지연에서도 음절 유실 방지
+                const merged = new Int16Array(totalSamples);
+                let offset = 0;
+                for (const c of chunks) {
+                    merged.set(c, offset);
+                    offset += c.length;
+                }
+                const payload = totalSamples > 18000 ? merged.subarray(totalSamples - 18000) : merged;
+
+                await fetch(`/api/camera/audio?sr=24000&src=mobile&seq=${myAudioSeq}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
+                });
+            } catch (e) {
+            } finally {
+                audioInFlightCount = Math.max(0, audioInFlightCount - 1);
+                if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                    flushAudioPcmChunks();
+                }
+            }
+        }
+
+        async function startCamera(facingMode, forceAudio = false) {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+
+            const idealW = Math.round(targetResHeight * (16 / 9));
+            // echoCancellation: true 설정 시 스마트폰 OS가 '근거리 통화(수화기) 모드'로 전환되어 50cm 밖 원거리 음성을 차단하므로 false로 설정하고, AGC로 원거리 음성을 수음합니다.
+            const audioConstraints = {
+                echoCancellation: false,
+                noiseSuppression: true,
+                autoGainControl: true,
+                channelCount: { ideal: 1 },
+                sampleRate: { ideal: 48000 }
+            };
+            // CAM 2(서브 카메라) 또는 마이크가 음소거된 상태에서는 비디오 단독(audio: false)을 1순위로 요청하여
+            // 마이크 권한 팝업/자동재생(video.play) 블로킹 및 CAM 1과의 오디오 충돌을 원천 차단합니다!
+            const preferVideoOnly = (currentCamId === 2 && !forceAudio && isMicMuted);
+            const constraintCandidates = preferVideoOnly
+                ? [
+                    {
+                        video: {
+                            facingMode: { ideal: facingMode },
+                            width: { ideal: idealW },
+                            height: { ideal: targetResHeight },
+                            frameRate: { ideal: targetFps }
+                        },
+                        audio: false
+                    },
+                    {
+                        video: { facingMode: facingMode },
+                        audio: false
+                    },
+                    {
+                        video: true,
+                        audio: false
+                    }
+                ]
+                : [
+                    {
+                        video: {
+                            facingMode: { ideal: facingMode },
+                            width: { ideal: idealW },
+                            height: { ideal: targetResHeight },
+                            frameRate: { ideal: targetFps }
+                        },
+                        audio: audioConstraints
+                    },
+                    {
+                        video: {
+                            facingMode: { ideal: facingMode },
+                            width: { ideal: idealW },
+                            height: { ideal: targetResHeight },
+                            frameRate: { ideal: targetFps }
+                        },
+                        audio: false
+                    },
+                    {
+                        video: { facingMode: facingMode },
+                        audio: audioConstraints
+                    },
+                    {
+                        video: { facingMode: facingMode },
+                        audio: false
+                    },
+                    {
+                        video: true,
+                        audio: false
+                    }
+                ];
+
+            reportClientLog('requesting_camera', `CAM ${currentCamId} 카메라 권한 요청 중 (videoOnly=${preferVideoOnly})`);
+
+            let lastErr = null;
+            for (const constraints of constraintCandidates) {
+                try {
+                    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    if (currentStream) break;
+                } catch (err) {
+                    lastErr = err;
+                }
+            }
+
+            if (!currentStream) {
+                const msg = lastErr ? (lastErr.name + ': ' + lastErr.message) : '알 수 없는 오류';
+                reportClientLog('permission_denied', `getUserMedia 실패: ${msg}`);
+                showCameraError(
+                    '⚠️ 카메라 접근 권한이 필요합니다',
+                    `오류 내용: <code>${msg}</code><br><br>` +
+                    `1. 아래 <strong>[📷 카메라 켜고 송출 시작]</strong> 버튼을 한 번 터치해 주세요.<br>` +
+                    `2. 권한 팝업에서 <strong>[허용]</strong>을 선택해 주세요.`
+                );
+                document.getElementById('statusText').innerText = '카메라 터치 대기';
+                document.getElementById('statusDot').style.background = '#f59e0b';
+                return false;
+            }
+
+            try {
+                const video = document.getElementById('cameraVideo');
+                video.muted = true; // 폰 자체 스피커 하울링 방지
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                video.srcObject = currentStream;
+
+                // 모바일 브라우저 자동재생 정책으로 play()가 지연/거부되더라도 스트림 송출은 즉시 시작되도록 비차단 처리
+                try {
+                    const playPromise = video.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch(() => {});
+                    }
+                } catch (e) {}
+
+                if (facingMode === 'user') {
+                    video.classList.add('mirrored');
+                    document.getElementById('cameraFaceText').innerText = '전면 셀카';
+                } else {
+                    video.classList.remove('mirrored');
+                    document.getElementById('cameraFaceText').innerText = '후면 카메라';
+                }
+
+                // 마이크 오디오 캡처 파이프라인 가동
+                setupAudioCapture(currentStream);
+
+                // 이미 연결된 WebRTC P2P 피어들의 비디오/오디오 트랙 즉시 교체 (무중단 카메라 전환)
+                const newVideoTrack = currentStream.getVideoTracks()[0];
+                const newAudioTrack = currentStream.getAudioTracks()[0];
+                for (const [, pc] of activePeers.entries()) {
+                    const senders = pc.getSenders ? pc.getSenders() : [];
+                    for (const sender of senders) {
+                        if (newVideoTrack && sender.track && sender.track.kind === 'video') {
+                            sender.replaceTrack(newVideoTrack).catch(() => {});
+                        }
+                        if (newAudioTrack && sender.track && sender.track.kind === 'audio') {
+                            sender.replaceTrack(newAudioTrack).catch(() => {});
+                        }
+                    }
+                }
+
+                document.getElementById('statusDot').style.background = '#10b981';
+                updateStatusDisplay();
+                reportClientLog('streaming_started', `CAM ${currentCamId} 카메라 스트림 시작됨`);
+                sendInitialConnectionFrame();
+                setTimeout(sendInitialConnectionFrame, 350);
+                return true;
+            } catch (playErr) {
+                reportClientLog('error', `비디오 초기화 오류: ${playErr.message}`);
+                showCameraError(
+                    '⚠️ 카메라 비디오 재생 오류',
+                    `비디오 스트림을 화면에 표시할 수 없습니다 (${playErr.message}). 다시 시도해 주세요.`
+                );
+                return false;
+            }
+        }
+
+        async function switchCamera() {
+            currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
+            try { localStorage.setItem('live_cam_facing', currentFacing); } catch (e) {}
+            await startCamera(currentFacing);
+        }
+
+        function toggleStreaming() {
+            isStreaming = !isStreaming;
+            const btn = document.getElementById('btnStreamToggle');
+            const dot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+
+            if (currentStream) {
+                currentStream.getVideoTracks().forEach(t => { t.enabled = isStreaming; });
+                currentStream.getAudioTracks().forEach(t => { t.enabled = isStreaming && !isMicMuted; });
+            }
+
+            if (isStreaming) {
+                btn.classList.add('streaming');
+                btn.innerHTML = '🔴 무선 송출 중';
+                dot.style.background = '#10b981';
+                updateStatusDisplay();
+            } else {
+                btn.classList.remove('streaming');
+                btn.innerHTML = '⏸️ 송출 일시정지';
+                dot.style.background = '#f59e0b';
+                statusText.innerText = '송출 일시정지됨';
+            }
+        }
+
+        // ==========================================
+        // ⚡ WebRTC Wi-Fi P2P 직결 송출 엔진 (해외 터널 경유 0%, 0.03초 무지연)
+        // ==========================================
+        function waitForIceGathering(pc, timeoutMs = 1500) {
+            return new Promise((resolve) => {
+                if (pc.iceGatheringState === 'complete') {
+                    resolve();
+                    return;
+                }
+                const timer = setTimeout(() => {
+                    pc.removeEventListener('icegatheringstatechange', checkState);
+                    resolve();
+                }, timeoutMs);
+                function checkState() {
+                    if (pc.iceGatheringState === 'complete') {
+                        clearTimeout(timer);
+                        pc.removeEventListener('icegatheringstatechange', checkState);
+                        resolve();
+                    }
+                }
+                pc.addEventListener('icegatheringstatechange', checkState);
+            });
+        }
+
+        function recalcWebrtcCount() {
+            let cnt = 0;
+            const now = Date.now();
+            for (const [pid, pc] of activePeers.entries()) {
+                const isConn = (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed');
+                const isDead = (
+                    pc.connectionState === 'failed' ||
+                    pc.connectionState === 'closed' ||
+                    pc.connectionState === 'disconnected' ||
+                    pc.iceConnectionState === 'failed' ||
+                    pc.iceConnectionState === 'closed' ||
+                    pc.iceConnectionState === 'disconnected' ||
+                    (!isConn && pc._createdAt && (now - pc._createdAt) > 12000)
+                );
+                if (isConn) {
+                    cnt++;
+                } else if (isDead) {
+                    try { pc.close(); } catch (e) {}
+                    activePeers.delete(pid);
+                }
+            }
+            webrtcConnectedCount = cnt;
+            updateStatusDisplay();
+        }
+
+        async function handleViewerOffer(peerId, offerSdp) {
+            if (!currentStream || activePeers.has(peerId)) return;
+            // 동일 뷰어 프리픽스(studio_, overlay_, prompter_)의 이전 미연결 세션 즉시 정리
+            const prefix = String(peerId).split('_')[0] + '_';
+            for (const [oldPid, oldPc] of activePeers.entries()) {
+                if (oldPid.startsWith(prefix)) {
+                    const isConn = (oldPc.connectionState === 'connected' || oldPc.iceConnectionState === 'connected' || oldPc.iceConnectionState === 'completed');
+                    if (!isConn) {
+                        try { oldPc.close(); } catch (e) {}
+                        activePeers.delete(oldPid);
+                    }
+                }
+            }
+            let pc = null;
+            try {
+                pc = new RTCPeerConnection(RTC_CONFIG);
+                pc._createdAt = Date.now();
+                activePeers.set(peerId, pc);
+
+                pc.onconnectionstatechange = () => recalcWebrtcCount();
+                pc.oniceconnectionstatechange = () => recalcWebrtcCount();
+
+                currentStream.getTracks().forEach(track => {
+                    pc.addTrack(track, currentStream);
+                });
+
+                await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                await waitForIceGathering(pc, 1500);
+
+                await fetch(`/api/camera/webrtc/answer?cam=${currentCamId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        peer_id: peerId,
+                        cam: currentCamId,
+                        answer: pc.localDescription
+                    })
+                });
+                recalcWebrtcCount();
+                setTimeout(recalcWebrtcCount, 12500);
+            } catch (e) {
+                if (pc) {
+                    try { pc.close(); } catch (err) {}
+                }
+                activePeers.delete(peerId);
+            }
+        }
+
+        let webrtcOffersInFlight = false;
+        function startWebRtcSignalingLoop() {
+            if (webrtcPollTimer) clearInterval(webrtcPollTimer);
+            // 해외 터널(*.lhr.life) 경유 접속 중에는 WebRTC Offer/ICE 루프가 메인 스레드를 멈추게 하므로 비활성화 + 로컬 Wi-Fi 자동 전환 유도
+            if (IS_TUNNEL_HOST) {
+                if (LOCAL_WIFI_IP) {
+                    const directUrl = getLocalDirectHttpsUrl();
+                    fetch(`https://${LOCAL_WIFI_IP}:${HTTPS_PORT}/api/camera/host-info?cam=${currentCamId}`, { mode: 'cors' })
+                        .then(r => {
+                            if (r && r.ok) {
+                                window.location.replace(directUrl);
+                            }
+                        })
+                        .catch(() => {});
+                }
+                return;
+            }
+            webrtcPollTimer = setInterval(async () => {
+                if (!isStreaming || !currentStream || webrtcOffersInFlight) return;
+                webrtcOffersInFlight = true;
+                recalcWebrtcCount();
+                try {
+                    const res = await fetch(`/api/camera/webrtc/offers?cam=${currentCamId}`);
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const offers = data.offers || [];
+                    for (const item of offers) {
+                        if (item.peer_id && item.offer && !activePeers.has(item.peer_id)) {
+                            handleViewerOffer(item.peer_id, item.offer);
+                        }
+                    }
+                } catch (e) {
+                } finally {
+                    webrtcOffersInFlight = false;
+                }
+            }, 8000);
+        }
+
+        // 비상용 기본 카메라 파일 캡처 송출
+        async function handleNativeCamCapture(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            try {
+                document.getElementById('statusText').innerText = '사진 전송 중...';
+                await fetch(`/api/camera/frame?cam=${currentCamId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': file.type || 'image/jpeg' },
+                    body: file
+                });
+                document.getElementById('statusText').innerText = '사진 송출 완료!';
+            } catch (e) {
+                alert('전송 실패: ' + e.message);
+            }
+        }
+
+        // ==========================================
+        // 🚀 다중 병렬 파이프라이닝(In-Flight Pipelining) 프레임 루프
+        // - keepalive: true(64KB 브라우저 쿼터 제한으로 인한 1FPS 드롭 현상) 완전 제거
+        // - 이중 공유기(192.168.0.x <-> 192.168.1.x) 환경에서도 항상 20~30FPS 초고속 전송 유지
+        // ==========================================
+        function startFrameLoop() {
+            const video = document.getElementById('cameraVideo');
+            const canvas = document.getElementById('captureCanvas');
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            function sendEncodedBody(bodyPayload, mySeq) {
+                if (!bodyPayload) return;
+                inFlightCount++;
+                const sendStart = Date.now();
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+                fetch(`/api/camera/frame?cam=${currentCamId}&seq=${mySeq}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'image/jpeg' },
+                    body: bodyPayload,
+                    signal: controller.signal
+                }).then((res) => {
+                    clearTimeout(timeoutId);
+                    if (res && res.ok) {
+                        lastRttMs = Date.now() - sendStart;
+                        sentFramesInSec++;
+                        const tNow = Date.now();
+                        if (tNow - lastFpsTime >= 1000) {
+                            measuredFps = sentFramesInSec;
+                            sentFramesInSec = 0;
+                            lastFpsTime = tNow;
+                            updateStatusDisplay();
+                        }
+                    }
+                }).catch(() => {
+                    clearTimeout(timeoutId);
+                }).finally(() => {
+                    inFlightCount = Math.max(0, inFlightCount - 1);
+                });
+            }
+
+            // 카메라가 켜져 있는 동안 2.5초마다 상태 하트비트 전송 (네트워크 지연 중에도 '연결 대기'로 빠지지 않도록 보장)
+            setInterval(() => {
+                if (isStreaming && currentStream) {
+                    reportClientLog('streaming', '실시간 영상 송출 중');
+                }
+            }, 2500);
+
+            function loopTick() {
+                const now = Date.now();
+                const minIntervalMs = Math.max(25, Math.round(1000 / targetFps));
+
+                if (
+                    isStreaming &&
+                    !encodingInProgress &&
+                    inFlightCount < MAX_IN_FLIGHT &&
+                    (now - lastCaptureTime) >= minIntervalMs &&
+                    video.readyState >= 1 &&
+                    video.videoWidth > 0 &&
+                    video.videoHeight > 0
+                ) {
+                    lastCaptureTime = now;
+                    encodingInProgress = true;
+                    const mySeq = ++frameSeq;
+
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    const maxDim = Math.round(targetResHeight * (16 / 9));
+                    const scale = Math.min(maxDim / Math.max(vw, vh), 1);
+                    const cw = Math.round(vw * scale);
+                    const ch = Math.round(vh * scale);
+                    if (canvas.width !== cw || canvas.height !== ch) {
+                        canvas.width = cw;
+                        canvas.height = ch;
+                    }
+
+                    if (currentFacing === 'user') {
+                        ctx.save();
+                        ctx.translate(canvas.width, 0);
+                        ctx.scale(-1, 1);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        ctx.restore();
+                    } else {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    }
+
+                    if (typeof canvas.toBlob === 'function') {
+                        canvas.toBlob((blob) => {
+                            encodingInProgress = false;
+                            if (blob) {
+                                sendEncodedBody(blob, mySeq);
+                            } else {
+                                const fallbackBytes = dataUrlToUint8Array(canvas.toDataURL('image/jpeg', targetJpegQuality));
+                                sendEncodedBody(fallbackBytes, mySeq);
+                            }
+                        }, 'image/jpeg', targetJpegQuality);
+                    } else {
+                        encodingInProgress = false;
+                        const fallbackBytes = dataUrlToUint8Array(canvas.toDataURL('image/jpeg', targetJpegQuality));
+                        sendEncodedBody(fallbackBytes, mySeq);
+                    }
+                }
+                requestAnimationFrame(loopTick);
+            }
+            requestAnimationFrame(loopTick);
+        }
+
+        // 모바일 브라우저 자동 재연결 후 화면 터치 시 AudioContext 즉시 활성화
+        ['touchstart', 'click'].forEach(evtName => {
+            window.addEventListener(evtName, () => {
+                if (audioCtx && audioCtx.state === 'suspended' && !isMicMuted) {
+                    audioCtx.resume().catch(() => {});
+                }
+            }, { passive: true });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 상품 등록 및 재고 관리 | Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b1120;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --danger-red: #ef4444;
+            --warning-orange: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 24px;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.1) 0px, transparent 50%);
+        }
+
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 공통 상단 GNB */
+        .gnb {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            backdrop-filter: blur(14px);
+            padding: 14px 26px;
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+        }
+
+        .brand-logo {
+            font-size: 1.25rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .nav-item {
+            color: var(--text-muted);
+            text-decoration: none;
+            padding: 9px 16px;
+            border-radius: 10px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .nav-item:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background: var(--primary);
+            box-shadow: 0 0 14px rgba(99, 102, 241, 0.4);
+        }
+
+        /* 페이지 헤더 & 등록 버튼 */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            padding: 22px 28px;
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+            flex-wrap: wrap;
+            gap: 14px;
+        }
+
+        .page-title h2 {
+            font-size: 1.45rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .page-title p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .header-btn-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stock-badge-live {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+
+        .btn-add-product {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 0.92rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+            transition: all 0.2s;
+        }
+
+        .btn-add-product:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        /* 상품별 카드 리스트 */
+        .inventory-list {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .product-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            transition: border-color 0.2s;
+        }
+
+        .product-card:hover {
+            border-color: rgba(255, 255, 255, 0.16);
+        }
+
+        .product-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 16px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .product-main-flex {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex: 1;
+        }
+
+        /* 상품 대표 썸네일 이미지 */
+        .product-thumb-box {
+            width: 84px;
+            height: 84px;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--card-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .product-thumb-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .product-thumb-placeholder {
+            font-size: 2.2rem;
+            opacity: 0.7;
+        }
+
+        .product-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .product-info h3 {
+            font-size: 1.3rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+        }
+
+        .product-num-badge {
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 6px;
+            letter-spacing: -0.3px;
+        }
+
+        .product-price {
+            font-size: 1.05rem;
+            color: #38bdf8;
+            font-weight: 700;
+        }
+
+        .product-specs {
+            font-size: 0.84rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+            line-height: 1.4;
+            background: rgba(0, 0, 0, 0.25);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .product-actions-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .total-stock-pill {
+            background: rgba(99, 102, 241, 0.2);
+            color: #c7d2fe;
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+        }
+
+        .btn-card-action {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-card-action:hover {
+            background: rgba(255, 255, 255, 0.16);
+            color: #fff;
+        }
+
+        .btn-card-delete {
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.35);
+            background: rgba(239, 68, 68, 0.12);
+        }
+
+        .btn-card-delete:hover {
+            background: rgba(239, 68, 68, 0.25);
+            color: #fff;
+            border-color: var(--danger-red);
+        }
+
+        /* 옵션 재고 테이블 */
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+
+        .stock-table th {
+            text-align: left;
+            padding: 10px 14px;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--card-border);
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        .stock-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            vertical-align: middle;
+        }
+
+        .stock-num {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin-left: 6px;
+        }
+
+        .badge-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            margin-left: 6px;
+        }
+
+        .input-stock {
+            width: 80px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--card-border);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .btn-update {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid var(--card-border);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-update:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        /* ==================================================== */
+        /* 🛍️ 상품 등록 / 수정 모달 레이어 */
+        /* ==================================================== */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-container {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 780px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px 26px;
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 20px 20px 0 0;
+        }
+
+        .modal-header h3 {
+            font-size: 1.25rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+        }
+
+        .modal-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .modal-close-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-body {
+            padding: 24px 26px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .form-label .req {
+            color: var(--danger-red);
+        }
+
+        .form-input, .form-textarea {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 0.92rem;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        .form-input:focus, .form-textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+        }
+
+        /* 이미지 업로드 & 미리보기 영역 */
+        .image-upload-wrapper {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px dashed var(--card-border);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .image-preview-box {
+            width: 100px;
+            height: 100px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid var(--card-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .image-preview-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .upload-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .btn-file-select {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: fit-content;
+            transition: all 0.2s;
+        }
+
+        .btn-file-select:hover {
+            background: rgba(99, 102, 241, 0.35);
+            color: #fff;
+        }
+
+        /* 옵션 매트릭스 생성기 박스 */
+        .option-generator-card {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .option-gen-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #38bdf8;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .option-table-wrap {
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.6);
+        }
+
+        .modal-footer {
+            padding: 16px 26px;
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            background: rgba(30, 41, 59, 0.4);
+            border-radius: 0 0 20px 20px;
+        }
+
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-cancel:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-save-product {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border: none;
+            color: #fff;
+            padding: 9px 22px;
+            border-radius: 8px;
+            font-weight: 800;
+            font-size: 0.92rem;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-save-product:hover {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        }
+
+        /* ==================================================== */
+        /* 📊 등록 제품 개수 및 재고 상태 현황표 스타일 */
+        /* ==================================================== */
+        .summary-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 16px;
+            padding: 20px 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .summary-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+        }
+
+        @media (max-width: 960px) {
+            .summary-kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .summary-kpi-card {
+            background: rgba(30, 41, 59, 0.65);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .summary-kpi-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .summary-kpi-value {
+            font-size: 1.45rem;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        .summary-kpi-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .summary-table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.55);
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .summary-table th {
+            text-align: left;
+            padding: 11px 14px;
+            color: #cbd5e1;
+            font-weight: 700;
+            font-size: 0.8rem;
+            background: rgba(30, 41, 59, 0.75);
+            border-bottom: 1px solid var(--card-border);
+            white-space: nowrap;
+        }
+
+        .summary-table td {
+            padding: 11px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            vertical-align: middle;
+        }
+
+        .summary-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .summary-table tbody tr:hover {
+            background: rgba(99, 102, 241, 0.08);
+        }
+
+        .opt-mini-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            margin: 2px 4px 2px 0;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e2e8f0;
+        }
+
+        .opt-mini-chip.low {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.4);
+            color: #fbbf24;
+        }
+
+        .opt-mini-chip.soldout {
+            background: rgba(239, 68, 68, 0.18);
+            border-color: rgba(239, 68, 68, 0.45);
+            color: #f87171;
+            text-decoration: line-through;
+        }
+
+        @keyframes cardHighlightPulse {
+            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.8); border-color: #818cf8; }
+            50% { box-shadow: 0 0 28px 6px rgba(99, 102, 241, 0.45); border-color: #6366f1; }
+            100% { box-shadow: none; border-color: var(--card-border); }
+        }
+
+        .product-card.highlight-focus {
+            animation: cardHighlightPulse 1.8s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 🌟 공통 상단 GNB 내비게이션 바 -->
+        {% set active_page = 'inventory' %}
+        {% include 'components/header.html' %}
+
+        <!-- 페이지 헤더 -->
+        <div class="page-header">
+            <div class="page-title">
+                <h2>📦 실시간 방송 상품 등록 & 재고 관리 센터</h2>
+                <p>방송에 판매할 신규 상품, 대표 사진, 사양(스펙), 옵션별 재고를 직접 등록하고 실시간 차감합니다.</p>
+            </div>
+            <div class="header-btn-group">
+                <div class="stock-badge-live">
+                    <span>⚡ AI 주문·CS 실시간 연동 중</span>
+                </div>
+                <button type="button" class="btn-add-product" onclick="openAddModal()">
+                    <span>➕ 새 상품 등록하기</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 📊 현재 등록 제품 개수 및 재고 상태 현황표 (Inventory Status Summary) -->
+        <div class="summary-panel" id="inventoryStatusSummaryPanel">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.4rem;">📊</span>
+                    <div>
+                        <h3 style="font-size: 1.12rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <span>등록 제품 및 재고 상태 현황표</span>
+                            <span id="summaryHeaderCountBadge" style="background: rgba(99, 102, 241, 0.25); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.45); font-size: 0.78rem; font-weight: 800; padding: 2px 10px; border-radius: 12px;">
+                                총 {{ items|length if items else 0 }}개 제품 등록됨
+                            </span>
+                        </h3>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+                            현재 등록된 전체 제품 수와 옵션별 재고 상태(여유 / 품절 임박 / 품절)를 한눈에 확인하고 클릭하여 이동할 수 있습니다.
+                        </p>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; font-size: 0.78rem; color: var(--text-muted);">
+                    <span>🟢 여유 (6개 이상)</span>
+                    <span>🟡 품절 임박 (1~5개)</span>
+                    <span>🔴 품절 (0개)</span>
+                </div>
+            </div>
+
+            <!-- 5대 핵심 재고 KPI 요약 카드 -->
+            <div class="summary-kpi-grid">
+                <div class="summary-kpi-card" style="border-color: rgba(99, 102, 241, 0.35);">
+                    <div class="summary-kpi-label">📦 총 등록 제품 수</div>
+                    <div class="summary-kpi-value" id="summaryTotalProducts" style="color: #a5b4fc;">{{ items|length if items else 0 }}개</div>
+                    <div class="summary-kpi-sub" id="summaryTotalOptions">하위 옵션 총 0개</div>
+                </div>
+                <div class="summary-kpi-card" style="border-color: rgba(56, 189, 248, 0.35);">
+                    <div class="summary-kpi-label">🔢 전체 잔여 재고 합계</div>
+                    <div class="summary-kpi-value" id="summaryTotalStock" style="color: #38bdf8;">0개</div>
+                    <div class="summary-kpi-sub" id="summaryPotentialProfit">완판 예상 이익 +0원</div>
+                </div>
+                <div class="summary-kpi-card" style="border-color: rgba(16, 185, 129, 0.35);">
+                    <div class="summary-kpi-label">🟢 재고 여유 제품</div>
+                    <div class="summary-kpi-value" id="summaryNormalProducts" style="color: #34d399;">0개</div>
+                    <div class="summary-kpi-sub" id="summaryNormalOptions">여유 옵션 0개</div>
+                </div>
+                <div class="summary-kpi-card" style="border-color: rgba(245, 158, 11, 0.35);">
+                    <div class="summary-kpi-label">🟡 품절 임박 포함</div>
+                    <div class="summary-kpi-value" id="summaryLowStockProducts" style="color: #fbbf24;">0개</div>
+                    <div class="summary-kpi-sub" id="summaryLowStockOptions">품절 임박 옵션 0개 (5개 이하)</div>
+                </div>
+                <div class="summary-kpi-card" style="border-color: rgba(239, 68, 68, 0.35);">
+                    <div class="summary-kpi-label">🔴 품절(SOLD OUT) 포함</div>
+                    <div class="summary-kpi-value" id="summarySoldOutProducts" style="color: #f87171;">0개</div>
+                    <div class="summary-kpi-sub" id="summarySoldOutOptions">품절 옵션 0개 / 전량 품절 0개</div>
+                </div>
+            </div>
+
+            <!-- 등록 제품별 재고 상태 요약 테이블 -->
+            <div class="summary-table-wrap">
+                <table class="summary-table" id="inventorySummaryTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 75px;">번호</th>
+                            <th style="min-width: 180px;">제품명</th>
+                            <th style="width: 130px;">판매가 (이익률)</th>
+                            <th>옵션별 재고 현황</th>
+                            <th style="width: 110px; text-align: right;">총 잔여 재고</th>
+                            <th style="width: 150px; text-align: center;">재고 상태</th>
+                            <th style="width: 130px; text-align: center;">빠른 작업</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventorySummaryTbody">
+                        <!-- JS 초기 렌더링 및 2.5초 실시간 동기화 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 📋 실시간 주문 승인 & 재고 차감 대기소 (Pending Orders) -->
+        <div class="pending-orders-panel" id="pendingOrdersPanel" style="margin-bottom: 24px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(14px); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 16px; padding: 20px 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 1.5rem;">📋</span>
+                    <div>
+                        <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                            <span>실시간 주문 확인 & 재고 차감 대기소</span>
+                            <span class="badge-pending-count" id="pendingCountBadge" style="background: #f59e0b; color: #000; font-size: 0.8rem; font-weight: 800; padding: 2px 8px; border-radius: 12px;">0건 대기 중</span>
+                        </h3>
+                        <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+                            시청자 주문 댓글이 들어오면 이곳에 대기하며, 관리자가 <strong>[✅ 확인 및 재고 차감]</strong>을 누를 때만 실제 옵션 재고에서 차감됩니다.
+                        </p>
+                    </div>
+                </div>
+                <div style="font-size: 0.78rem; color: #34d399; display: flex; align-items: center; gap: 6px;">
+                    <span style="width: 8px; height: 8px; background: #34d399; border-radius: 50%; box-shadow: 0 0 8px #34d399;"></span>
+                    <span>실시간 2.5초 자동 동기화 가동 중</span>
+                </div>
+            </div>
+
+            <!-- 대기 주문 목록 -->
+            <div id="pendingOrdersList" style="display: flex; flex-direction: column; gap: 10px;">
+                <div id="pendingOrdersEmpty" style="text-align: center; padding: 24px 16px; color: var(--text-muted); font-size: 0.88rem; background: rgba(0,0,0,0.25); border-radius: 10px;">
+                    ✨ 현재 확인 대기 중인 주문이 없습니다. (시청자가 방송에서 주문 댓글을 남기면 즉시 이곳에 표시됩니다)
+                </div>
+            </div>
+        </div>
+
+        <!-- 상품 목록 및 옵션 재고 그리드 -->
+        <div class="inventory-list" id="productListContainer">
+            {% if items and items|length > 0 %}
+                {% for item in items %}
+                <div class="product-card" id="card-{{ item.id }}">
+                    <div class="product-header">
+                        <div class="product-main-flex">
+                            <!-- 상품 대표 썸네일 -->
+                            <div class="product-thumb-box">
+                                {% if item.image_url %}
+                                    <img src="{{ item.image_url }}" alt="{{ item.name }}" onerror="this.parentElement.innerHTML='<span class=\'product-thumb-placeholder\'>🛍️</span>'">
+                                {% else %}
+                                    <span class="product-thumb-placeholder">🛍️</span>
+                                {% endif %}
+                            </div>
+
+                            <!-- 상품명 및 가격/사양/손익 지표 -->
+                            <div class="product-info">
+                                <h3>
+                                    <span class="product-num-badge">{{ item.num }}번</span>
+                                    <span>{{ item.name }}</span>
+                                </h3>
+                                
+                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:4px;">
+                                    {% if item.consumer_price and item.consumer_price > item.price %}
+                                        <div style="font-size:0.84rem; color:var(--text-muted); text-decoration:line-through;" title="소비자가 (정가)">
+                                            정가: {{ "{:,}".format(item.consumer_price) }}원
+                                        </div>
+                                    {% endif %}
+                                    <div class="product-price" style="font-size:1.1rem; font-weight:800; color:#38bdf8;">
+                                        판매가: {{ "{:,}".format(item.price) }}원
+                                    </div>
+                                    <div style="font-size:0.85rem; color:#cbd5e1; background:rgba(255,255,255,0.06); padding:2px 8px; border-radius:6px;" title="공급 원가 (사입가)">
+                                        원가: <strong style="color:#f59e0b;">{{ "{:,}".format(item.cost_price) }}원</strong>
+                                    </div>
+                                    <div style="font-size:0.85rem; font-weight:700; color:#34d399; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:6px;" title="개당 순이익 = 판매가 - 원가">
+                                        개당 이익: +{{ "{:,}".format(item.margin_unit) }}원 ({{ item.margin_rate }}%)
+                                    </div>
+                                    {% if item.total_stock > 0 and item.potential_profit > 0 %}
+                                        <div style="font-size:0.82rem; color:#a5b4fc; background:rgba(99,102,241,0.18); border:1px solid rgba(99,102,241,0.35); padding:2px 8px; border-radius:6px;" title="잔여 재고 {{ item.total_stock }}개 완판 시 총 예상 순이익">
+                                            완판 시 예상 이익: <strong>+{{ "{:,}".format(item.potential_profit) }}원</strong>
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                {% if item.specs %}
+                                    <div class="product-specs">
+                                        <strong>사양:</strong> {{ item.specs }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- 우측 관리 버튼 & 총 재고 -->
+                        <div class="product-actions-wrap">
+                            <div class="total-stock-pill">
+                                총 잔여 재고: <strong>{{ item.total_stock }}</strong>개
+                            </div>
+                            <button type="button" class="btn-card-action" onclick="openEditModal('{{ item.id }}')">✏️ 수정</button>
+                            <button type="button" class="btn-card-action btn-card-delete" onclick="deleteProduct('{{ item.id }}', '{{ item.name }}')">🗑️ 삭제</button>
+                        </div>
+                    </div>
+
+                    <!-- 옵션 재고 테이블 -->
+                    <table class="stock-table">
+                        <thead>
+                            <tr>
+                                <th>색상</th>
+                                <th>사이즈</th>
+                                <th>잔여 재고</th>
+                                <th>상태</th>
+                                <th>재고 수량 조정 (입고)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for opt in item.options %}
+                            <tr>
+                                <td><strong>{{ opt.color }}</strong></td>
+                                <td><span style="background:rgba(255,255,255,0.08); padding:3px 8px; border-radius:4px;">{{ opt.size }}</span></td>
+                                <td>
+                                    <span class="stock-num" id="stock-val-{{ item.id }}-{{ opt.color }}-{{ opt.size }}">{{ opt.stock }}</span>개
+                                </td>
+                                <td>
+                                    {% if opt.stock == 0 %}
+                                        <span class="badge-danger">품절 (SOLD OUT)</span>
+                                    {% elif opt.stock <= 5 %}
+                                        <span class="badge-warning">품절 임박 ({{ opt.stock }}개 남음)</span>
+                                    {% else %}
+                                        <span style="color:#34d399; font-size:0.85rem; font-weight:600;">여유</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; align-items:center;">
+                                        <input type="number" class="input-stock" id="input-{{ item.id }}-{{ opt.color }}-{{ opt.size }}" value="{{ opt.stock }}" min="0">
+                                        <button class="btn-update" onclick="updateStock('{{ item.id }}', '{{ opt.color }}', '{{ opt.size }}')">저장</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="text-align: center; padding: 60px 24px; background: var(--card-bg); backdrop-filter: blur(14px); border: 1px dashed var(--card-border); border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
+                    <div style="font-size: 3.5rem; filter: drop-shadow(0 0 16px rgba(99,102,241,0.3));">📦</div>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff;">등록된 라이브 판매 상품이 없습니다</h3>
+                    <p style="color: var(--text-muted); font-size: 0.92rem; max-width: 480px; line-height: 1.5;">
+                        기존 목업 상품이 모두 정리되었습니다.<br>
+                        오늘 방송에서 판매할 실제 상품을 직접 등록하시면, AI 주문 접수와 고객 CS에 즉시 실시간 연동됩니다.
+                    </p>
+                    <button type="button" class="btn-add-product" onclick="openAddModal()" style="margin-top: 8px; padding: 12px 26px; font-size: 1rem;">
+                        <span>➕ 첫 상품 등록하기</span>
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 🛍️ 상품 등록 / 수정 모달 -->
+    <!-- ========================================== -->
+    <div class="modal-overlay" id="productModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="modalTitle">🛍️ 신규 라이브 판매 상품 등록</h3>
+                <button type="button" class="modal-close-btn" onclick="closeModal()">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="editProductId" value="">
+
+                <!-- 1. 기본 정보 그리드 -->
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">방송 번호 <span class="req">*</span></label>
+                        <input type="number" id="prodNum" class="form-input" placeholder="예: 3" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">상품명 <span class="req">*</span></label>
+                        <input type="text" id="prodName" class="form-input" placeholder="예: 오버핏 헤비 코튼 맨투맨">
+                    </div>
+                </div>
+
+                <!-- 1-1. 가격 및 원가 3열 그리드 (소비자가 / 라이브 판매가 / 공급 원가) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span>소비자가 (정가)</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted);">(원)</span>
+                        </label>
+                        <input type="number" id="prodConsumerPrice" class="form-input" placeholder="예: 50000" min="0" step="1000" oninput="calcModalMargin()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span>방송 특가 (판매가) <span class="req">*</span></span>
+                            <span style="font-size:0.75rem; color:#38bdf8;">실판매</span>
+                        </label>
+                        <input type="number" id="prodPrice" class="form-input" placeholder="예: 39000" min="0" step="1000" oninput="calcModalMargin()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span>공급 원가 (사입가) <span class="req">*</span></span>
+                            <span style="font-size:0.75rem; color:#f59e0b;">사입비</span>
+                        </label>
+                        <input type="number" id="prodCostPrice" class="form-input" placeholder="예: 18000" min="0" step="1000" oninput="calcModalMargin()">
+                    </div>
+                </div>
+
+                <!-- 1-2. 실시간 이익 및 마진율 계산 프리뷰 카드 -->
+                <div id="modalMarginPreviewCard" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
+                        <div>
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">개당 순이익 (마진)</span>
+                            <strong id="previewMarginUnit" style="font-size: 1.15rem; color: #34d399;">+0원</strong>
+                        </div>
+                        <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 16px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">마진율 (이익률)</span>
+                            <strong id="previewMarginRate" style="font-size: 1.15rem; color: #38bdf8;">0.0%</strong>
+                        </div>
+                        <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 16px;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">정가 대비 할인율</span>
+                            <strong id="previewDiscountRate" style="font-size: 1.15rem; color: #f43f5e;">0%</strong>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #a5b4fc; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.35); padding: 4px 10px; border-radius: 6px;">
+                        💡 원가 대비 마진 실시간 계산
+                    </div>
+                </div>
+
+                <!-- 2. 대표 사진 등록 (업로드 & 미리보기) -->
+                <div class="form-group">
+                    <label class="form-label">상품 대표 사진</label>
+                    <div class="image-upload-wrapper">
+                        <div class="image-preview-box" id="imagePreviewBox">
+                            <span style="font-size:2rem; opacity:0.5;" id="previewPlaceholder">📷</span>
+                            <img id="imagePreview" src="" style="display:none;" alt="미리보기">
+                        </div>
+                        <div class="upload-controls">
+                            <input type="file" id="prodImageFile" accept="image/*,.jfif" style="display:none;" onchange="onFileSelected(event)">
+                            <button type="button" class="btn-file-select" onclick="document.getElementById('prodImageFile').click()">
+                                📁 PC에서 사진 선택
+                            </button>
+                            <input type="text" id="prodImageUrl" class="form-input" placeholder="또는 사진 URL 직접 입력" style="font-size:0.8rem;" oninput="onUrlInput(this.value)">
+                            <div style="font-size:0.75rem; color:var(--text-muted);">
+                                * 권장 크기: 정사각형(1:1) / 지원 형식: JPG, JFIF, PNG, WEBP
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. 제품 사양 및 AI 학습 설명 -->
+                <div class="form-group">
+                    <label class="form-label">
+                        <span>제품 사양 및 설명 (Specs)</span>
+                        <span style="font-size:0.75rem; color:#38bdf8; font-weight:normal;">💡 AI가 시청자 문의 시 이 내용을 바탕으로 자동 답변합니다</span>
+                    </label>
+                    <textarea id="prodSpecs" class="form-textarea" rows="2" placeholder="예: 코튼 100% 헤비웨이트 원단, 덤블워싱 가공으로 세탁 후 변형 없음, 루즈 오버핏, 세탁기 찬물 세탁 권장"></textarea>
+                </div>
+
+                <!-- 4. 옵션 매트릭스 생성기 (색상 x 사이즈) -->
+                <div class="option-generator-card">
+                    <div class="option-gen-title">
+                        <span>⚡ 색상 x 사이즈 옵션 매트릭스 생성기</span>
+                        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">쉼표(,)로 구분해 여러 개 입력</span>
+                    </div>
+
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label class="form-label">색상 목록</label>
+                            <input type="text" id="genColors" class="form-input" placeholder="예: 블랙, 그레이, 네이비" value="블랙, 그레이">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">사이즈 목록</label>
+                            <input type="text" id="genSizes" class="form-input" placeholder="예: M, L, XL" value="M, L">
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <button type="button" class="btn-file-select" onclick="generateOptionMatrix()" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border-color:rgba(56,189,248,0.4);">
+                            ⚡ 옵션 조합 일괄 생성
+                        </button>
+                        <button type="button" class="btn-card-action" onclick="addSingleOptionRow('', '', 10)">
+                            + 개별 옵션 직접 추가
+                        </button>
+                    </div>
+
+                    <!-- 생성된 옵션별 수량 입력 테이블 -->
+                    <div class="option-table-wrap">
+                        <table class="stock-table" id="modalOptionsTable">
+                            <thead>
+                                <tr>
+                                    <th>색상</th>
+                                    <th>사이즈</th>
+                                    <th>초기 재고(개)</th>
+                                    <th style="width:60px; text-align:center;">삭제</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modalOptionsTbody">
+                                <!-- JS 동적 생성 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" onclick="closeModal()">취소</button>
+                <button type="button" class="btn-save-product" id="btnSaveProduct" onclick="saveProduct()">
+                    💾 상품 등록 완료
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 서버에서 렌더링된 초기 상품 목록 JS 메모리에 보관
+        let currentProducts = {{ items|tojson }};
+
+        // 실시간 모달 손익 및 할인율 계산기
+        function calcModalMargin() {
+            const cPrice = parseInt(document.getElementById('prodConsumerPrice').value, 10) || 0;
+            const sPrice = parseInt(document.getElementById('prodPrice').value, 10) || 0;
+            const costPrice = parseInt(document.getElementById('prodCostPrice').value, 10) || 0;
+
+            const effSellPrice = sPrice > 0 ? sPrice : cPrice;
+            const margin = Math.max(0, effSellPrice - costPrice);
+            const marginRate = effSellPrice > 0 ? ((margin / effSellPrice) * 100).toFixed(1) : 0;
+
+            let discountRate = 0;
+            if (cPrice > 0 && sPrice > 0 && cPrice > sPrice) {
+                discountRate = Math.round(((cPrice - sPrice) / cPrice) * 100);
+            }
+
+            const marginEl = document.getElementById('previewMarginUnit');
+            const rateEl = document.getElementById('previewMarginRate');
+            const discEl = document.getElementById('previewDiscountRate');
+
+            if (marginEl) marginEl.innerText = `+${margin.toLocaleString()}원`;
+            if (rateEl) rateEl.innerText = `${marginRate}%`;
+            if (discEl) discEl.innerText = `${discountRate}%`;
+        }
+
+        // 모달 열기/닫기
+        function openAddModal() {
+            document.getElementById('editProductId').value = '';
+            document.getElementById('modalTitle').innerHTML = '🛍️ 신규 라이브 판매 상품 등록';
+            document.getElementById('btnSaveProduct').innerHTML = '💾 상품 등록 완료';
+
+            // 다음 번호 자동 제안
+            const existingNums = currentProducts.map(p => p.num || 0);
+            const nextNum = existingNums.length > 0 ? (Math.max(...existingNums) + 1) : 1;
+            document.getElementById('prodNum').value = nextNum;
+            document.getElementById('prodName').value = '';
+            document.getElementById('prodPrice').value = '';
+            document.getElementById('prodConsumerPrice').value = '';
+            document.getElementById('prodCostPrice').value = '';
+            document.getElementById('prodImageUrl').value = '';
+            document.getElementById('prodSpecs').value = '';
+            resetImagePreview();
+            calcModalMargin();
+
+            // 기본 옵션 템플릿 로드
+            document.getElementById('genColors').value = '블랙, 화이트';
+            document.getElementById('genSizes').value = 'FREE';
+            generateOptionMatrix();
+
+            document.getElementById('productModal').classList.add('active');
+        }
+
+        function openEditModal(productId) {
+            const product = currentProducts.find(p => p.id === productId);
+            if (!product) {
+                alert('상품 정보를 찾을 수 없습니다.');
+                return;
+            }
+
+            document.getElementById('editProductId').value = product.id;
+            document.getElementById('modalTitle').innerHTML = `✏️ ${product.num}번 상품 정보 수정`;
+            document.getElementById('btnSaveProduct').innerHTML = '💾 수정 내용 저장';
+
+            document.getElementById('prodNum').value = product.num;
+            document.getElementById('prodName').value = product.name;
+            document.getElementById('prodPrice').value = product.price;
+            document.getElementById('prodConsumerPrice').value = product.consumer_price || product.price;
+            document.getElementById('prodCostPrice').value = product.cost_price || 0;
+            document.getElementById('prodImageUrl').value = product.image_url || '';
+            document.getElementById('prodSpecs').value = product.specs || '';
+            calcModalMargin();
+
+            if (product.image_url) {
+                showImagePreview(product.image_url);
+            } else {
+                resetImagePreview();
+            }
+
+            // 기존 옵션 행 채우기
+            const tbody = document.getElementById('modalOptionsTbody');
+            tbody.innerHTML = '';
+            (product.options || []).forEach(opt => {
+                addSingleOptionRow(opt.color, opt.size, opt.stock);
+            });
+
+            document.getElementById('productModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('productModal').classList.remove('active');
+        }
+
+        // 이미지 미리보기 제어
+        function showImagePreview(url) {
+            const img = document.getElementById('imagePreview');
+            const ph = document.getElementById('previewPlaceholder');
+            img.src = url;
+            img.style.display = 'block';
+            ph.style.display = 'none';
+        }
+
+        function resetImagePreview() {
+            const img = document.getElementById('imagePreview');
+            const ph = document.getElementById('previewPlaceholder');
+            img.src = '';
+            img.style.display = 'none';
+            ph.style.display = 'block';
+        }
+
+        function onUrlInput(url) {
+            if (url && url.trim()) {
+                showImagePreview(url.trim());
+            } else {
+                resetImagePreview();
+            }
+        }
+
+        // 파일 선택 시 즉시 비동기 업로드
+        async function onFileSelected(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 로컬 미리보기 우선 반영
+            const reader = new FileReader();
+            reader.onload = e => showImagePreview(e.target.result);
+            reader.readAsDataURL(file);
+
+            // 서버에 업로드
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const res = await fetch('/api/upload/image', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    document.getElementById('prodImageUrl').value = data.url;
+                    showImagePreview(data.url);
+                } else {
+                    alert('사진 업로드 실패: ' + (data.message || '오류'));
+                }
+            } catch (err) {
+                alert('업로드 중 네트워크 오류: ' + err.message);
+            }
+        }
+
+        // 색상 x 사이즈 옵션 일괄 생성
+        function generateOptionMatrix() {
+            const colorStr = document.getElementById('genColors').value.trim();
+            const sizeStr = document.getElementById('genSizes').value.trim();
+
+            const colors = colorStr.split(',').map(s => s.trim()).filter(Boolean);
+            const sizes = sizeStr.split(',').map(s => s.trim()).filter(Boolean);
+
+            if (colors.length === 0 || sizes.length === 0) {
+                alert('색상과 사이즈를 최소 1개 이상 입력하세요!');
+                return;
+            }
+
+            const tbody = document.getElementById('modalOptionsTbody');
+            tbody.innerHTML = '';
+
+            colors.forEach(c => {
+                sizes.forEach(s => {
+                    addSingleOptionRow(c, s, 15);
+                });
+            });
+        }
+
+        // 옵션 단일 행 추가
+        function addSingleOptionRow(color = '', size = '', stock = 10) {
+            const tbody = document.getElementById('modalOptionsTbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <input type="text" class="form-input opt-color" value="${color}" placeholder="예: 블랙" style="padding:6px 10px; width:100%;">
+                </td>
+                <td>
+                    <input type="text" class="form-input opt-size" value="${size}" placeholder="예: M" style="padding:6px 10px; width:100%;">
+                </td>
+                <td>
+                    <input type="number" class="form-input opt-stock" value="${stock}" min="0" style="padding:6px 10px; width:100%;">
+                </td>
+                <td style="text-align:center;">
+                    <button type="button" class="btn-card-action btn-card-delete" onclick="this.closest('tr').remove()" style="padding:4px 8px;">✕</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        // 상품 등록 / 수정 저장
+        async function saveProduct() {
+            const editId = document.getElementById('editProductId').value;
+            const num = parseInt(document.getElementById('prodNum').value, 10);
+            const name = document.getElementById('prodName').value.trim();
+            const price = parseInt(document.getElementById('prodPrice').value, 10);
+            const consumerPrice = parseInt(document.getElementById('prodConsumerPrice').value, 10) || price;
+            const costPrice = parseInt(document.getElementById('prodCostPrice').value, 10) || 0;
+            const imageUrl = document.getElementById('prodImageUrl').value.trim();
+            const specs = document.getElementById('prodSpecs').value.trim();
+
+            if (!num || !name || isNaN(price)) {
+                alert('방송 번호, 상품명, 가격을 모두 올바르게 입력해주세요!');
+                return;
+            }
+
+            // 옵션 목록 파싱
+            const rows = document.querySelectorAll('#modalOptionsTbody tr');
+            const options = [];
+            rows.forEach(tr => {
+                const c = tr.querySelector('.opt-color').value.trim();
+                const s = tr.querySelector('.opt-size').value.trim();
+                const stock = parseInt(tr.querySelector('.opt-stock').value, 10) || 0;
+                if (c && s) {
+                    options.push({ color: c, size: s, stock: stock });
+                }
+            });
+
+            if (options.length === 0) {
+                alert('최소 1개 이상의 옵션(색상 및 사이즈)을 등록해야 합니다!');
+                return;
+            }
+
+            const payload = {
+                num: num,
+                name: name,
+                price: price,
+                consumer_price: consumerPrice,
+                cost_price: costPrice,
+                image_url: imageUrl,
+                specs: specs,
+                options: options
+            };
+
+            const btn = document.getElementById('btnSaveProduct');
+            btn.disabled = true;
+            btn.innerText = '저장 중...';
+
+            try {
+                let url = '/api/inventory/product/add';
+                if (editId) {
+                    url = '/api/inventory/product/update';
+                    payload.id = editId;
+                }
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (data.status === 'ok') {
+                    alert(editId ? '상품 정보가 성공적으로 수정되었습니다!' : '새 상품이 성공적으로 등록되었습니다!');
+                    location.reload();
+                } else {
+                    alert('저장 실패: ' + (data.message || '오류'));
+                }
+            } catch (err) {
+                alert('서버 통신 오류: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = editId ? '💾 수정 내용 저장' : '💾 상품 등록 완료';
+            }
+        }
+
+        // 상품 삭제
+        async function deleteProduct(productId, productName) {
+            if (!confirm(`정말로 [${productName}] 상품을 삭제하시겠습니까?\n삭제 시 관련된 옵션과 재고 데이터가 함께 삭제됩니다.`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/inventory/product/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: productId })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    alert('상품이 삭제되었습니다.');
+                    location.reload();
+                } else {
+                    alert('삭제 실패: ' + (data.message || '오류'));
+                }
+            } catch (e) {
+                alert('삭제 중 오류: ' + e.message);
+            }
+        }
+
+        // 기존 단일 옵션 수량 수정
+        async function updateStock(itemId, color, size) {
+            const inputId = `input-${itemId}-${color}-${size}`;
+            const val = document.getElementById(inputId).value;
+            
+            try {
+                const res = await fetch('/api/inventory/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        item_id: itemId,
+                        color: color,
+                        size: size,
+                        stock: parseInt(val, 10)
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    alert(`${color} / ${size} 재고가 ${val}개로 업데이트되었습니다!`);
+                    location.reload();
+                } else {
+                    alert('재고 수정 실패: ' + (data.message || '알 수 없는 오류'));
+                }
+            } catch (err) {
+                alert('요청 중 오류가 발생했습니다: ' + err.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // ==========================================
+        // 📋 관리자 주문 승인 & 재고 차감 실시간 연동
+        // ==========================================
+        async function confirmOrder(orderId, btn) {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = '차감 중...';
+            }
+            try {
+                const res = await fetch('/api/orders/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: orderId })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    const ord = data.order || {};
+                    if (ord.just_sold_out) {
+                        alert(`🚨 [전량 품절 발생!]\n${ord.item_name} (${ord.color}/${ord.size}) 옵션이 방금 전량 품절(SOLD OUT)되었습니다!`);
+                    } else {
+                        alert(`✅ [주문 확인 완료]\n${ord.buyer_name}님 주문이 확정되어 재고 ${ord.quantity}개가 차감되었습니다! (잔여 재고: ${ord.remaining_stock}개)`);
+                    }
+                    syncRealtimeInventory();
+                } else {
+                    alert('승인 실패: ' + (data.message || '알 수 없는 오류'));
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerText = '✅ 확인 및 재고 차감';
+                    }
+                }
+            } catch (err) {
+                alert('서버 통신 오류: ' + err.message);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = '✅ 확인 및 재고 차감';
+                }
+            }
+        }
+
+        async function rejectOrder(orderId, btn) {
+            if (!confirm('이 주문을 반려(취소)하시겠습니까?\n반려 시 재고는 차감되지 않습니다.')) return;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = '취소 중...';
+            }
+            try {
+                const res = await fetch('/api/orders/reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: orderId })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    alert('주문이 반려되었습니다. (재고 미차감)');
+                    syncRealtimeInventory();
+                } else {
+                    alert('반려 실패: ' + data.message);
+                    if (btn) btn.disabled = false;
+                }
+            } catch (err) {
+                alert('오류: ' + err.message);
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        // 실시간 2.5초 재고 및 대기 주문 동기화
+        async function syncRealtimeInventory() {
+            try {
+                const res = await fetch('/api/inventory/realtime');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // 1. 대기 주문 목록 업데이트
+                const pending = data.pending_orders || [];
+                const badge = document.getElementById('pendingCountBadge');
+                if (badge) badge.innerText = `${pending.length}건 대기 중`;
+
+                const listEl = document.getElementById('pendingOrdersList');
+                if (listEl) {
+                    if (pending.length === 0) {
+                        listEl.innerHTML = `
+                            <div id="pendingOrdersEmpty" style="text-align: center; padding: 24px 16px; color: var(--text-muted); font-size: 0.88rem; background: rgba(0,0,0,0.25); border-radius: 10px;">
+                                ✨ 현재 확인 대기 중인 주문이 없습니다. (시청자가 방송에서 주문 댓글을 남기면 즉시 이곳에 표시됩니다)
+                            </div>
+                        `;
+                    } else {
+                        let html = '';
+                        pending.forEach(ord => {
+                            const priceStr = (ord.total_price || 0).toLocaleString();
+                            html += `
+                                <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 12px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+                                    <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 260px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="background: rgba(99,102,241,0.25); color: #a5b4fc; font-size: 0.75rem; font-weight: 800; padding: 2px 7px; border-radius: 4px;">#${ord.id}</span>
+                                            <span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 0.75rem; font-weight: 700; padding: 2px 7px; border-radius: 4px;">⏳ 확인 대기 (재고 미차감)</span>
+                                            <strong style="color: #fff; font-size: 0.95rem;">${escapeHtml(ord.buyer_name)}</strong>
+                                            <span style="font-size: 0.78rem; color: var(--text-muted);">${ord.order_time}</span>
+                                        </div>
+                                        <div style="font-size: 0.92rem; color: #fff; margin-top: 2px;">
+                                            <strong>${escapeHtml(ord.item_name)}</strong>
+                                            <span style="color: #38bdf8; margin-left: 4px;">(${escapeHtml(ord.color)} / ${escapeHtml(ord.size)})</span>
+                                            <span style="color: #f59e0b; font-weight: 700; margin-left: 6px;">${ord.quantity}개</span>
+                                            <span style="color: var(--text-muted); font-size: 0.82rem; margin-left: 8px;">(총 ${priceStr}원)</span>
+                                        </div>
+                                        <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; margin-top: 2px;">
+                                            💬 시청자 원문: "${escapeHtml(ord.raw_message)}"
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <button type="button" onclick="confirmOrder(${ord.id}, this)" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(16,185,129,0.3); transition: all 0.15s;">
+                                            <span>✅ 확인 및 재고 차감</span>
+                                        </button>
+                                        <button type="button" onclick="rejectOrder(${ord.id}, this)" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s;">
+                                            <span>❌ 반려</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        listEl.innerHTML = html;
+                    }
+                }
+
+                // 2. 각 상품별 옵션 재고 숫자 및 품절 뱃지 업데이트
+                if (data.inventory_items) {
+                    currentProducts = data.inventory_items;
+                    renderInventorySummary(data.inventory_items);
+
+                    data.inventory_items.forEach(item => {
+                        const card = document.getElementById(`card-${item.id}`);
+                        if (!card) return;
+
+                        const totalPill = card.querySelector('.total-stock-pill strong');
+                        if (totalPill) totalPill.innerText = item.total_stock;
+
+                        item.options.forEach(opt => {
+                            const stockVal = document.getElementById(`stock-val-${item.id}-${opt.color}-${opt.size}`);
+                            if (stockVal && stockVal.innerText != opt.stock) {
+                                stockVal.innerText = opt.stock;
+                            }
+
+                            const row = stockVal ? stockVal.closest('tr') : null;
+                            if (row) {
+                                const statusCell = row.children[3];
+                                if (statusCell) {
+                                    if (opt.stock === 0) {
+                                        statusCell.innerHTML = '<span class="badge-danger" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); padding: 4px 10px; border-radius: 6px; font-weight: 800;">🚨 품절 (SOLD OUT)</span>';
+                                        row.style.background = 'rgba(239, 68, 68, 0.05)';
+                                    } else if (opt.stock <= 5) {
+                                        statusCell.innerHTML = `<span class="badge-warning">⚠️ 품절 임박 (${opt.stock}개 남음)</span>`;
+                                        row.style.background = 'rgba(245, 158, 11, 0.05)';
+                                    } else {
+                                        statusCell.innerHTML = '<span style="color:#34d399; font-size:0.85rem; font-weight:600;">여유</span>';
+                                        row.style.background = 'transparent';
+                                    }
+                                }
+                            }
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error("재고 동기화 오류:", err);
+            }
+        }
+
+        // 특정 상품 카드로 부드럽게 스크롤 이동 및 강조
+        function scrollToProductCard(itemId) {
+            const card = document.getElementById(`card-${itemId}`);
+            if (!card) return;
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.remove('highlight-focus');
+            void card.offsetWidth;
+            card.classList.add('highlight-focus');
+        }
+
+        // 등록 제품 개수 및 재고 상태 현황표 렌더링
+        function renderInventorySummary(products) {
+            const list = Array.isArray(products) ? products : [];
+            const totalProds = list.length;
+
+            let totalOpts = 0;
+            let totalStock = 0;
+            let totalPotentialProfit = 0;
+
+            let normalProds = 0;
+            let lowStockProds = 0;
+            let soldOutProds = 0;
+            let allSoldOutProds = 0;
+
+            let normalOpts = 0;
+            let lowStockOpts = 0;
+            let soldOutOpts = 0;
+
+            const tbody = document.getElementById('inventorySummaryTbody');
+            let rowsHtml = '';
+
+            if (totalProds === 0) {
+                rowsHtml = `
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 28px 16px; color: var(--text-muted);">
+                            현재 등록된 제품이 없습니다. 우측 상단의 <strong>[➕ 새 상품 등록하기]</strong> 버튼으로 상품을 추가해 주세요.
+                        </td>
+                    </tr>
+                `;
+            } else {
+                list.forEach(item => {
+                    const opts = item.options || [];
+                    const itemStock = Number(item.total_stock || 0);
+                    totalStock += itemStock;
+                    totalPotentialProfit += Number(item.potential_profit || 0);
+                    totalOpts += opts.length;
+
+                    let itemSoldOutOpts = 0;
+                    let itemLowOpts = 0;
+                    let itemNormalOpts = 0;
+
+                    let optChipsHtml = '';
+                    opts.forEach(opt => {
+                        const stk = Number(opt.stock || 0);
+                        let chipClass = '';
+                        if (stk <= 0) {
+                            itemSoldOutOpts++;
+                            soldOutOpts++;
+                            chipClass = 'soldout';
+                        } else if (stk <= 5) {
+                            itemLowOpts++;
+                            lowStockOpts++;
+                            chipClass = 'low';
+                        } else {
+                            itemNormalOpts++;
+                            normalOpts++;
+                        }
+                        optChipsHtml += `<span class="opt-mini-chip ${chipClass}">${escapeHtml(opt.color)}/${escapeHtml(opt.size)}: <strong>${stk}</strong></span>`;
+                    });
+
+                    // 제품 단위 상태 판정
+                    let statusBadgeHtml = '';
+                    if (itemStock <= 0 && opts.length > 0) {
+                        soldOutProds++;
+                        allSoldOutProds++;
+                        statusBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.22); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; display: inline-block;">🔴 전량 품절</span>`;
+                    } else if (itemSoldOutOpts > 0) {
+                        soldOutProds++;
+                        if (itemLowOpts > 0) lowStockProds++;
+                        statusBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.16); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🔴 일부 품절 (${itemSoldOutOpts}개 옵션)</span>`;
+                    } else if (itemLowOpts > 0 || itemStock <= 5) {
+                        lowStockProds++;
+                        statusBadgeHtml = `<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.45); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🟡 품절 임박 (${itemLowOpts || 1}개 옵션)</span>`;
+                    } else {
+                        normalProds++;
+                        statusBadgeHtml = `<span style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🟢 여유</span>`;
+                    }
+
+                    const priceStr = Number(item.price || 0).toLocaleString();
+                    const marginRateStr = item.margin_rate !== undefined ? `${item.margin_rate}%` : '-';
+
+                    rowsHtml += `
+                        <tr>
+                            <td>
+                                <span class="product-num-badge" style="font-size: 0.76rem; padding: 3px 8px;">${item.num}번</span>
+                            </td>
+                            <td>
+                                <a href="javascript:void(0)" onclick="scrollToProductCard('${item.id}')" style="color: #fff; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;" title="클릭 시 해당 상품 상세 카드로 이동">
+                                    <span>${escapeHtml(item.name)}</span>
+                                </a>
+                            </td>
+                            <td>
+                                <div style="color: #38bdf8; font-weight: 700;">${priceStr}원</div>
+                                <div style="font-size: 0.74rem; color: #34d399;">마진 ${marginRateStr}</div>
+                            </td>
+                            <td>
+                                <div style="display: flex; flex-wrap: wrap; align-items: center;">
+                                    ${optChipsHtml || '<span style="color: var(--text-muted); font-size: 0.78rem;">옵션 없음</span>'}
+                                </div>
+                            </td>
+                            <td style="text-align: right; font-weight: 800; font-size: 0.98rem; color: ${itemStock === 0 ? '#f87171' : (itemStock <= 5 ? '#fbbf24' : '#f8fafc')};">
+                                ${itemStock.toLocaleString()}개
+                            </td>
+                            <td style="text-align: center;">
+                                ${statusBadgeHtml}
+                            </td>
+                            <td style="text-align: center;">
+                                <div style="display: inline-flex; gap: 6px;">
+                                    <button type="button" class="btn-card-action" style="padding: 4px 9px; font-size: 0.76rem;" onclick="scrollToProductCard('${item.id}')">🔍 이동</button>
+                                    <button type="button" class="btn-card-action" style="padding: 4px 9px; font-size: 0.76rem;" onclick="openEditModal('${item.id}')">✏️ 수정</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            if (tbody) tbody.innerHTML = rowsHtml;
+
+            const setTxt = (id, txt) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = txt;
+            };
+
+            setTxt('summaryHeaderCountBadge', `총 ${totalProds}개 제품 등록됨`);
+            setTxt('summaryTotalProducts', `${totalProds}개`);
+            setTxt('summaryTotalOptions', `하위 옵션 총 ${totalOpts}개`);
+            setTxt('summaryTotalStock', `${totalStock.toLocaleString()}개`);
+            setTxt('summaryPotentialProfit', `완판 예상 이익 +${totalPotentialProfit.toLocaleString()}원`);
+            setTxt('summaryNormalProducts', `${normalProds}개`);
+            setTxt('summaryNormalOptions', `여유 옵션 ${normalOpts}개`);
+            setTxt('summaryLowStockProducts', `${lowStockProds}개`);
+            setTxt('summaryLowStockOptions', `품절 임박 옵션 ${lowStockOpts}개 (5개 이하)`);
+            setTxt('summarySoldOutProducts', `${soldOutProds}개`);
+            setTxt('summarySoldOutOptions', `품절 옵션 ${soldOutOpts}개 / 전량 품절 ${allSoldOutProds}개`);
+        }
+
+        // 초기 렌더링 및 실시간 폴링 가동
+        renderInventorySummary(currentProducts);
+        syncRealtimeInventory();
+        setInterval(syncRealtimeInventory, 2500);
+    </script>
+</body>
+</html>

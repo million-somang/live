@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>라이브 커머스 실시간 AI 주문 & OBS 자막 관제탑</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b1120;
+            --card-bg: rgba(30, 41, 59, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --youtube: #ef4444;
+            --instagram: #ec4899;
+            --tiktok: #06b6d4;
+            --active-green: #10b981;
+            --idle-yellow: #f59e0b;
+            --standby-gray: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 24px;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.1) 0px, transparent 50%),
+                radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 헤더 */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            backdrop-filter: blur(14px);
+            padding: 18px 26px;
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+        }
+
+        .title-group h1 {
+            font-size: 1.45rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: -0.5px;
+        }
+
+        .server-status-pill {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #34d399;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulse-ring 1.8s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* 📡 플랫폼 실시간 연결 카드 섹션 */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 4px;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #e2e8f0;
+        }
+
+        .live-sync-indicator {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sync-spinner {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #38bdf8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .platform-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 900px) {
+            .platform-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .platform-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .platform-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--brand-color, #6366f1);
+        }
+
+        .platform-card.active {
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.15);
+        }
+
+        .platform-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .platform-name-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .platform-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 0.95rem;
+            color: white;
+            background: var(--brand-color);
+        }
+
+        .platform-name {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+
+        /* 상태 배지 */
+        .status-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge.ACTIVE {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .status-badge.ACTIVE::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #34d399;
+            box-shadow: 0 0 6px #34d399;
+        }
+
+        .status-badge.IDLE {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .status-badge.IDLE::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #fbbf24;
+        }
+
+        .status-badge.STANDBY {
+            background: rgba(100, 116, 139, 0.2);
+            color: #94a3b8;
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+
+        .status-badge.STANDBY::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #94a3b8;
+        }
+
+        .platform-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 10px;
+            padding: 10px 14px;
+            gap: 8px;
+        }
+
+        .metric-box {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .metric-value {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .platform-last-activity {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 8px;
+        }
+
+        /* 메인 워크스페이스 그리드 */
+        .grid-main {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .grid-main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 12px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 폼 컨트롤 */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        input, textarea {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, textarea:focus {
+            border-color: var(--primary);
+        }
+
+        .platform-select-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .platform-btn {
+            flex: 1;
+            padding: 9px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            background: rgba(15, 23, 42, 0.5);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .platform-btn.active[data-p="youtube"] {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border-color: var(--youtube);
+        }
+
+        .platform-btn.active[data-p="instagram"] {
+            background: rgba(236, 72, 153, 0.2);
+            color: #f472b6;
+            border-color: var(--instagram);
+        }
+
+        .platform-btn.active[data-p="tiktok"] {
+            background: rgba(6, 182, 212, 0.2);
+            color: #67e8f9;
+            border-color: var(--tiktok);
+        }
+
+        .btn-submit {
+            background: var(--primary);
+            color: white;
+            padding: 13px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-submit:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-submit:active {
+            transform: scale(0.99);
+        }
+
+        .preset-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .preset-pill {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            padding: 5px 9px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .preset-pill:hover {
+            background: rgba(99, 102, 241, 0.2);
+            color: #c7d2fe;
+            border-color: var(--primary);
+        }
+
+        .status-box {
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .status-header {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .obs-preview {
+            background: #000;
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #38bdf8;
+            min-height: 65px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .copy-url-box {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.7);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+        }
+
+        .copy-url-box input {
+            background: transparent;
+            border: none;
+            padding: 0;
+            flex: 1;
+            font-size: 0.85rem;
+            color: #38bdf8;
+            font-family: monospace;
+        }
+
+        .copy-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        /* 📜 실시간 통합 라이브 피드 */
+        .live-feed-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .feed-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .feed-item {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .feed-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .feed-user-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .feed-platform-tag {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+            color: white;
+        }
+
+        .tag-youtube { background: var(--youtube); }
+        .tag-instagram { background: var(--instagram); }
+        .tag-tiktok { background: var(--tiktok); }
+        .tag-live { background: #6366f1; }
+
+        .feed-category-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 9999px;
+        }
+
+        .cat-ORDER { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .cat-QUESTION { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+        .cat-CHAT { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+
+        .feed-message {
+            font-size: 0.9rem;
+            color: #f1f5f9;
+        }
+
+        .feed-reply {
+            font-size: 0.82rem;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.1);
+            border-left: 3px solid var(--primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .empty-feed {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 상단 헤더 -->
+        <header>
+            <div class="title-group">
+                <h1>📡 라이브 커머스 실시간 통합 관제탑</h1>
+            </div>
+            <div class="server-status-pill">
+                <span class="pulse-dot"></span>
+                <span>서버 정상 가동 중 (포트 {{ port }})</span>
+            </div>
+        </header>
+
+        <!-- 1. 플랫폼 실시간 연결 모니터링 섹션 -->
+        <div class="section-header">
+            <div class="section-title">
+                <span>⚡ 방송 플랫폼 실시간 연결 현황</span>
+            </div>
+            <div class="live-sync-indicator">
+                <span class="sync-spinner"></span>
+                <span>2.5초 자동 동기화</span>
+            </div>
+        </div>
+
+        <div class="platform-grid" id="platformGrid">
+            <!-- JavaScript에서 실시간 자동 렌더링 및 갱신 -->
+            <div class="platform-card" id="card-YOUTUBE" style="--brand-color: var(--youtube);">
+                <div class="platform-card-header">
+                    <div class="platform-name-group">
+                        <div class="platform-icon">▶</div>
+                        <div class="platform-name">YouTube Live</div>
+                    </div>
+                    <span class="status-badge STANDBY" id="badge-YOUTUBE">수신 대기</span>
+                </div>
+                <div class="platform-metrics">
+                    <div class="metric-box">
+                        <span class="metric-label">수신 댓글</span>
+                        <span class="metric-value" id="chat-count-YOUTUBE">0</span>
+                    </div>
+                    <div class="metric-box">
+                        <span class="metric-label">접수 주문</span>
+                        <span class="metric-value" id="order-count-YOUTUBE" style="color:#34d399;">0</span>
+                    </div>
+                </div>
+                <div class="platform-last-activity">
+                    <span>마지막 수신:</span>
+                    <strong id="time-YOUTUBE">대기 중</strong>
+                </div>
+            </div>
+
+            <div class="platform-card" id="card-INSTAGRAM" style="--brand-color: var(--instagram);">
+                <div class="platform-card-header">
+                    <div class="platform-name-group">
+                        <div class="platform-icon">📸</div>
+                        <div class="platform-name">Instagram Live</div>
+                    </div>
+                    <span class="status-badge STANDBY" id="badge-INSTAGRAM">수신 대기</span>
+                </div>
+                <div class="platform-metrics">
+                    <div class="metric-box">
+                        <span class="metric-label">수신 댓글</span>
+                        <span class="metric-value" id="chat-count-INSTAGRAM">0</span>
+                    </div>
+                    <div class="metric-box">
+                        <span class="metric-label">접수 주문</span>
+                        <span class="metric-value" id="order-count-INSTAGRAM" style="color:#34d399;">0</span>
+                    </div>
+                </div>
+                <div class="platform-last-activity">
+                    <span>마지막 수신:</span>
+                    <strong id="time-INSTAGRAM">대기 중</strong>
+                </div>
+            </div>
+
+            <div class="platform-card" id="card-TIKTOK" style="--brand-color: var(--tiktok);">
+                <div class="platform-card-header">
+                    <div class="platform-name-group">
+                        <div class="platform-icon">🎵</div>
+                        <div class="platform-name">TikTok Live</div>
+                    </div>
+                    <span class="status-badge STANDBY" id="badge-TIKTOK">수신 대기</span>
+                </div>
+                <div class="platform-metrics">
+                    <div class="metric-box">
+                        <span class="metric-label">수신 댓글</span>
+                        <span class="metric-value" id="chat-count-TIKTOK">0</span>
+                    </div>
+                    <div class="metric-box">
+                        <span class="metric-label">접수 주문</span>
+                        <span class="metric-value" id="order-count-TIKTOK" style="color:#34d399;">0</span>
+                    </div>
+                </div>
+                <div class="platform-last-activity">
+                    <span>마지막 수신:</span>
+                    <strong id="time-TIKTOK">대기 중</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 댓글 테스트 시뮬레이터 & OBS 연동 안내 -->
+        <div class="grid-main">
+            <!-- 좌측: 실시간 댓글 테스트 시뮬레이터 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💬 브라우저 실시간 채팅 테스트</div>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">Social Stream Ninja 모의 전송</span>
+                </div>
+
+                <div class="form-group">
+                    <label>전송할 플랫폼 선택</label>
+                    <div class="platform-select-group">
+                        <button type="button" class="platform-btn active" data-p="youtube" onclick="selectPlatform('youtube')">YouTube</button>
+                        <button type="button" class="platform-btn" data-p="instagram" onclick="selectPlatform('instagram')">Instagram</button>
+                        <button type="button" class="platform-btn" data-p="tiktok" onclick="selectPlatform('tiktok')">TikTok</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>고객 닉네임</label>
+                    <input type="text" id="chatname" value="라이브쇼퍼_01" placeholder="닉네임 입력">
+                </div>
+
+                <div class="form-group">
+                    <label>댓글 내용</label>
+                    <textarea id="chatmessage" rows="2" placeholder="예: 1번 블랙 L 2개 주문할게요!"></textarea>
+                    
+                    <div class="preset-container">
+                        <span class="preset-pill" onclick="setPreset('1번 블랙 L사이즈 2개 주문할게요!')">🛒 1번 블랙 L 2개</span>
+                        <span class="preset-pill" onclick="setPreset('2번 데님 진청 M 살게요~')">🛒 2번 데님 진청 M</span>
+                        <span class="preset-pill" onclick="setPreset('키 173인데 후드티 사이즈 뭐 입어야 해요?')">❓ 사이즈 문의</span>
+                        <span class="preset-pill" onclick="setPreset('오늘 바로 당일 출고되나요?')">❓ 출고 일정 문의</span>
+                        <span class="preset-pill" onclick="setPreset('오늘 방송 너무 재밌어요 ㅋㅋㅋ')">💬 일반 응원</span>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-submit" id="sendBtn" onclick="sendTestChat()">
+                    <span>🚀 댓글 웹훅 전송하기 (POST /chat)</span>
+                </button>
+            </div>
+
+            <!-- 우측: OBS 연동 정보 및 자막 미리보기 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🖥️ OBS 자막 & 웹훅 연동 정보</div>
+                    <span style="font-size:0.8rem; color:#34d399;">실시간 동기화</span>
+                </div>
+
+                <div class="status-box">
+                    <div class="status-header">🔗 Social Stream Ninja Webhook URL</div>
+                    <div class="copy-url-box">
+                        <input type="text" id="webhookUrl" value="http://127.0.0.1:{{ port }}/chat" readonly>
+                        <button class="copy-btn" onclick="copyWebhook()">복사</button>
+                    </div>
+                    <p style="font-size:0.78rem; color:var(--text-muted); margin-top:3px;">
+                        * 크롬 Social Stream Ninja ➔ Webhook URL에 위 주소를 붙여넣으세요.
+                    </p>
+                </div>
+
+                <div class="status-box">
+                    <div class="status-header">🎬 현재 OBS 자막 (obs_ai_reply.txt) 미리보기</div>
+                    <div class="obs-preview" id="obsPreview">{{ obs_content or "아직 생성된 자막이 없습니다. 좌측에서 테스트 댓글을 전송해 보세요!" }}</div>
+                    <p style="font-size:0.78rem; color:var(--text-muted); margin-top:3px;">
+                        * OBS Studio 텍스트(GDI+) 소스에서 <code>obs_ai_reply.txt</code>를 연결하세요.
+                    </p>
+                </div>
+
+                <div class="status-box" style="padding:10px 14px;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.85rem;">
+                        <span style="color:var(--text-muted);">엔진: <strong style="color:#a5b4fc;">{{ engine }}</strong></span>
+                        <span style="color:var(--text-muted);">저장: <strong style="color:#f8fafc;">live_orders.xlsx</strong></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 실시간 3사 통합 라이브 피드 -->
+        <div class="live-feed-card">
+            <div class="card-header">
+                <div class="card-title">📜 3사 통합 실시간 채팅 & AI 처리 라이브 피드</div>
+                <span style="font-size:0.8rem; color:var(--text-muted);" id="feedCount">최근 활동 내역</span>
+            </div>
+
+            <div class="feed-container" id="feedContainer">
+                <div class="empty-feed">채팅 데이터 수신 대기 중...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPlatform = 'youtube';
+
+        function selectPlatform(p) {
+            currentPlatform = p;
+            document.querySelectorAll('.platform-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-p') === p);
+            });
+        }
+
+        function setPreset(text) {
+            document.getElementById('chatmessage').value = text;
+        }
+
+        function copyWebhook() {
+            const urlInput = document.getElementById('webhookUrl');
+            urlInput.select();
+            document.execCommand('copy');
+            alert('Webhook URL이 클립보드에 복사되었습니다!\nSocial Stream Ninja 설정에 붙여넣으세요.');
+        }
+
+        // 실시간 플랫폼 상태 갱신 함수 (2.5초마다 백그라운드 호출)
+        async function fetchPlatforms() {
+            try {
+                const res = await fetch('/api/platforms');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                for (const [key, p] of Object.entries(data)) {
+                    const card = document.getElementById(`card-${key}`);
+                    const badge = document.getElementById(`badge-${key}`);
+                    const chatCount = document.getElementById(`chat-count-${key}`);
+                    const orderCount = document.getElementById(`order-count-${key}`);
+                    const timeEl = document.getElementById(`time-${key}`);
+
+                    if (card && badge) {
+                        // 상태 클래스 갱신 (ACTIVE / IDLE / STANDBY)
+                        badge.className = `status-badge ${p.status}`;
+                        if (p.status === 'ACTIVE') {
+                            badge.innerText = '실시간 연결 중';
+                            card.classList.add('active');
+                        } else if (p.status === 'IDLE') {
+                            badge.innerText = '유휴 (대기)';
+                            card.classList.remove('active');
+                        } else {
+                            badge.innerText = '수신 대기';
+                            card.classList.remove('active');
+                        }
+
+                        if (chatCount) chatCount.innerText = p.chat_count;
+                        if (orderCount) orderCount.innerText = p.order_count;
+                        if (timeEl) timeEl.innerText = p.time_str;
+                    }
+                }
+            } catch (err) {
+                console.error("플랫폼 상태 갱신 에러:", err);
+            }
+        }
+
+        // 최근 채팅 피드 갱신 함수
+        async function fetchRecentChats() {
+            try {
+                const res = await fetch('/api/recent-chats?limit=15');
+                if (!res.ok) return;
+                const chats = await res.json();
+                const container = document.getElementById('feedContainer');
+
+                if (!chats || chats.length === 0) {
+                    container.innerHTML = '<div class="empty-feed">채팅 데이터 수신 대기 중...</div>';
+                    return;
+                }
+
+                let html = '';
+                chats.forEach(chat => {
+                    const tagClass = `tag-${chat.platform.toLowerCase()}`;
+                    const catClass = `cat-${chat.category}`;
+                    const replyHtml = chat.reply ? `<div class="feed-reply">🤖 AI 답변: ${chat.reply}</div>` : '';
+
+                    html += `
+                        <div class="feed-item">
+                            <div class="feed-item-header">
+                                <div class="feed-user-meta">
+                                    <span class="feed-platform-tag ${tagClass}">${chat.platform_name}</span>
+                                    <strong style="font-size:0.9rem;">${chat.user}</strong>
+                                    <span style="font-size:0.75rem; color:var(--text-muted);">${chat.time}</span>
+                                </div>
+                                <span class="feed-category-badge ${catClass}">[${chat.category}]</span>
+                            </div>
+                            <div class="feed-message">💬 ${chat.message}</div>
+                            ${replyHtml}
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } catch (err) {
+                console.error("채팅 피드 갱신 에러:", err);
+            }
+        }
+
+        // 댓글 테스트 전송 함수
+        async function sendTestChat() {
+            const user = document.getElementById('chatname').value.trim() || '시청자';
+            const message = document.getElementById('chatmessage').value.trim();
+            const sendBtn = document.getElementById('sendBtn');
+
+            if (!message) {
+                alert('댓글 내용을 입력해 주세요!');
+                return;
+            }
+
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<span>⏳ AI 분석 및 엑셀 기록 중...</span>';
+
+            try {
+                const res = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: currentPlatform,
+                        chatname: user,
+                        chatmessage: message,
+                        bot: false
+                    })
+                });
+
+                const data = await res.json();
+
+                // OBS 자막 화면 갱신
+                if (data.reply) {
+                    document.getElementById('obsPreview').innerText = 
+                        `[${currentPlatform.toUpperCase()}] ${user}: ${message}\n▶ AI 안내: ${data.reply}`;
+                }
+
+                // 즉시 플랫폼 상태 및 피드 동기화
+                await fetchPlatforms();
+                await fetchRecentChats();
+
+            } catch (err) {
+                alert("전송 오류: " + err.message);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<span>🚀 댓글 웹훅 전송하기 (POST /chat)</span>';
+            }
+        }
+
+        // 2.5초 주기 실시간 자동 동기화 루프 시작
+        fetchPlatforms();
+        fetchRecentChats();
+        setInterval(() => {
+            fetchPlatforms();
+            fetchRecentChats();
+        }, 2500);
+    </script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!-- 🌟 Live Commerce OS 공통 상단 GNB 내비게이션 바 -->
+<style>
+    .gnb {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--card-bg, rgba(30, 41, 59, 0.75));
+        backdrop-filter: blur(14px);
+        padding: 14px 26px;
+        border-radius: 16px;
+        border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
+        margin-bottom: 20px;
+    }
+    .brand-logo {
+        font-size: 1.25rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+        text-decoration: none;
+        letter-spacing: -0.5px;
+    }
+    .nav-links {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .nav-item {
+        color: var(--text-muted, #94a3b8);
+        text-decoration: none;
+        padding: 9px 16px;
+        border-radius: 10px;
+        font-size: 0.92rem;
+        font-weight: 600;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .nav-item:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.06);
+    }
+    .nav-item.active {
+        color: #fff;
+        background: var(--primary, #6366f1);
+        box-shadow: 0 0 14px rgba(99, 102, 241, 0.4);
+    }
+</style>
+
+<nav class="gnb">
+    <a href="/" class="brand-logo">
+        <span>🛍️ Live Commerce OS</span>
+    </a>
+    <div class="nav-links">
+        <a href="/" class="nav-item {% if active_page == 'portal' %}active{% endif %}">🏢 메인 포털</a>
+        <a href="javascript:void(0)" class="nav-item {% if active_page == 'broadcast' %}active{% endif %}" onclick="openBroadcastWindow(event)">📡 웹방송 관제탑</a>
+        <a href="/overlay/studio" target="_blank" class="nav-item {% if active_page == 'obs' or active_page == 'studio' %}active{% endif %}">🖥️ OBS 오버레이 스튜디오</a>
+        <a href="/host" target="_blank" class="nav-item {% if active_page == 'host' %}active{% endif %}">📱 쇼호스트 뷰</a>
+        <a href="/inventory" class="nav-item {% if active_page == 'inventory' %}active{% endif %}">📦 재고 관리</a>
+        <a href="/cs" class="nav-item {% if active_page == 'cs' %}active{% endif %}">💬 CS 관리</a>
+        <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}">📊 판매량 분석</a>
+    </div>
+</nav>
+
+<script>
+    if (typeof openBroadcastWindow === 'undefined') {
+        function openBroadcastWindow(e) {
+            if (e) e.preventDefault();
+            const w = 1600;
+            const h = 960;
+            const left = Math.max(0, (window.screen.width - w) / 2);
+            const top = Math.max(0, (window.screen.height - h) / 2);
+            window.open(
+                '/broadcast',
+                'LiveBroadcastControlWindow',
+                `width=${w},height=${h},left=${left},top=${top},menubar=no,status=no,toolbar=no,location=no,resizable=yes,scrollbars=yes`
+            );
+        }
+    }
+</script>

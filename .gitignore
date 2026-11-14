@@ -1,0 +1,29 @@
+# Python & virtual environment
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & secrets
+.env
+*.pem
+*.key
+
+# Local databases & runtime data
+*.db
+*.db-wal
+*.db-shm
+*.jsonl
+audio_snapshots/
+.browser_profiles/
+live_orders.xlsx
+live_orders_backup.csv
+obs_ai_reply.txt
+cs_questions.json
+inventory.json
+
+# OS & editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

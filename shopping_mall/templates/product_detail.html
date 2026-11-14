@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} — 골라방 LIVE 몰{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+    <a href="/" style="font-size:0.88rem; font-weight:800; color:#475569;">← 전체 상품 목록으로 돌아가기</a>
+    <a href="/live" style="font-size:0.86rem; font-weight:900; color:#e11d48;">🔴 실시간 라이브 커머스 화면으로 보기 ➔</a>
+</div>
+
+<div style="background:#fff; border-radius:24px; padding:32px; border:1px solid var(--border); box-shadow:var(--shadow-md);">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:34px; align-items:start;">
+        <div style="aspect-ratio:1/1; border-radius:20px; overflow:hidden; background:#f1f5f9; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:center;">
+            {% if product.image_url %}
+            <img src="{{ product.image_url }}" alt="{{ product.name }}" style="width:100%; height:100%; object-fit:cover;">
+            {% else %}
+            <span style="font-size:4.5rem;">🛍️</span>
+            {% endif %}
+        </div>
+
+        <div>
+            <div style="display:flex; gap:8px; margin-bottom:10px;">
+                <span style="background:#0f172a; color:#fff; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:900;">#{{ product.num }}번 상품</span>
+                <span style="background:#f1f5f9; color:#475569; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:800;">{{ product.category }}</span>
+                <span style="background:#ecfdf5; color:#059669; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:900;">재고 {{ product.total_stock }}개</span>
+            </div>
+
+            <h1 style="font-size:1.75rem; font-weight:900; color:#0f172a; margin-bottom:14px;">{{ product.name }}</h1>
+
+            <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:18px; border-bottom:1px solid #f1f5f9; margin-bottom:18px;">
+                {% if product.discount_rate > 0 %}
+                <span style="font-size:1.85rem; font-weight:900; color:#e11d48;">{{ product.discount_rate }}%</span>
+                {% endif %}
+                <span style="font-size:1.95rem; font-weight:900; color:#0f172a;">{{ "{:,}".format(product.price) }}원</span>
+                {% if product.consumer_price > product.price %}
+                <span style="font-size:1rem; color:#94a3b8; text-decoration:line-through;">{{ "{:,}".format(product.consumer_price) }}원</span>
+                {% endif %}
+            </div>
+
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px 16px; margin-bottom:18px; white-space:pre-line; font-size:0.9rem; color:#334155; line-height:1.6;">{{ product.specs or '라이브 방송 특가 정품 상품입니다.' }}</div>
+
+            <div style="margin-bottom:16px;">
+                <label class="form-label">옵션 선택 (색상 / 사이즈)</label>
+                <select id="pdOptionSelect" class="form-input" style="font-weight:800;">
+                    {% for opt in product.options %}
+                    <option value="{{ loop.index0 }}" {% if opt.stock <= 0 %}disabled{% endif %}>
+                        {{ opt.color }} / {{ opt.size }} (잔여 {{ opt.stock }}개){% if opt.stock <= 0 %} - 품절{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label class="form-label">수량</label>
+                <input type="number" id="pdQtyInput" class="form-input" value="1" min="1" max="99" style="width:120px; font-weight:800;">
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:nowrap;">
+                <button type="button" onclick="pdAddToCart()" style="flex:1; padding:15px 14px; border-radius:14px; border:2px solid #0f172a; background:#fff; font-size:0.96rem; font-weight:900; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                    🛒 장바구니 담기
+                </button>
+                <button type="button" onclick="pdInstantBuy()" style="flex:1.35; padding:15px 16px; border-radius:14px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.98rem; font-weight:900; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
+                    ⚡ 바로 구매하기
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const pdProduct = {{ product | tojson }};
+    function getPdSelection() {
+        const opts = (pdProduct.options && pdProduct.options.length > 0)
+            ? pdProduct.options
+            : [{ color: '기본', size: 'FREE', stock: 10 }];
+        const selEl = document.getElementById('pdOptionSelect');
+        const idx = selEl ? Number(selEl.value) || 0 : 0;
+        const opt = opts[idx] || opts[0];
+        const qty = Math.max(1, Number(document.getElementById('pdQtyInput').value) || 1);
+        return {
+            num: pdProduct.num,
+            name: pdProduct.name,
+            price: pdProduct.price,
+            consumer_price: pdProduct.consumer_price,
+            image_url: pdProduct.image_url,
+            color: opt.color,
+            size: opt.size,
+            quantity: qty
+        };
+    }
+    function pdAddToCart() {
+        addItemToMallCart(getPdSelection());
+    }
+    function pdInstantBuy() {
+        openInstantBuyModal(getPdSelection(), 'PRODUCT_DETAIL');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,2757 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>쇼호스트 듀얼 모니터 전용 실시간 텔레프롬프터 | Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --prompter-scale: 1;
+            --bg-color: #000000;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+            padding: calc(14px * var(--prompter-scale));
+            display: flex;
+            flex-direction: column;
+            gap: calc(12px * var(--prompter-scale));
+            transition: padding 0.2s;
+        }
+
+        @media (max-width: 960px) {
+            body {
+                height: auto;
+                min-height: 100vh;
+                overflow-y: auto;
+            }
+        }
+
+        /* 1. 상단 바: 방송 상태, 타이머, 컨트롤 툴바 */
+        .top-status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 14px;
+            padding: 8px 14px;
+            flex-wrap: nowrap;
+            gap: 8px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+            font-weight: 900;
+            color: #ef4444;
+            letter-spacing: -0.3px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .live-dot {
+            width: 12px;
+            height: 12px;
+            background: #ef4444;
+            border-radius: 50%;
+            box-shadow: 0 0 12px #ef4444;
+            animation: liveBlink 1s infinite alternate;
+        }
+
+        @keyframes liveBlink {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+
+        /* 세그먼트 카운트다운 타이머 뱃지 */
+        .timer-badge {
+            display: none;
+            background: rgba(245, 158, 11, 0.2);
+            border: 2px solid #f59e0b;
+            color: #fde047;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: calc(1rem * var(--prompter-scale));
+            font-weight: 900;
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+            animation: pulseGlow 1.2s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            from { transform: scale(1); }
+            to { transform: scale(1.03); }
+        }
+
+        .status-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .clock-display {
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: #e2e8f0;
+            font-variant-numeric: tabular-nums;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            padding: 4px 10px;
+            border-radius: 8px;
+            white-space: nowrap;
+        }
+
+        .clock-display span {
+            color: #fbbf24;
+            font-weight: 900;
+            margin-left: 4px;
+        }
+
+        .broadcast-time-display {
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: #e2e8f0;
+            font-variant-numeric: tabular-nums;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            padding: 4px 10px;
+            border-radius: 8px;
+            white-space: nowrap;
+        }
+
+        .broadcast-time-display span {
+            color: #34d399;
+            font-weight: 900;
+            margin-left: 4px;
+        }
+
+        /* 툴바 컨트롤 버튼군 */
+        .btn-ctrl {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #cbd5e1;
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        .btn-ctrl:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+        }
+        .btn-ctrl.active {
+            background: #2563eb;
+            border-color: #60a5fa;
+            color: #fff;
+        }
+
+        /* 2. 🚨 PD 실시간 디렉팅 멘트 바 (헤더 바로 밑, 헤더와 동일한 크기/비율의 1줄 전광판 바) */
+        .pd-cue-banner {
+            display: none;
+            width: 100%;
+            border-radius: 14px;
+            padding: 10px 18px;
+            min-height: 50px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.7);
+            transition: all 0.2s;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        /* 긴급 지시 (URGENT) */
+        .pd-cue-banner.cue-urgent {
+            display: flex;
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.96), rgba(153, 27, 27, 0.98));
+            border: 2px solid #fecaca;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.65);
+            animation: cueAlertFlash 0.9s infinite alternate;
+        }
+
+        /* 주의 / 진행 속도 조절 (WARNING) */
+        .pd-cue-banner.cue-warning {
+            display: flex;
+            background: linear-gradient(135deg, rgba(217, 119, 6, 0.96), rgba(180, 83, 9, 0.98));
+            border: 2px solid #fde68a;
+            box-shadow: 0 0 25px rgba(245, 158, 11, 0.55);
+        }
+
+        /* 칭찬 / 축하 (PRAISE) */
+        .pd-cue-banner.cue-praise {
+            display: flex;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(5, 150, 105, 0.98));
+            border: 2px solid #a7f3d0;
+            box-shadow: 0 0 25px rgba(16, 185, 129, 0.55);
+        }
+
+        /* 일반 안내 (NORMAL) */
+        .pd-cue-banner.cue-normal {
+            display: flex;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(30, 64, 175, 0.98));
+            border: 2px solid #bfdbfe;
+            box-shadow: 0 0 22px rgba(59, 130, 246, 0.5);
+        }
+
+        @keyframes cueAlertFlash {
+            from { box-shadow: 0 0 15px rgba(239, 68, 68, 0.45); }
+            to { box-shadow: 0 0 38px rgba(239, 68, 68, 0.95); }
+        }
+
+        .pd-cue-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .pd-badge {
+            background: #ffffff;
+            color: #0f172a;
+            font-size: calc(0.88rem * var(--prompter-scale));
+            font-weight: 900;
+            padding: 4px 12px;
+            border-radius: 8px;
+            letter-spacing: -0.3px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .pd-cue-message {
+            font-size: calc(1.18rem * var(--prompter-scale));
+            font-weight: 900;
+            line-height: 1.3;
+            color: #ffffff;
+            word-break: keep-all;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+            flex: 1;
+            min-width: 0;
+        }
+
+        .pd-cue-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .pd-cue-time {
+            font-size: calc(0.82rem * var(--prompter-scale));
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .btn-cue-ack {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: #fff;
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: calc(0.78rem * var(--prompter-scale));
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-cue-ack:hover {
+            background: rgba(0, 0, 0, 0.65);
+        }
+
+        /* 3. ⭐ PD 픽업 추천 질문 바 (헤더 바로 밑, 헤더와 동일한 크기/비율의 1줄 바) */
+        .pinned-question-box {
+            display: none;
+            width: 100%;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(30, 58, 138, 0.95) 100%);
+            border: 2px solid #38bdf8;
+            border-radius: 14px;
+            padding: 10px 18px;
+            min-height: 50px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            box-shadow: 0 0 25px rgba(56, 189, 248, 0.35);
+            flex-shrink: 0;
+        }
+
+        .pinned-q-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .pinned-q-badge {
+            background: #38bdf8;
+            color: #032030;
+            font-size: calc(0.85rem * var(--prompter-scale));
+            font-weight: 900;
+            padding: 4px 12px;
+            border-radius: 8px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .pinned-q-user {
+            font-size: calc(0.95rem * var(--prompter-scale));
+            color: #7dd3fc;
+            font-weight: 900;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .pinned-q-message {
+            font-size: calc(1.15rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #ffffff;
+            line-height: 1.3;
+            word-break: keep-all;
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* 하단 좌우 2단 분할 컨테이너 (좌: 제품 정보 / 우: 실시간 전체 채팅) */
+        .host-split-layout {
+            display: grid;
+            grid-template-columns: minmax(380px, 1fr) minmax(420px, 1.15fr);
+            gap: calc(14px * var(--prompter-scale));
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        @media (max-width: 960px) {
+            .host-split-layout {
+                grid-template-columns: 1fr;
+                overflow: visible;
+            }
+        }
+
+        .host-left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: calc(12px * var(--prompter-scale));
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .host-right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: calc(12px * var(--prompter-scale));
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* 4. 📌 현재 소개 상품 대형 카드 */
+        .current-product-box {
+            background: linear-gradient(145deg, #0f172a 0%, #111827 100%);
+            border: 2px solid #3b82f6;
+            border-radius: 18px;
+            padding: calc(16px * var(--prompter-scale));
+            display: flex;
+            flex-direction: column;
+            gap: calc(10px * var(--prompter-scale));
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+            flex-shrink: 0;
+        }
+
+        .product-header-top {
+            display: flex;
+            gap: 16px;
+            align-items: stretch;
+        }
+
+        .product-thumb-img {
+            width: calc(135px * var(--prompter-scale));
+            height: auto;
+            min-height: calc(110px * var(--prompter-scale));
+            align-self: stretch;
+            border-radius: 12px;
+            object-fit: cover;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: #1e293b;
+            flex-shrink: 0;
+            display: none;
+        }
+
+        .product-header-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .product-tag-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .product-num-badge {
+            background: #2563eb;
+            color: white;
+            font-size: calc(0.95rem * var(--prompter-scale));
+            font-weight: 900;
+            padding: 4px 12px;
+            border-radius: 8px;
+        }
+
+        .stock-highlight {
+            font-size: calc(1.1rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #34d399;
+        }
+
+        .stock-highlight.danger {
+            color: #f87171;
+            animation: liveBlink 0.8s infinite alternate;
+        }
+
+        .product-main-name {
+            font-size: calc(1.55rem * var(--prompter-scale));
+            font-weight: 900;
+            line-height: 1.25;
+            color: #ffffff;
+            word-break: keep-all;
+        }
+
+        .price-row {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .price-main {
+            font-size: calc(2rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #fbbf24;
+            letter-spacing: -0.5px;
+        }
+
+        .price-consumer {
+            font-size: calc(1.15rem * var(--prompter-scale));
+            color: #64748b;
+            text-decoration: line-through;
+        }
+
+        .discount-badge {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            font-size: calc(0.85rem * var(--prompter-scale));
+            font-weight: 900;
+            padding: 2px 8px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        /* 옵션별 재고 배지 그리드 */
+        .prod-options-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .opt-chip {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            border-radius: 8px;
+            padding: 5px 10px;
+            font-size: calc(0.85rem * var(--prompter-scale));
+            font-weight: 800;
+            color: #e2e8f0;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .opt-chip .opt-stk {
+            color: #34d399;
+            font-weight: 900;
+        }
+
+        .opt-chip.low-stock {
+            border-color: rgba(245, 158, 11, 0.6);
+            background: rgba(120, 53, 15, 0.25);
+        }
+        .opt-chip.low-stock .opt-stk {
+            color: #fbbf24;
+        }
+
+        .opt-chip.sold-out {
+            border-color: rgba(239, 68, 68, 0.5);
+            background: rgba(127, 29, 29, 0.25);
+            opacity: 0.7;
+        }
+        .opt-chip.sold-out .opt-stk {
+            color: #f87171;
+        }
+
+        .product-specs-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: calc(10px * var(--prompter-scale)) calc(14px * var(--prompter-scale));
+            font-size: calc(1rem * var(--prompter-scale));
+            line-height: 1.45;
+            color: #93c5fd;
+            font-weight: 600;
+        }
+
+        /* 5. 3단 실시간 지표 요약 (주문 / 매출 / 채팅) */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        /* 유튜브 실시간 접속 회원 상단 배지 & 우측 아이디 칩 바 & 모달 */
+        .yt-viewer-top-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(239, 68, 68, 0.16);
+            border: 1.5px solid rgba(239, 68, 68, 0.55);
+            color: #fecaca;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            min-width: 0;
+            flex-shrink: 1;
+            overflow: hidden;
+        }
+        .yt-viewer-top-badge:hover {
+            background: rgba(239, 68, 68, 0.28);
+            border-color: #f87171;
+            transform: translateY(-1px);
+        }
+        .yt-top-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 8px #22c55e;
+        }
+        .yt-Members-bar {
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 12px;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .yt-members-bar-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .yt-members-bar-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.84rem;
+            font-weight: 900;
+            color: #fca5a5;
+        }
+        .yt-members-chips-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            scrollbar-width: thin;
+        }
+        .yt-member-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(30, 41, 59, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #f8fafc;
+            font-size: 0.8rem;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 999px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .yt-member-chip:hover {
+            border-color: #f87171;
+            background: rgba(127, 29, 29, 0.35);
+        }
+        .yt-member-chip.active-user-filter {
+            border-color: #38bdf8;
+            background: rgba(14, 165, 233, 0.28);
+            color: #bae6fd;
+        }
+        .yt-member-chip .dot-online {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 6px #22c55e;
+        }
+        .yt-member-chip .dot-idle {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #f59e0b;
+        }
+        .yt-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.78);
+            backdrop-filter: blur(5px);
+            z-index: 9500;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .yt-modal-card {
+            background: #0f172a;
+            border: 2px solid rgba(239, 68, 68, 0.5);
+            border-radius: 18px;
+            width: 100%;
+            max-width: 720px;
+            max-height: 84vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+            overflow: hidden;
+        }
+
+        .metric-card {
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: calc(10px * var(--prompter-scale)) 10px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .metric-label {
+            font-size: calc(0.8rem * var(--prompter-scale));
+            color: #9ca3af;
+            font-weight: 700;
+        }
+
+        .metric-value {
+            font-size: calc(1.35rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #ffffff;
+        }
+
+        /* 전체 방송 상품 라인업 박스 (좌측 하단) */
+        .product-lineup-section {
+            background: #090d16;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 16px;
+            padding: calc(12px * var(--prompter-scale));
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+            min-height: 180px;
+        }
+
+        .lineup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lineup-title {
+            font-size: calc(0.92rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .lineup-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .lineup-item {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 10px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .lineup-item:hover {
+            border-color: #60a5fa;
+            background: rgba(30, 41, 59, 0.95);
+        }
+
+        .lineup-item.active-pin {
+            border: 2px solid #3b82f6;
+            background: rgba(37, 99, 235, 0.18);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.25);
+        }
+
+        .lineup-item-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .lineup-num {
+            background: rgba(59, 130, 246, 0.25);
+            color: #93c5fd;
+            font-weight: 900;
+            font-size: calc(0.82rem * var(--prompter-scale));
+            padding: 3px 8px;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+
+        .lineup-item.active-pin .lineup-num {
+            background: #2563eb;
+            color: #ffffff;
+        }
+
+        .lineup-name {
+            font-size: calc(0.95rem * var(--prompter-scale));
+            font-weight: 800;
+            color: #f8fafc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .lineup-item-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .lineup-price {
+            font-size: calc(0.95rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #fbbf24;
+        }
+
+        .lineup-stock {
+            font-size: calc(0.8rem * var(--prompter-scale));
+            font-weight: 800;
+            color: #34d399;
+            background: rgba(16, 185, 129, 0.12);
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+        .lineup-stock.low {
+            color: #f87171;
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        /* 6. 우측 패널: 실시간 전체 채팅 스트림 */
+        .qa-section {
+            background: #090d16;
+            border: 1px solid rgba(6, 182, 212, 0.4);
+            border-radius: 16px;
+            padding: calc(14px * var(--prompter-scale));
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .qa-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+
+        .qa-title {
+            font-size: calc(1.02rem * var(--prompter-scale));
+            font-weight: 900;
+            color: #38bdf8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chat-filter-tabs {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chat-filter-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #94a3b8;
+            font-size: calc(0.78rem * var(--prompter-scale));
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .chat-filter-btn.active {
+            background: #0284c7;
+            border-color: #38bdf8;
+            color: #ffffff;
+        }
+
+        .qa-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .qa-item {
+            background: rgba(255, 255, 255, 0.04);
+            border-left: 4px solid #475569;
+            border-radius: 0 10px 10px 0;
+            padding: calc(9px * var(--prompter-scale)) calc(12px * var(--prompter-scale));
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .qa-item.cat-question {
+            background: rgba(56, 189, 248, 0.09);
+            border-left-color: #38bdf8;
+        }
+
+        .qa-item.cat-order {
+            background: rgba(245, 158, 11, 0.1);
+            border-left-color: #fbbf24;
+        }
+
+        .qa-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .qa-buyer {
+            font-size: calc(0.84rem * var(--prompter-scale));
+            font-weight: 800;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .plat-badge {
+            font-size: calc(0.7rem * var(--prompter-scale));
+            font-weight: 900;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #f8fafc;
+        }
+        .plat-YOUTUBE { background: rgba(239, 68, 68, 0.28); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); }
+        .plat-NAVER { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.45); }
+        .plat-INSTAGRAM { background: rgba(236, 72, 153, 0.25); color: #f9a8d4; border: 1px solid rgba(236, 72, 153, 0.45); }
+        .plat-KAKAO { background: rgba(250, 204, 21, 0.25); color: #fef08a; border: 1px solid rgba(250, 204, 21, 0.45); }
+
+        .cat-tag {
+            font-size: calc(0.7rem * var(--prompter-scale));
+            font-weight: 900;
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+        .cat-tag.question { background: rgba(56, 189, 248, 0.22); color: #7dd3fc; }
+        .cat-tag.order { background: rgba(245, 158, 11, 0.24); color: #fde047; }
+        .cat-tag.chat { background: rgba(148, 163, 184, 0.16); color: #94a3b8; }
+
+        .qa-time {
+            font-size: calc(0.74rem * var(--prompter-scale));
+            color: #64748b;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .qa-question {
+            font-size: calc(1.08rem * var(--prompter-scale));
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.38;
+            word-break: break-word;
+        }
+
+        .qa-question img,
+        .pinned-q-message img {
+            vertical-align: middle;
+            max-height: calc(2.2em * var(--prompter-scale));
+            max-width: 240px;
+            border-radius: 6px;
+            margin: 0 2px;
+            object-fit: contain;
+        }
+
+        .qa-ai-reply {
+            margin-top: 3px;
+            padding: 5px 9px;
+            background: rgba(16, 185, 129, 0.1);
+            border-left: 2px solid #10b981;
+            border-radius: 4px;
+            font-size: calc(0.86rem * var(--prompter-scale));
+            color: #6ee7b7;
+            font-weight: 700;
+        }
+
+        /* 📷 쇼호스트 모니터링 PiP 창 스타일 */
+        .host-pip-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 320px;
+            background: #0f172a;
+            border: 2px solid #38bdf8;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(56, 189, 248, 0.4);
+            z-index: 9999;
+            display: none;
+            flex-direction: column;
+            backdrop-filter: blur(12px);
+        }
+
+        .host-pip-container.size-sm { width: 240px; }
+        .host-pip-container.size-md { width: 340px; }
+        .host-pip-container.size-lg { width: 440px; }
+
+        .host-pip-header {
+            background: #1e293b;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            user-select: none;
+        }
+
+        .pip-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            font-weight: 900;
+            color: #38bdf8;
+        }
+
+        .pip-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+            animation: liveBlink 1s infinite alternate;
+        }
+
+        .pip-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .pip-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #cbd5e1;
+            padding: 2px 7px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .pip-btn:hover { background: rgba(255, 255, 255, 0.25); color: #fff; }
+
+        .host-pip-body {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #000000;
+            overflow: hidden;
+        }
+
+        #hostPipVideo, #hostPipStreamImg {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .host-pip-body.mirrored #hostPipVideo,
+        .host-pip-body.mirrored #hostPipStreamImg {
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 상단 바: 쇼호스트 프롬프트, 현재 시간, 방송시간, 전체화면 버튼 -->
+    <header class="top-status-bar">
+        <div class="status-left">
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                <span>쇼호스트 프롬프트</span>
+            </div>
+            <!-- ▶️🎵📸 유튜브·틱톡·인스타 실시간 접속 회원 수 & 동시 시청자 배지 -->
+            <button type="button" class="yt-viewer-top-badge" id="ytTopViewerBadge" onclick="toggleHostYoutubeMembersModal()" title="클릭하여 현재 유튜브·틱톡·인스타 접속 회원 아이디 명단 확인">
+                <span class="yt-top-dot" id="ytTopDot"></span>
+                <span>▶️ 유튜브 <strong id="ytTopMemberCount" style="color:#fff; font-size:0.95rem;">0명</strong></span>
+                <span style="color:rgba(255,255,255,0.3);">|</span>
+                <span style="color:#67e8f9;">🎵 틱톡 <strong id="ttTopMemberCount" style="color:#fff; font-size:0.95rem;">0명</strong></span>
+                <span style="color:rgba(255,255,255,0.3);">|</span>
+                <span style="color:#f9a8d4;">📸 인스타 <strong id="igTopMemberCount" style="color:#fff; font-size:0.95rem;">0명</strong></span>
+                <span id="ytTopConcurrentSub" style="color:#fca5a5; font-size:0.78rem;">(실시간 시청 0명)</span>
+                <span style="background:rgba(239,68,68,0.32); color:#fff; padding:1px 7px; border-radius:999px; font-size:0.72rem;">아이디 확인 ▾</span>
+            </button>
+            <!-- 세그먼트 카운트다운 타이머 -->
+            <div class="timer-badge" id="hostTimerBadge">
+                ⏳ <span id="timerLabel">코너 진행</span> <strong id="timerCountdown">00:00</strong>
+            </div>
+        </div>
+
+        <div class="status-right">
+            <button type="button" class="btn-ctrl" id="hostActiveCamBadgeBtn" onclick="toggleHostMainCameraSwitch()" style="background:rgba(239,68,68,0.22); border-color:#ef4444; color:#fca5a5; font-weight:900;" title="클릭하면 메인 송출 카메라(CAM 1 ↔ CAM 2)를 즉시 전환합니다">
+                🔴 ON AIR: CAM 1 ⇄
+            </button>
+            <div class="clock-display">현재 시간 <span id="clockText">00:00:00</span></div>
+            <div class="broadcast-time-display">방송시간 <span id="broadcastElapsedText">00:00:00</span></div>
+            <button type="button" class="btn-ctrl" onclick="toggleHostFullscreen()">⛶ 전체화면</button>
+        </div>
+    </header>
+
+    <!-- 📷 쇼호스트 실시간 방송 모니터링 PiP 뷰어 -->
+    <div class="host-pip-container size-md" id="hostCameraPip">
+        <div class="host-pip-header" id="hostPipHeader">
+            <div class="pip-title">
+                <span class="pip-dot"></span>
+                <span id="hostPipTitleText">LIVE CAM</span>
+            </div>
+            <div class="pip-controls">
+                <select id="hostPipSource" onchange="changeHostPipSource()" style="background:#090d16; color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:5px; font-size:0.7rem; padding:1px 4px;">
+                    <option value="webcam">💻 PC웹캠</option>
+                    <option value="mobile">📱 메인카메라(자동)</option>
+                    <option value="cam1">🎥 CAM 1</option>
+                    <option value="cam2">🔎 CAM 2</option>
+                </select>
+                <button type="button" class="pip-btn" onclick="toggleHostPipMirror()" title="거울 모드 (좌우 반전)">🪞 거울</button>
+                <button type="button" class="pip-btn" onclick="cycleHostPipSize()" title="창 크기 변경 (소/중/대)">📐 크기</button>
+                <button type="button" class="pip-btn" onclick="toggleHostPip()" style="color:#f87171;">✕</button>
+            </div>
+        </div>
+        <div class="host-pip-body mirrored" id="hostPipBody">
+            <video id="hostPipVideo" autoplay playsinline muted></video>
+            <img id="hostPipStreamImg" style="display:none;" />
+        </div>
+    </div>
+
+    <!-- 2. 🚨 PD 디렉팅 멘트 바 (헤더 바로 밑, 헤더와 동일한 가로폭/높이 규격) -->
+    <div class="pd-cue-banner" id="pdCueBanner" style="display:none;">
+        <div class="pd-cue-left">
+            <span class="pd-badge" id="pdBadgeText">🚨 PD 실시간 지시</span>
+            <div class="pd-cue-message" id="pdCueMessage"></div>
+        </div>
+        <div class="pd-cue-right">
+            <span class="pd-cue-time" id="pdCueTime">방금 전</span>
+            <button type="button" class="btn-cue-ack" onclick="dismissPDCue()">✕ 확인</button>
+        </div>
+    </div>
+
+    <!-- 2-2. ⭐ PD 픽업 추천 질문 바 (헤더 바로 밑, 헤더와 동일한 가로폭/높이 규격) -->
+    <section class="pinned-question-box" id="pinnedQuestionBox" style="display:none;">
+        <div class="pinned-q-left">
+            <span class="pinned-q-badge">⭐ 호스트 전달 질문</span>
+            <span class="pinned-q-user" id="pinnedQUser"></span>
+            <div class="pinned-q-message" id="pinnedQMessage"></div>
+        </div>
+        <div class="pd-cue-right">
+            <button type="button" class="btn-cue-ack" onclick="dismissPinnedQuestion()">✕ 닫기</button>
+        </div>
+    </section>
+
+    <!-- 3. 하단 좌우 2단 분할 레이아웃 (좌: 제품 관련 상세 정보 / 우: 실시간 전체 채팅 스트림) -->
+    <main class="host-split-layout">
+        <!-- 👈 왼쪽 패널: 제품 관련 정보 (현재 소개 상품 + 옵션별 재고 + 실적 지표 + 전체 상품 라인업) -->
+        <div class="host-left-panel">
+            <!-- 📺 채팅관리창에서 선택한 플랫폼(유튜브/틱톡/인스타그램) 라이브 화면 뷰어 (불필요한 헤더·배지 제거, 화면만 표시) -->
+            <section id="hostSiteMirrorBox" style="display:none; background:#000; border:1px solid rgba(255,255,255,0.12); border-radius:14px; overflow:hidden; flex-direction:column; flex:1; min-height:520px; height:100%; position:relative;">
+                <div id="hostSiteMirrorHeader" style="display:none;">
+                    <span id="hostPlatformBadge"></span>
+                    <span id="hostPlatformLiveStatus"></span>
+                    <span id="hostPlatformViewers"></span>
+                    <span id="hostSiteMirrorTitle"></span>
+                    <button type="button" id="btnExpandSiteMirror" onclick="toggleSiteMirrorExpand()"></button>
+                </div>
+                <button type="button" onclick="closeSiteMirrorFromHost()" style="position:absolute; top:10px; right:10px; z-index:20; background:rgba(15,23,42,0.72); border:1px solid rgba(255,255,255,0.2); color:#cbd5e1; font-size:0.72rem; font-weight:700; padding:4px 9px; border-radius:6px; cursor:pointer; backdrop-filter:blur(6px);" title="기본 상품 화면으로 돌아가기">📦 기본 화면</button>
+                <div id="hostSiteMirrorBody" style="background:#000; width:100%; flex:1; min-height:460px; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;">
+                    <img id="hostSiteMirrorImg" src="" alt="라이브 방송 화면" onclick="handleHostSiteImgClick(event)" onwheel="handleHostSiteImgWheel(event)" style="width:100%; height:100%; object-fit:contain; display:block; cursor:pointer;" />
+                    <div id="hostPlatformOverlayBar" style="display:none;">
+                        <span id="hostPlatformChannelText"></span>
+                        <span id="hostPlatformTechText"></span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 📌 현재 소개 상품 대형 상세 카드 -->
+            <section class="current-product-box" id="productBox">
+                <div class="product-header-top">
+                    <img id="prodImg" class="product-thumb-img" src="" alt="상품 이미지" onerror="this.style.display='none'" />
+                    <div class="product-header-info">
+                        <div class="product-tag-row">
+                            <span class="product-num-badge" id="prodNum">-</span>
+                            <span class="stock-highlight" id="prodStock" style="display:none;">-</span>
+                        </div>
+                        <div class="product-main-name" id="prodName">방송 대기 중 (소개 상품 미지정)</div>
+                        <div class="price-row">
+                            <span class="price-main" id="prodPrice">-</span>
+                            <span class="price-consumer" id="prodConsPrice" style="display:none;">-</span>
+                            <span class="discount-badge" id="prodDiscount" style="display:none;">0% OFF</span>
+                        </div>
+
+                        <!-- 옵션별 실시간 잔여 재고 그리드 (이미지 우측 하단 정렬) -->
+                        <div class="prod-options-grid" id="prodOptionsList"></div>
+                    </div>
+                </div>
+
+                <!-- 핵심 소구점 / 방송 멘트 포인트 (사양이 있을 때만 표시) -->
+                <div class="product-specs-box" id="prodSpecs">
+                    💡 관제탑 또는 아래 상품 목록에서 소개할 상품을 선택해 주세요.
+                </div>
+            </section>
+
+            <!-- 실시간 주문/매출/채팅 지표 요약 -->
+            <section class="metrics-grid" id="hostMetricsGrid">
+                <div class="metric-card">
+                    <span class="metric-label">🛒 총 주문</span>
+                    <span class="metric-value" id="valOrders" style="color:#fbbf24;">0건</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label">💰 누적 매출</span>
+                    <span class="metric-value" id="valSales" style="color:#34d399;">0원</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label">💬 실시간 채팅</span>
+                    <span class="metric-value" id="valChats" style="color:#38bdf8;">0건</span>
+                </div>
+            </section>
+
+            <!-- 🗂️ 전체 등록 상품 라인업 (클릭 시 즉시 소개 상품 전환) -->
+            <section class="product-lineup-section" id="hostProductLineupSection">
+                <div class="lineup-header">
+                    <span class="lineup-title">📦 전체 방송 제품 라인업 <span id="allProdsCount" style="color:#94a3b8; font-size:0.8rem;">(0개)</span></span>
+                    <span style="font-size:0.75rem; color:#94a3b8;">상품 클릭 시 즉시 방송 핀 전환</span>
+                </div>
+                <div class="lineup-list" id="hostAllProductsList">
+                    <div style="color:#64748b; font-size:0.85rem; text-align:center; padding:12px;">
+                        등록된 상품 정보를 불러오는 중입니다...
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- 👉 오른쪽 패널: 실시간 전체 채팅 스트림 -->
+        <div class="host-right-panel">
+            <!-- 💬 실시간 전체 채팅 스트림 섹션 -->
+            <section class="qa-section">
+                <div class="qa-header">
+                    <span class="qa-title">
+                        <span>💬 실시간 전체 채팅</span>
+                        <span id="chatStreamCount" style="font-size:0.8rem; background:rgba(56,189,248,0.18); color:#7dd3fc; padding:2px 8px; border-radius:12px;">0건</span>
+                        <span id="hostChatIntegrityBadge" style="font-size:0.75rem; background:rgba(16,185,129,0.16); border:1px solid rgba(16,185,129,0.45); color:#6ee7b7; padding:2px 8px; border-radius:12px; font-weight:800;">🟢 누락 0건</span>
+                        <span id="hostSelectedUserFilterBadge" style="display:none; background:rgba(14,165,233,0.25); color:#7dd3fc; padding:1px 8px; border-radius:999px; font-size:0.75rem; cursor:pointer;" onclick="filterHostChatByUser(null)">✕ 필터 해제</span>
+                    </span>
+                    <div class="chat-filter-tabs">
+                        <button type="button" class="chat-filter-btn active" data-filter="ALL" onclick="setHostChatFilter('ALL', this)">전체 채팅</button>
+                        <button type="button" class="chat-filter-btn" data-filter="QUESTION" onclick="setHostChatFilter('QUESTION', this)">❓ 질문만</button>
+                        <button type="button" class="chat-filter-btn" data-filter="ORDER" onclick="setHostChatFilter('ORDER', this)">🛒 주문만</button>
+                    </div>
+                </div>
+
+                <div class="qa-list" id="qaList">
+                    <div style="color:#64748b; font-size:0.9rem; text-align:center; padding:20px;">
+                        실시간 채팅이 유입되면 이곳에 전체 채팅이 표시됩니다.
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- 👥 유튜브·틱톡·인스타 접속 회원 아이디(ID) 전체 확인 모달 -->
+    <div class="yt-modal-backdrop" id="hostYtMembersModal" onclick="if(event.target===this) toggleHostYoutubeMembersModal(false)">
+        <div class="yt-modal-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 18px; background:linear-gradient(90deg, rgba(220,38,38,0.28), rgba(0,242,254,0.14), rgba(236,72,153,0.16), rgba(15,23,42,0.98)); border-bottom:1px solid rgba(239,68,68,0.35);">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span style="font-size:1.05rem; font-weight:900; color:#fff;">▶️🎵📸 현재 유튜브·틱톡·인스타 접속 회원 명단 (아이디 확인)</span>
+                    <span id="hostYtModalCountBadge" style="background:#ef4444; color:#fff; font-size:0.8rem; font-weight:900; padding:2px 10px; border-radius:999px;">▶️ 유튜브 0명</span>
+                    <span id="hostTtModalCountBadge" style="background:rgba(0,242,254,0.22); border:1px solid rgba(0,242,254,0.5); color:#67e8f9; font-size:0.8rem; font-weight:900; padding:2px 10px; border-radius:999px;">🎵 틱톡 0명</span>
+                    <span id="hostIgModalCountBadge" style="background:rgba(236,72,153,0.22); border:1px solid rgba(236,72,153,0.5); color:#f9a8d4; font-size:0.8rem; font-weight:900; padding:2px 10px; border-radius:999px;">📸 인스타 0명</span>
+                    <span id="hostYtModalConcurrentBadge" style="background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.45); color:#86efac; font-size:0.78rem; font-weight:800; padding:2px 10px; border-radius:999px;">실시간 시청 0명</span>
+                </div>
+                <button type="button" onclick="toggleHostYoutubeMembersModal(false)" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.25); color:#fff; font-size:0.82rem; font-weight:800; padding:5px 12px; border-radius:8px; cursor:pointer;">✕ 닫기</button>
+            </div>
+            <div style="padding:10px 18px; background:#090d16; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                <input type="text" id="hostYtMemberSearchInput" oninput="renderHostYoutubeModalList()" placeholder="🔎 접속 회원 @아이디 또는 메시지 검색..." style="flex:1; min-width:200px; background:#0f172a; border:1px solid rgba(255,255,255,0.18); color:#fff; border-radius:8px; padding:7px 12px; font-size:0.85rem; outline:none;" />
+                <span style="font-size:0.76rem; color:#94a3b8;">💡 회원 아이디 클릭 시 해당 회원의 채팅만 모아볼 수 있습니다.</span>
+            </div>
+            <div id="hostYtModalBody" style="padding:14px 18px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:8px;">
+                <div style="color:#64748b; font-size:0.9rem; text-align:center; padding:24px;">접속 회원 정보를 불러오는 중입니다...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let broadcastStartMs = null;
+        let isBroadcastLive = false;
+
+        function formatElapsedHHMMSS(totalSec) {
+            const sec = Math.max(0, Math.floor(totalSec));
+            const hh = String(Math.floor(sec / 3600)).padStart(2, '0');
+            const mm = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+            const ss = String(sec % 60).padStart(2, '0');
+            return `${hh}:${mm}:${ss}`;
+        }
+
+        // 현재 시간 & 방송시간 갱신 (실제 방송 중일 때만 방송시간 카운트, 방송 대기 시 00:00:00 유지)
+        function updateClock() {
+            const now = new Date();
+            const clockEl = document.getElementById('clockText');
+            if (clockEl) {
+                clockEl.innerText = now.toTimeString().split(' ')[0];
+            }
+            const elapsedEl = document.getElementById('broadcastElapsedText');
+            if (elapsedEl) {
+                if (isBroadcastLive && broadcastStartMs && broadcastStartMs > 0) {
+                    const elapsedSec = Math.max(0, Math.floor((now.getTime() - broadcastStartMs) / 1000));
+                    elapsedEl.innerText = formatElapsedHHMMSS(elapsedSec);
+                } else {
+                    elapsedEl.innerText = '00:00:00';
+                }
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // 배율 기본값 1.0 고정 (이전 로컬스토리지 잔여값 제거)
+        document.documentElement.style.setProperty('--prompter-scale', 1);
+        localStorage.removeItem('host_prompter_scale');
+
+        // 전체화면 토글
+        function toggleHostFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // 인이어 사운드 알림 비프음 엔진
+        let hostSoundEnabled = true;
+        let audioCtx = null;
+
+        function playHostBeep(priority = 'NORMAL') {
+            if (!hostSoundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                const freq = priority === 'URGENT' ? 880 : (priority === 'PRAISE' ? 659.25 : 587.33);
+                
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = priority === 'URGENT' ? 'sawtooth' : 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.35);
+
+                // 긴급 시 2회 비프
+                if (priority === 'URGENT') {
+                    const osc2 = audioCtx.createOscillator();
+                    const gain2 = audioCtx.createGain();
+                    osc2.type = 'sawtooth';
+                    osc2.frequency.setValueAtTime(880, now + 0.15);
+                    gain2.gain.setValueAtTime(0.2, now + 0.15);
+                    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                    osc2.connect(gain2);
+                    gain2.connect(audioCtx.destination);
+                    osc2.start(now + 0.15);
+                    osc2.stop(now + 0.45);
+                }
+            } catch(e) {}
+        }
+
+        let lastCueId = null;
+        let lastPinnedQuestionAt = null;
+        let currentChatFilter = 'ALL';
+        let lastHostRenderedFilter = null;
+        let cachedRecentChats = [];
+        let lastBroadcastResetSeq = null;
+        let lastHostReloadSeq = null;
+        let currentPinnedProductNum = null;
+        let currentSiteMirrorSeq = null;
+        let isSiteMirrorExpanded = false;
+        let currentHostUserFilter = null;
+        let latestYoutubeViewersData = null;
+        let latestTiktokViewersData = null;
+        let latestInstagramViewersData = null;
+
+        function resetHostViewForNewBroadcast() {
+            cachedRecentChats = [];
+            lastCueId = null;
+            lastPinnedQuestionAt = null;
+            lastHostRenderedFilter = null;
+            currentPinnedProductNum = null;
+            currentHostUserFilter = null;
+            latestYoutubeViewersData = null;
+            latestTiktokViewersData = null;
+            latestInstagramViewersData = null;
+            broadcastStartMs = null;
+            isBroadcastLive = false;
+
+            renderProduct(null);
+            renderSiteMirror(null);
+            renderHostYoutubeViewers(
+                { concurrent_viewers: 0, connected_member_count: 0, active_member_count: 0, members: [] },
+                { concurrent_viewers: 0, connected_member_count: 0, active_member_count: 0, members: [] },
+                { concurrent_viewers: 0, connected_member_count: 0, active_member_count: 0, members: [] }
+            );
+
+            const elapsedEl = document.getElementById('broadcastElapsedText');
+            if (elapsedEl) elapsedEl.innerText = '00:00:00';
+
+            const banner = document.getElementById('pdCueBanner');
+            if (banner) banner.style.display = 'none';
+
+            const pinnedBox = document.getElementById('pinnedQuestionBox');
+            if (pinnedBox) pinnedBox.style.display = 'none';
+
+            const timerBadge = document.getElementById('hostTimerBadge');
+            if (timerBadge) timerBadge.style.display = 'none';
+
+            const valOrders = document.getElementById('valOrders');
+            if (valOrders) valOrders.innerText = '0건';
+            const valSales = document.getElementById('valSales');
+            if (valSales) valSales.innerText = '0원';
+            const valChats = document.getElementById('valChats');
+            if (valChats) valChats.innerText = '0건';
+
+            const countBadge = document.getElementById('chatStreamCount');
+            if (countBadge) countBadge.innerText = '0건 표시 중';
+
+            const list = document.getElementById('qaList');
+            if (list) {
+                list.innerHTML = `
+                    <div style="color:#64748b; font-size:0.9rem; text-align:center; padding:24px;">
+                        표시할 실시간 채팅 내역이 없습니다.
+                    </div>
+                `;
+            }
+        }
+
+        function getHostChatKey(c) {
+            if (c.id !== undefined && c.id !== null) return 'db_' + String(c.id).replace(/^db_/, '');
+            return `${c.chat_time || ''}_${c.sender || ''}_${c.message || c.question || ''}`;
+        }
+
+        function getHostNumericId(c) {
+            if (!c) return 0;
+            if (typeof c.id === 'number') return c.id;
+            const raw = String(c.id || '').replace(/^db_/, '');
+            const n = parseInt(raw, 10);
+            return isNaN(n) ? 0 : n;
+        }
+
+        function mergeHostChatsIntoCache(incomingChats) {
+            if (!Array.isArray(incomingChats) || incomingChats.length === 0) return;
+            const existingMap = new Map();
+            cachedRecentChats.forEach(c => {
+                existingMap.set(getHostChatKey(c), c);
+            });
+
+            const newlyAdded = [];
+            incomingChats.forEach(c => {
+                const key = getHostChatKey(c);
+                if (existingMap.has(key)) {
+                    const prev = existingMap.get(key);
+                    if (c.ai_reply && prev.ai_reply !== c.ai_reply) {
+                        prev.ai_reply = c.ai_reply;
+                    }
+                } else {
+                    existingMap.set(key, c);
+                    newlyAdded.push(c);
+                }
+            });
+
+            if (newlyAdded.length > 0) {
+                cachedRecentChats = [...newlyAdded, ...cachedRecentChats];
+                cachedRecentChats.sort((a, b) => {
+                    const idA = getHostNumericId(a);
+                    const idB = getHostNumericId(b);
+                    if (idA > 0 && idB > 0 && idA !== idB) return idB - idA;
+                    return 0;
+                });
+                if (cachedRecentChats.length > 500) {
+                    cachedRecentChats = cachedRecentChats.slice(0, 500);
+                }
+            }
+        }
+
+        // 실시간 호스트 데이터 동기화 (중복 폴링 경합 방지 가드 적용)
+        let isFetchingHostData = false;
+        let pendingHostRefresh = false;
+        async function fetchHostData(forceImmediate = false) {
+            if (isFetchingHostData) {
+                if (forceImmediate) pendingHostRefresh = true;
+                return;
+            }
+            isFetchingHostData = true;
+            try {
+                const res = await fetch('/api/host/data?v=site2');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const incomingChats = data.recent_chats || data.recent_questions || [];
+                const totalChatsCount = (data.stats && typeof data.stats.chats === 'number') ? data.stats.chats : incomingChats.length;
+                let forceReset = false;
+
+                if (data.host_reload_seq !== undefined) {
+                    if (lastHostReloadSeq !== null && data.host_reload_seq !== lastHostReloadSeq) {
+                        window.location.reload();
+                        return;
+                    }
+                    lastHostReloadSeq = data.host_reload_seq;
+                }
+
+                if (data.broadcast_reset_seq !== undefined) {
+                    if (lastBroadcastResetSeq !== null && data.broadcast_reset_seq !== lastBroadcastResetSeq) {
+                        resetHostViewForNewBroadcast();
+                        forceReset = true;
+                    }
+                    lastBroadcastResetSeq = data.broadcast_reset_seq;
+                }
+
+                if (incomingChats.length === 0 && totalChatsCount === 0 && cachedRecentChats.length > 0) {
+                    resetHostViewForNewBroadcast();
+                    forceReset = true;
+                }
+
+                isBroadcastLive = Boolean(data.is_live);
+                if (isBroadcastLive && data.broadcast_started_ms) {
+                    broadcastStartMs = Number(data.broadcast_started_ms);
+                } else {
+                    broadcastStartMs = null;
+                }
+                updateClock();
+
+                renderPDCue(data.latest_cue);
+                renderPinnedQuestion(data.pinned_question);
+                renderTimer(data.timer);
+                renderSiteMirror(data.site_mirror, data.host_view_mode, data.platform_screens);
+                renderProduct(data.pinned_product);
+                renderAllProducts(data.all_products || [], data.pinned_product);
+                renderMetrics(data.stats);
+                renderHostYoutubeViewers(data.youtube_viewers, data.tiktok_viewers, data.instagram_viewers);
+                if (data.camera_switcher) {
+                    renderHostCameraSwitcherBadge(data.camera_switcher);
+                }
+                mergeHostChatsIntoCache(incomingChats);
+                renderQuestions(cachedRecentChats, forceReset, data.chat_integrity, totalChatsCount);
+            } catch (e) {
+                // 통신 일시 오류 무시
+            } finally {
+                isFetchingHostData = false;
+                if (pendingHostRefresh) {
+                    pendingHostRefresh = false;
+                    fetchHostData(false);
+                }
+            }
+        }
+
+        // 1. PD 큐 배너 렌더링 (헤더 바로 밑 헤더 크기 1줄 바)
+        function renderPDCue(cue) {
+            const banner = document.getElementById('pdCueBanner');
+            if (!cue || !cue.cue_text) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            banner.style.display = 'flex';
+            const priority = (cue.priority || 'NORMAL').toUpperCase();
+
+            // 클래스 리셋 및 부여
+            banner.className = 'pd-cue-banner';
+            if (priority === 'URGENT') banner.classList.add('cue-urgent');
+            else if (priority === 'WARNING') banner.classList.add('cue-warning');
+            else if (priority === 'PRAISE') banner.classList.add('cue-praise');
+            else banner.classList.add('cue-normal');
+
+            // 뱃지 텍스트
+            const badgeMap = {
+                'URGENT': '🚨 PD 긴급 지시',
+                'WARNING': '⏳ 템포 / 주의',
+                'PRAISE': '🎉 칭찬 / 실적 돌파',
+                'NORMAL': '📢 PD 디렉팅'
+            };
+            document.getElementById('pdBadgeText').innerText = badgeMap[priority] || '📢 PD 디렉팅';
+            document.getElementById('pdCueMessage').innerText = cue.cue_text;
+            document.getElementById('pdCueTime').innerText = cue.created_at ? cue.created_at.split(' ')[1] : '방금 전';
+
+            // 새 메시지 시 비프음 및 진동 알림 (자동 증발 없이 명시적으로 유지)
+            if (cue.id !== lastCueId) {
+                lastCueId = cue.id;
+                playHostBeep(priority);
+                if (navigator.vibrate) {
+                    navigator.vibrate(priority === 'URGENT' ? [300, 100, 300] : [200]);
+                }
+            }
+        }
+
+        async function dismissPDCue() {
+            document.getElementById('pdCueBanner').style.display = 'none';
+            try {
+                await fetch('/api/host/clear-cues', { method: 'POST' });
+            } catch(e) {}
+        }
+
+        // 2. ⭐ PD 픽업 추천 질문 렌더링 (헤더 바로 밑 헤더 크기 1줄 바)
+        function renderPinnedQuestion(q) {
+            const box = document.getElementById('pinnedQuestionBox');
+            if (!q || !q.question) {
+                box.style.display = 'none';
+                return;
+            }
+
+            box.style.display = 'flex';
+            document.getElementById('pinnedQUser').innerText = `[${q.platform || 'LIVE'}] @${q.user || '시청자'}`;
+            document.getElementById('pinnedQMessage').innerHTML = `"${renderChatHtml(q.question)}"`;
+
+            if (q.pinned_at !== lastPinnedQuestionAt) {
+                lastPinnedQuestionAt = q.pinned_at;
+                playHostBeep('NORMAL');
+            }
+        }
+
+        async function dismissPinnedQuestion() {
+            document.getElementById('pinnedQuestionBox').style.display = 'none';
+            try {
+                await fetch('/api/host/clear-question', { method: 'POST' });
+            } catch(e) {}
+        }
+
+        // 3. 세그먼트 카운트다운 타이머 렌더링
+        function renderTimer(timer) {
+            const badge = document.getElementById('hostTimerBadge');
+            if (!timer || !timer.active || timer.remaining_seconds <= 0) {
+                badge.style.display = 'none';
+                return;
+            }
+
+            badge.style.display = 'inline-flex';
+            document.getElementById('timerLabel').innerText = timer.label || '코너 진행';
+
+            const mins = Math.floor(timer.remaining_seconds / 60);
+            const secs = timer.remaining_seconds % 60;
+            const strTime = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            document.getElementById('timerCountdown').innerText = strTime;
+
+            if (timer.remaining_seconds <= 30) {
+                badge.style.borderColor = '#ef4444';
+                badge.style.color = '#fca5a5';
+            } else {
+                badge.style.borderColor = '#f59e0b';
+                badge.style.color = '#fde047';
+            }
+        }
+
+        // 3-2. 📺 채팅관리창에서 선택한 플랫폼(DEFAULT / YOUTUBE / TIKTOK / INSTAGRAM) 실제 웹사이트 라방 화면 렌더링
+        let isHostSiteMirrorActive = false;
+        let hostSiteFrameLoopRunning = false;
+        let currentHostLeftMode = 'DEFAULT';
+        let currentHostLiveWebUrl = '';
+
+        async function runHostSiteFrameLoop() {
+            if (hostSiteFrameLoopRunning) return;
+            hostSiteFrameLoopRunning = true;
+            const img = document.getElementById('hostSiteMirrorImg');
+            while (isHostSiteMirrorActive) {
+                const frameUrl = '/api/host/site-mirror/frame.jpg?t=' + Date.now();
+                await new Promise((resolve) => {
+                    const loader = new Image();
+                    const timer = setTimeout(resolve, 1200);
+                    loader.onload = () => {
+                        clearTimeout(timer);
+                        if (img && isHostSiteMirrorActive) {
+                            img.src = loader.src;
+                        }
+                        resolve();
+                    };
+                    loader.onerror = () => {
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    loader.src = frameUrl;
+                });
+                await new Promise(r => setTimeout(r, 90));
+            }
+            hostSiteFrameLoopRunning = false;
+        }
+
+        function computeHostImgRelativeCoords(ev, imgEl) {
+            const rect = imgEl.getBoundingClientRect();
+            const natW = imgEl.naturalWidth || 1280;
+            const natH = imgEl.naturalHeight || 800;
+            const scale = Math.min(rect.width / natW, rect.height / natH);
+            const renderW = natW * scale;
+            const renderH = natH * scale;
+            const offsetX = (rect.width - renderW) / 2;
+            const offsetY = (rect.height - renderH) / 2;
+            const x = (ev.clientX - rect.left - offsetX) / renderW;
+            const y = (ev.clientY - rect.top - offsetY) / renderH;
+            return {
+                rx: Math.max(0, Math.min(1, x)),
+                ry: Math.max(0, Math.min(1, y))
+            };
+        }
+
+        async function handleHostSiteImgClick(ev) {
+            const imgEl = document.getElementById('hostSiteMirrorImg');
+            if (!imgEl || !isHostSiteMirrorActive) return;
+            const { rx, ry } = computeHostImgRelativeCoords(ev, imgEl);
+            try {
+                await fetch('/api/host/site-mirror/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'click', rx, ry, button: 'left', click_count: 1 })
+                });
+            } catch (e) {}
+        }
+
+        async function handleHostSiteImgWheel(ev) {
+            const imgEl = document.getElementById('hostSiteMirrorImg');
+            if (!imgEl || !isHostSiteMirrorActive) return;
+            ev.preventDefault();
+            const { rx, ry } = computeHostImgRelativeCoords(ev, imgEl);
+            try {
+                await fetch('/api/host/site-mirror/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'wheel', rx, ry, delta_x: ev.deltaX || 0, delta_y: ev.deltaY || 250 })
+                });
+            } catch (e) {}
+        }
+
+        async function reloadHostLiveWebsite() {
+            try {
+                await fetch('/api/host/site-mirror/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'reload' })
+                });
+            } catch (e) {}
+        }
+
+        function openHostSiteControllerFromPrompter() {
+            const targetUrl = currentHostLiveWebUrl || 'https://www.youtube.com';
+            window.open(
+                '/host/site-controller?url=' + encodeURIComponent(targetUrl),
+                'HostSiteControllerWindow',
+                'width=1360,height=920,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes'
+            );
+        }
+
+        function renderSiteMirror(siteMirror, hostViewMode, platformScreens) {
+            const box = document.getElementById('hostSiteMirrorBox');
+            const header = document.getElementById('hostSiteMirrorHeader');
+            const badge = document.getElementById('hostPlatformBadge');
+            const liveStatusEl = document.getElementById('hostPlatformLiveStatus');
+            const viewersEl = document.getElementById('hostPlatformViewers');
+            const titleEl = document.getElementById('hostSiteMirrorTitle');
+            const channelTextEl = document.getElementById('hostPlatformChannelText');
+            const techTextEl = document.getElementById('hostPlatformTechText');
+            const img = document.getElementById('hostSiteMirrorImg');
+            const splitLayout = document.querySelector('.host-split-layout');
+            const productBox = document.getElementById('productBox');
+            const metricsGrid = document.getElementById('hostMetricsGrid') || document.querySelector('.metrics-grid');
+            const lineupSection = document.getElementById('hostProductLineupSection') || document.querySelector('.product-lineup-section');
+            if (!box || !img) return;
+
+            const mode = (hostViewMode && hostViewMode.mode) ? String(hostViewMode.mode).toUpperCase() : 'DEFAULT';
+
+            // 기본값(DEFAULT): 현재 소개 상품 카드 + 총 주문/누적 매출/실시간 채팅 + 전체 방송 제품 라인업을 항상 표시
+            if (mode === 'DEFAULT' || !['YOUTUBE', 'TIKTOK', 'INSTAGRAM'].includes(mode)) {
+                currentHostLeftMode = 'DEFAULT';
+                isHostSiteMirrorActive = false;
+                box.style.display = 'none';
+                if (splitLayout) splitLayout.style.gridTemplateColumns = '';
+                if (productBox) productBox.style.display = '';
+                if (metricsGrid) metricsGrid.style.display = '';
+                if (lineupSection) lineupSection.style.display = '';
+                if (img.getAttribute('src')) {
+                    img.removeAttribute('src');
+                }
+                currentSiteMirrorSeq = null;
+                if (isSiteMirrorExpanded) {
+                    toggleSiteMirrorExpand(false);
+                }
+                return;
+            }
+
+            // 채팅관리창에서 유튜브 / 틱톡 / 인스타그램 방송화면을 선택한 경우 (실제 웹사이트 라이브 화면 표시)
+            const modeChanged = (currentHostLeftMode !== mode);
+            currentHostLeftMode = mode;
+
+            const pInfo = (platformScreens && platformScreens[mode]) ? platformScreens[mode] : {};
+            const themeMap = {
+                'YOUTUBE': {
+                    badgeText: '▶️ YOUTUBE 실제 웹 화면',
+                    badgeBg: '#ef4444',
+                    badgeColor: '#fff',
+                    borderColor: '#ef4444',
+                    shadow: '0 8px 30px rgba(239,68,68,0.28)',
+                    headerBg: 'linear-gradient(90deg, rgba(220,38,38,0.28), rgba(15,23,42,0.96))'
+                },
+                'TIKTOK': {
+                    badgeText: '🎵 TIKTOK 실제 웹 화면',
+                    badgeBg: '#06b6d4',
+                    badgeColor: '#083344',
+                    borderColor: '#06b6d4',
+                    shadow: '0 8px 30px rgba(6,182,212,0.28)',
+                    headerBg: 'linear-gradient(90deg, rgba(6,182,212,0.28), rgba(15,23,42,0.96))'
+                },
+                'INSTAGRAM': {
+                    badgeText: '📸 INSTAGRAM 실제 웹 화면',
+                    badgeBg: '#ec4899',
+                    badgeColor: '#fff',
+                    borderColor: '#ec4899',
+                    shadow: '0 8px 30px rgba(236,72,153,0.28)',
+                    headerBg: 'linear-gradient(90deg, rgba(236,72,153,0.28), rgba(15,23,42,0.96))'
+                }
+            };
+            const theme = themeMap[mode] || themeMap['YOUTUBE'];
+            box.style.borderColor = theme.borderColor;
+            box.style.boxShadow = theme.shadow;
+            if (header) {
+                header.style.background = theme.headerBg;
+                header.style.borderBottomColor = theme.borderColor;
+            }
+            if (badge) {
+                badge.innerText = theme.badgeText;
+                badge.style.background = theme.badgeBg;
+                badge.style.color = theme.badgeColor;
+            }
+
+            const isLive = Boolean(pInfo.active);
+            if (liveStatusEl) {
+                if (isLive) {
+                    liveStatusEl.innerText = '🔴 LIVE 웹사이트 방송 중';
+                    liveStatusEl.style.background = 'rgba(239,68,68,0.24)';
+                    liveStatusEl.style.borderColor = '#ef4444';
+                    liveStatusEl.style.color = '#fca5a5';
+                } else {
+                    liveStatusEl.innerText = '🌐 실시간 웹사이트 연결됨';
+                    liveStatusEl.style.background = 'rgba(16,185,129,0.2)';
+                    liveStatusEl.style.borderColor = '#10b981';
+                    liveStatusEl.style.color = '#6ee7b7';
+                }
+            }
+
+            const viewers = Number(pInfo.concurrent_viewers || 0);
+            if (viewersEl) {
+                viewersEl.innerText = `👁️ 실시간 시청 ${viewers.toLocaleString()}명`;
+            }
+            const activeWebUrl = (siteMirror && siteMirror.url) || pInfo.live_url || '';
+            currentHostLiveWebUrl = activeWebUrl;
+            if (titleEl) {
+                titleEl.innerText = (siteMirror && siteMirror.title) || pInfo.broadcast_title || activeWebUrl || `${theme.badgeText}`;
+            }
+            if (channelTextEl) {
+                const ch = pInfo.channel_input ? `채널: ${pInfo.channel_input}` : `${pInfo.label || mode}`;
+                const urlStr = activeWebUrl ? ` · ${activeWebUrl}` : '';
+                channelTextEl.innerText = `${ch}${urlStr}`;
+            }
+            if (techTextEl) {
+                techTextEl.innerText = '💡 화면 클릭·마우스 휠 스크롤로 웹사이트 직접 조작 가능';
+            }
+
+            if (splitLayout && window.innerWidth > 960) {
+                splitLayout.style.gridTemplateColumns = 'minmax(520px, 1.45fr) minmax(360px, 1fr)';
+            }
+            if (productBox) productBox.style.display = 'none';
+            if (metricsGrid) metricsGrid.style.display = 'none';
+            if (lineupSection) lineupSection.style.display = 'none';
+
+            box.style.display = 'flex';
+            if (!img.getAttribute('src') || !isHostSiteMirrorActive || modeChanged) {
+                img.src = '/api/host/site-mirror/frame.jpg?t=' + Date.now();
+            }
+            isHostSiteMirrorActive = true;
+            runHostSiteFrameLoop();
+        }
+
+        function toggleSiteMirrorExpand(forceState) {
+            const box = document.getElementById('hostSiteMirrorBox');
+            const body = document.getElementById('hostSiteMirrorBody');
+            const img = document.getElementById('hostSiteMirrorImg');
+            const btn = document.getElementById('btnExpandSiteMirror');
+            if (!box || !body || !img) return;
+
+            isSiteMirrorExpanded = (typeof forceState === 'boolean') ? forceState : !isSiteMirrorExpanded;
+            if (isSiteMirrorExpanded) {
+                box.style.position = 'fixed';
+                box.style.inset = '16px';
+                box.style.zIndex = '9998';
+                body.style.maxHeight = 'none';
+                body.style.flex = '1';
+                img.style.maxHeight = 'calc(100vh - 90px)';
+                if (btn) btn.innerText = '🗗 좌측 패널 크기로';
+            } else {
+                box.style.position = '';
+                box.style.inset = '';
+                box.style.zIndex = '';
+                body.style.maxHeight = '';
+                body.style.flex = '1';
+                img.style.maxHeight = '';
+                if (btn) btn.innerText = '🔍 크게 보기';
+            }
+        }
+
+        async function closeSiteMirrorFromHost() {
+            try {
+                await fetch('/api/host/view-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: 'DEFAULT' })
+                });
+                renderSiteMirror(null, { mode: 'DEFAULT' }, null);
+                try {
+                    const bc = new BroadcastChannel('obs_overlay_sync');
+                    bc.postMessage({ type: 'HOST_VIEW_MODE_UPDATE', mode: 'DEFAULT' });
+                    bc.close();
+                } catch (e) {}
+            } catch (e) {}
+        }
+
+        // 4. 소개 상품 상세 및 옵션 재고 렌더링
+        function renderProduct(p) {
+            const imgElem = document.getElementById('prodImg');
+            const discElem = document.getElementById('prodDiscount');
+            const optsElem = document.getElementById('prodOptionsList');
+
+            if (!p) {
+                currentPinnedProductNum = null;
+                if (imgElem) imgElem.style.display = 'none';
+                document.getElementById('prodNum').innerText = '-';
+                document.getElementById('prodName').innerText = '방송 대기 중 (소개 상품 미지정)';
+                document.getElementById('prodPrice').innerText = '-';
+                document.getElementById('prodConsPrice').style.display = 'none';
+                if (discElem) discElem.style.display = 'none';
+                document.getElementById('prodStock').style.display = 'none';
+                if (optsElem) optsElem.innerHTML = '';
+                const specsBox = document.getElementById('prodSpecs');
+                if (specsBox) {
+                    specsBox.style.display = 'block';
+                    specsBox.innerText = '💡 관제탑 또는 아래 제품 목록에서 소개할 상품을 선택해 주세요.';
+                }
+                return;
+            }
+
+            currentPinnedProductNum = p.num;
+
+            if (imgElem) {
+                if (p.image_url) {
+                    if (imgElem.getAttribute('src') !== p.image_url) {
+                        imgElem.src = p.image_url;
+                    }
+                    imgElem.style.display = 'block';
+                } else {
+                    imgElem.style.display = 'none';
+                }
+            }
+
+            document.getElementById('prodNum').innerText = `${p.num}번 상품 (현재 소개 중)`;
+            document.getElementById('prodName').innerText = p.name;
+            const sellPrice = Number(p.price || 0);
+            document.getElementById('prodPrice').innerText = `${sellPrice.toLocaleString()}원`;
+
+            const cons = Number(p.consumer_price || 0);
+            const consElem = document.getElementById('prodConsPrice');
+            if (cons > sellPrice && sellPrice > 0) {
+                consElem.style.display = 'inline';
+                consElem.innerText = `${cons.toLocaleString()}원`;
+                if (discElem) {
+                    const discRate = Math.round(((cons - sellPrice) / cons) * 100);
+                    discElem.innerText = `${discRate}% 할인`;
+                    discElem.style.display = 'inline-block';
+                }
+            } else {
+                consElem.style.display = 'none';
+                if (discElem) discElem.style.display = 'none';
+            }
+
+            const stkElem = document.getElementById('prodStock');
+            stkElem.style.display = 'inline-block';
+            const totalStock = Number(p.total_stock || 0);
+            stkElem.innerText = `총 잔여 ${totalStock}개`;
+            if (totalStock <= 5) {
+                stkElem.className = 'stock-highlight danger';
+                stkElem.innerText = totalStock === 0 ? '⚠️ 전량 품절' : `🔥 품절임박 (${totalStock}개)`;
+            } else {
+                stkElem.className = 'stock-highlight';
+            }
+
+            // 옵션별 상세 재고 칩 렌더링
+            if (optsElem) {
+                const options = Array.isArray(p.options) ? p.options : [];
+                if (options.length > 0) {
+                    optsElem.innerHTML = options.map(o => {
+                        const stk = Number(o.stock || 0);
+                        const cls = stk === 0 ? 'opt-chip sold-out' : (stk <= 5 ? 'opt-chip low-stock' : 'opt-chip');
+                        const label = `${escapeHtml(o.color || '-')}/${escapeHtml(o.size || '-')}`;
+                        const stkText = stk === 0 ? '품절' : `${stk}개`;
+                        return `<div class="${cls}"><span>${label}</span><span class="opt-stk">${stkText}</span></div>`;
+                    }).join('');
+                } else {
+                    optsElem.innerHTML = '';
+                }
+            }
+
+            const specsBox = document.getElementById('prodSpecs');
+            if (specsBox) {
+                if (p.specs && String(p.specs).trim()) {
+                    specsBox.style.display = 'block';
+                    specsBox.innerText = `💡 핵심 소구점: ${String(p.specs).trim()}`;
+                } else {
+                    specsBox.style.display = 'none';
+                    specsBox.innerText = '';
+                }
+            }
+        }
+
+        // 4-2. 전체 방송 상품 라인업 렌더링 및 클릭 시 즉시 핀 전환
+        function renderAllProducts(products, pinnedProduct) {
+            const countEl = document.getElementById('allProdsCount');
+            const listEl = document.getElementById('hostAllProductsList');
+            if (countEl) countEl.innerText = `(${products.length}개)`;
+            if (!listEl) return;
+
+            if (!products.length) {
+                listEl.innerHTML = `
+                    <div style="color:#64748b; font-size:0.85rem; text-align:center; padding:12px;">
+                        등록된 상품이 없습니다.
+                    </div>
+                `;
+                return;
+            }
+
+            const pinnedNum = pinnedProduct ? pinnedProduct.num : null;
+            listEl.innerHTML = products.map(item => {
+                const isPinned = (pinnedNum !== null && String(item.num) === String(pinnedNum));
+                const totalStock = Number(item.total_stock || 0);
+                const stockClass = totalStock <= 5 ? 'lineup-stock low' : 'lineup-stock';
+                const stockLabel = totalStock === 0 ? '품절' : `잔여 ${totalStock}개`;
+                const optsSummary = Array.isArray(item.options) && item.options.length
+                    ? item.options.map(o => `${escapeHtml(o.color)}/${escapeHtml(o.size)}(${o.stock})`).join(', ')
+                    : '';
+
+                const imgUrl = (item.image_url || '').trim();
+                return `
+                    <div class="lineup-item ${isPinned ? 'active-pin' : ''}" onclick="pinProductFromHost(${Number(item.num)})">
+                        <div class="lineup-item-left">
+                            <div style="width:116px; height:116px; border-radius:12px; overflow:hidden; background:#1e293b; border:1px solid rgba(255,255,255,0.18); flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+                                ${imgUrl
+                                    ? `<img src="${imgUrl}" alt="" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size:2rem; opacity:0.6;\\'>🛍️</span>';" />`
+                                    : `<span style="font-size:2rem; opacity:0.6;">🛍️</span>`
+                                }
+                            </div>
+                            <span class="lineup-num">${Number(item.num)}번</span>
+                            <div style="min-width:0; flex:1;">
+                                <div class="lineup-name">${escapeHtml(item.name || '')}</div>
+                                ${optsSummary ? `<div style="font-size:0.75rem; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">옵션: ${optsSummary}</div>` : ''}
+                            </div>
+                        </div>
+                        <div class="lineup-item-right">
+                            <span class="lineup-price">${Number(item.price || 0).toLocaleString()}원</span>
+                            <span class="${stockClass}">${stockLabel}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function pinProductFromHost(productNum) {
+            const nextNum = (currentPinnedProductNum !== null && String(currentPinnedProductNum) === String(productNum))
+                ? null
+                : productNum;
+            try {
+                await fetch('/api/overlay/pin-product', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_num: nextNum })
+                });
+                try {
+                    const ch = new BroadcastChannel('obs_overlay_sync');
+                    ch.postMessage({ type: 'PIN_PRODUCT', product_num: nextNum });
+                } catch (err) {}
+                fetchHostData();
+            } catch (e) {}
+        }
+
+        // 5. 지표 렌더링
+        function renderMetrics(stats) {
+            if (!stats) return;
+            document.getElementById('valOrders').innerText = `${stats.orders || 0}건`;
+            document.getElementById('valSales').innerText = `${Number(stats.sales || 0).toLocaleString()}원`;
+            document.getElementById('valChats').innerText = `${stats.chats || 0}건`;
+        }
+
+        // 5-2. 유튜브·틱톡·인스타 실시간 접속 회원 수 & 접속 회원 아이디(@핸들) 렌더링
+        function renderHostYoutubeViewers(ytData, ttData = null, igData = null) {
+            if (ytData) latestYoutubeViewersData = ytData;
+            if (ttData) latestTiktokViewersData = ttData;
+            if (igData) latestInstagramViewersData = igData;
+            const ytObj = latestYoutubeViewersData || {};
+            const ttObj = latestTiktokViewersData || {};
+            const igObj = latestInstagramViewersData || {};
+
+            const ytMembers = (Array.isArray(ytObj.members) ? ytObj.members : []).map(m => ({ ...m, _platform: 'YOUTUBE' }));
+            const ttMembers = (Array.isArray(ttObj.members) ? ttObj.members : []).map(m => ({ ...m, _platform: 'TIKTOK' }));
+            const igMembers = (Array.isArray(igObj.members) ? igObj.members : []).map(m => ({ ...m, _platform: 'INSTAGRAM' }));
+            const members = [...ytMembers, ...ttMembers, ...igMembers].sort((a, b) => (Number(b.last_seen_ts || 0) - Number(a.last_seen_ts || 0)));
+
+            const ytMemberCount = Number(ytObj.connected_member_count ?? ytMembers.length ?? 0);
+            const ttMemberCount = Number(ttObj.connected_member_count ?? ttMembers.length ?? 0);
+            const igMemberCount = Number(igObj.connected_member_count ?? igMembers.length ?? 0);
+            const totalMemberCount = ytMemberCount + ttMemberCount + igMemberCount;
+
+            const ytConcurrent = Math.max(Number(ytObj.concurrent_viewers ?? 0), ytMemberCount);
+            const ttConcurrent = Math.max(Number(ttObj.concurrent_viewers ?? 0), ttMemberCount);
+            const igConcurrent = Math.max(Number(igObj.concurrent_viewers ?? 0), igMemberCount);
+            const effectiveViewers = ytConcurrent + ttConcurrent + igConcurrent;
+
+            const topMemberEl = document.getElementById('ytTopMemberCount');
+            if (topMemberEl) topMemberEl.innerText = `${ytMemberCount}명`;
+            const topTtMemberEl = document.getElementById('ttTopMemberCount');
+            if (topTtMemberEl) topTtMemberEl.innerText = `${ttMemberCount}명`;
+            const topIgMemberEl = document.getElementById('igTopMemberCount');
+            if (topIgMemberEl) topIgMemberEl.innerText = `${igMemberCount}명`;
+            const topSubEl = document.getElementById('ytTopConcurrentSub');
+            if (topSubEl) topSubEl.innerText = `(실시간 시청 ${effectiveViewers}명)`;
+
+            const valYtMembers = document.getElementById('valYoutubeMembers');
+            if (valYtMembers) valYtMembers.innerText = `${totalMemberCount}명`;
+            const valYtSub = document.getElementById('valYoutubeConcurrentSub');
+            if (valYtSub) valYtSub.innerText = `실시간 시청 ${effectiveViewers}명 · ID 확인`;
+
+            const barCountEl = document.getElementById('hostYtMemberCountBadge');
+            if (barCountEl) barCountEl.innerText = `접속회원 ${totalMemberCount}명`;
+            const barConcEl = document.getElementById('hostYtConcurrentBadge');
+            if (barConcEl) barConcEl.innerText = `실시간 시청 ${effectiveViewers}명`;
+
+            const chipListEl = document.getElementById('hostYtMembersChipList');
+            if (chipListEl) {
+                if (members.length === 0) {
+                    chipListEl.innerHTML = `<span style="color:#64748b; font-size:0.78rem;">아직 확인된 접속 회원 아이디가 없습니다. 유튜브·틱톡·인스타 채팅 유입 시 즉시 아이디가 표시됩니다.</span>`;
+                } else {
+                    chipListEl.innerHTML = members.map(m => {
+                        const cleanId = String(m.user || '시청자').replace(/^@+/, '');
+                        const handleStr = '@' + cleanId;
+                        const isSelected = currentHostUserFilter && currentHostUserFilter.toLowerCase() === cleanId.toLowerCase();
+                        const dotCls = m.is_online ? 'dot-online' : 'dot-idle';
+                        const platIcon = m._platform === 'TIKTOK' ? '🎵' : (m._platform === 'INSTAGRAM' ? '📸' : '▶️');
+                        const orderBadge = m.order_count > 0 ? `<span style="color:#fbbf24; font-size:0.72rem;">🛒${m.order_count}</span>` : '';
+                        const chatBadge = m.chat_count > 1 ? `<span style="color:#94a3b8; font-size:0.7rem;">(${m.chat_count})</span>` : '';
+                        return `
+                            <button type="button" class="yt-member-chip ${isSelected ? 'active-user-filter' : ''}" onclick="filterHostChatByUser('${escapeHtml(cleanId)}')" title="${platIcon} ${escapeHtml(handleStr)} (${escapeHtml(m.time_str || '')}) 최근: ${escapeHtml(m.last_message || '')}">
+                                <span class="${dotCls}"></span>
+                                <span>${platIcon} ${escapeHtml(handleStr)}</span>
+                                ${orderBadge}
+                                ${chatBadge}
+                            </button>
+                        `;
+                    }).join('');
+                }
+            }
+
+            const modalEl = document.getElementById('hostYtMembersModal');
+            if (modalEl && modalEl.style.display === 'flex') {
+                renderHostYoutubeModalList();
+            }
+        }
+
+        function filterHostChatByUser(userId) {
+            const clean = userId ? String(userId).replace(/^@+/, '').trim() : null;
+            if (clean && currentHostUserFilter && currentHostUserFilter.toLowerCase() === clean.toLowerCase()) {
+                currentHostUserFilter = null;
+            } else {
+                currentHostUserFilter = clean;
+            }
+            const filterBadge = document.getElementById('hostSelectedUserFilterBadge');
+            if (filterBadge) {
+                if (currentHostUserFilter) {
+                    filterBadge.style.display = 'inline-flex';
+                    filterBadge.innerText = `🔎 @${currentHostUserFilter} 필터 중 (✕ 해제)`;
+                } else {
+                    filterBadge.style.display = 'none';
+                }
+            }
+            if (latestYoutubeViewersData || latestTiktokViewersData || latestInstagramViewersData) {
+                renderHostYoutubeViewers(latestYoutubeViewersData, latestTiktokViewersData, latestInstagramViewersData);
+            }
+            renderQuestions(cachedRecentChats, true);
+        }
+
+        function toggleHostYoutubeMembersModal(forceState) {
+            const modal = document.getElementById('hostYtMembersModal');
+            if (!modal) return;
+            const nextOpen = typeof forceState === 'boolean' ? forceState : (modal.style.display !== 'flex');
+            modal.style.display = nextOpen ? 'flex' : 'none';
+            if (nextOpen) {
+                renderHostYoutubeModalList();
+            }
+        }
+
+        function renderHostYoutubeModalList() {
+            const body = document.getElementById('hostYtModalBody');
+            if (!body) return;
+            const ytData = latestYoutubeViewersData || {};
+            const ttData = latestTiktokViewersData || {};
+            const igData = latestInstagramViewersData || {};
+            const ytMembers = (Array.isArray(ytData.members) ? ytData.members : []).map(m => ({ ...m, _platform: 'YOUTUBE' }));
+            const ttMembers = (Array.isArray(ttData.members) ? ttData.members : []).map(m => ({ ...m, _platform: 'TIKTOK' }));
+            const igMembers = (Array.isArray(igData.members) ? igData.members : []).map(m => ({ ...m, _platform: 'INSTAGRAM' }));
+            const members = [...ytMembers, ...ttMembers, ...igMembers].sort((a, b) => (Number(b.last_seen_ts || 0) - Number(a.last_seen_ts || 0)));
+
+            const ytMemberCount = Number(ytData.connected_member_count ?? ytMembers.length ?? 0);
+            const ttMemberCount = Number(ttData.connected_member_count ?? ttMembers.length ?? 0);
+            const igMemberCount = Number(igData.connected_member_count ?? igMembers.length ?? 0);
+            const ytConcurrent = Math.max(Number(ytData.concurrent_viewers ?? 0), ytMemberCount);
+            const ttConcurrent = Math.max(Number(ttData.concurrent_viewers ?? 0), ttMemberCount);
+            const igConcurrent = Math.max(Number(igData.concurrent_viewers ?? 0), igMemberCount);
+            const effectiveViewers = ytConcurrent + ttConcurrent + igConcurrent;
+
+            const mCountBadge = document.getElementById('hostYtModalCountBadge');
+            if (mCountBadge) mCountBadge.innerText = `▶️ 유튜브 ${ytMemberCount}명`;
+            const mTtCountBadge = document.getElementById('hostTtModalCountBadge');
+            if (mTtCountBadge) mTtCountBadge.innerText = `🎵 틱톡 ${ttMemberCount}명`;
+            const mIgCountBadge = document.getElementById('hostIgModalCountBadge');
+            if (mIgCountBadge) mIgCountBadge.innerText = `📸 인스타 ${igMemberCount}명`;
+            const mConcBadge = document.getElementById('hostYtModalConcurrentBadge');
+            if (mConcBadge) mConcBadge.innerText = `실시간 시청 ${effectiveViewers}명`;
+
+            const q = (document.getElementById('hostYtMemberSearchInput')?.value || '').trim().toLowerCase();
+            const filtered = members.filter(m => {
+                if (!q) return true;
+                return String(m.handle || m.user || '').toLowerCase().includes(q) ||
+                       String(m.last_message || '').toLowerCase().includes(q);
+            });
+
+            if (filtered.length === 0) {
+                body.innerHTML = `<div style="color:#64748b; font-size:0.92rem; text-align:center; padding:28px;">표시할 접속 회원이 없습니다.</div>`;
+                return;
+            }
+
+            body.innerHTML = filtered.map((m, idx) => {
+                const cleanId = String(m.user || '시청자').replace(/^@+/, '');
+                const handleStr = '@' + cleanId;
+                const platBadge = m._platform === 'TIKTOK'
+                    ? `<span style="background:rgba(0,242,254,0.18); color:#67e8f9; border:1px solid rgba(0,242,254,0.4); font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px;">🎵 틱톡</span>`
+                    : (m._platform === 'INSTAGRAM'
+                        ? `<span style="background:rgba(236,72,153,0.2); color:#f9a8d4; border:1px solid rgba(236,72,153,0.45); font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px;">📸 인스타</span>`
+                        : `<span style="background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px;">▶️ 유튜브</span>`);
+                const statusBadge = m.is_online
+                    ? `<span style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px;">🟢 실시간 접속</span>`
+                    : `<span style="background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.35); font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px;">🟡 방송 참여</span>`;
+                return `
+                    <div onclick="filterHostChatByUser('${escapeHtml(cleanId)}'); toggleHostYoutubeMembersModal(false);" style="background:#1e293b; border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; gap:12px; cursor:pointer;">
+                        <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+                            <span style="background:rgba(255,255,255,0.1); color:#cbd5e1; font-size:0.76rem; font-weight:900; padding:2px 7px; border-radius:6px;">#${idx + 1}</span>
+                            ${platBadge}
+                            ${statusBadge}
+                            <strong style="font-size:1.05rem; color:#fff; font-weight:900;">${escapeHtml(handleStr)}</strong>
+                            ${m.order_count > 0 ? `<span style="background:rgba(245,158,11,0.22); color:#fbbf24; font-size:0.75rem; font-weight:800; padding:2px 7px; border-radius:6px;">🛒 주문 ${m.order_count}건</span>` : ''}
+                            <span style="color:#94a3b8; font-size:0.78rem;">채팅 ${m.chat_count || 1}회</span>
+                            <span style="color:#cbd5e1; font-size:0.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px;">"${escapeHtml(m.last_message || '-')}"</span>
+                        </div>
+                        <span style="color:#94a3b8; font-size:0.76rem; font-weight:700; flex-shrink:0;">${escapeHtml(m.time_str || '')}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function setHostChatFilter(filterType, btn) {
+            currentChatFilter = filterType;
+            document.querySelectorAll('.chat-filter-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            renderQuestions(cachedRecentChats, true);
+        }
+
+        function buildHostChatElement(c) {
+            const key = getHostChatKey(c);
+            const plat = String(c.platform || 'LIVE').toUpperCase();
+            const cat = String(c.category || 'CHAT').toUpperCase();
+            const senderRaw = String(c.sender || '시청자');
+            const isOfficial = senderRaw.startsWith('📢') || senderRaw.startsWith('🎤');
+            const itemCls = cat === 'QUESTION' ? 'qa-item cat-question' : (cat === 'ORDER' ? 'qa-item cat-order' : 'qa-item');
+            const catLabel = isOfficial ? '📢 관제탑·공식' : (cat === 'QUESTION' ? '❓ 질문' : (cat === 'ORDER' ? '🛒 주문' : '💬 채팅'));
+            const catCls = cat === 'QUESTION' ? 'cat-tag question' : (cat === 'ORDER' ? 'cat-tag order' : 'cat-tag chat');
+            const timeStr = c.chat_time ? String(c.chat_time).split(' ').pop() : '';
+
+            const el = document.createElement('div');
+            el.className = itemCls;
+            if (isOfficial) {
+                el.style.border = '1.5px solid rgba(16, 185, 129, 0.6)';
+                el.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(15, 23, 42, 0.95))';
+            }
+            el.setAttribute('data-chat-id', key);
+            el.innerHTML = `
+                <div class="qa-meta-row">
+                    <div class="qa-buyer">
+                        <span class="plat-badge plat-${escapeHtml(plat)}">${escapeHtml(plat)}</span>
+                        <span class="${catCls}" style="${isOfficial ? 'background:rgba(16,185,129,0.25); color:#6ee7b7;' : ''}">${catLabel}</span>
+                        <span>${isOfficial ? escapeHtml(senderRaw) : '@' + escapeHtml(senderRaw.replace(/^@+/, ''))}</span>
+                    </div>
+                    <span class="qa-time">${escapeHtml(timeStr)}</span>
+                </div>
+                <div class="qa-question">${renderChatHtml(c.message || c.question || '')}</div>
+            `;
+            return el;
+        }
+
+        // 6. 우측 패널: 실시간 전체 채팅 스트림 무중단 증분 렌더링 (중간 누락 0건 보장)
+        let latestHostChatIntegrity = null;
+        function renderQuestions(chats, forceReset = false, integrity = null, totalDbChats = null) {
+            if (integrity) latestHostChatIntegrity = integrity;
+            const list = document.getElementById('qaList');
+            const countBadge = document.getElementById('chatStreamCount');
+            const integrityBadge = document.getElementById('hostChatIntegrityBadge');
+            const allItems = Array.isArray(chats) ? chats : [];
+
+            const filtered = allItems.filter(c => {
+                if (currentHostUserFilter) {
+                    const senderClean = String(c.sender || c.user || '').replace(/^@+/, '').trim().toLowerCase();
+                    if (senderClean !== currentHostUserFilter.toLowerCase()) return false;
+                }
+                if (currentChatFilter === 'ALL') return true;
+                return String(c.category || 'CHAT').toUpperCase() === currentChatFilter;
+            });
+
+            const filterStateKey = `${currentChatFilter}|${currentHostUserFilter || ''}`;
+
+            if (countBadge) {
+                countBadge.innerText = `${filtered.length}건 표시 중`;
+            }
+
+            if (integrityBadge) {
+                const info = integrity || latestHostChatIntegrity || {};
+                const dbTotal = Number(info.db_total_count ?? totalDbChats ?? allItems.length ?? 0);
+                integrityBadge.innerText = `🟢 누락 0건 (DB ${dbTotal}건)`;
+            }
+
+            const existingItems = list.querySelectorAll('.qa-item');
+
+            if (!filtered.length) {
+                if (forceReset || existingItems.length === 0 || lastHostRenderedFilter !== filterStateKey) {
+                    list.innerHTML = `
+                        <div style="color:#64748b; font-size:0.9rem; text-align:center; padding:24px;">
+                            표시할 실시간 채팅 내역이 없습니다.
+                        </div>
+                    `;
+                    lastHostRenderedFilter = filterStateKey;
+                }
+                return;
+            }
+
+            // 필터 변경 시 또는 최초 렌더링 시에만 전체 구성
+            if (forceReset || lastHostRenderedFilter !== filterStateKey || existingItems.length === 0) {
+                lastHostRenderedFilter = filterStateKey;
+                list.innerHTML = '';
+                filtered.forEach(c => {
+                    list.appendChild(buildHostChatElement(c));
+                });
+                return;
+            }
+
+            // 일반 주기 갱신: 기존 채팅 노드는 절대 지우지 않고 누락된 항목을 정확한 순서 위치에 삽입
+            const existingIds = new Set();
+            existingItems.forEach(el => {
+                existingIds.add(el.getAttribute('data-chat-id'));
+            });
+
+            const wasAtTop = list.scrollTop <= 30;
+            let insertedAny = false;
+            filtered.forEach((c, targetIdx) => {
+                const key = getHostChatKey(c);
+                if (!existingIds.has(key)) {
+                    const el = buildHostChatElement(c);
+                    const refNode = list.children[targetIdx] || null;
+                    if (refNode) {
+                        list.insertBefore(el, refNode);
+                    } else {
+                        list.appendChild(el);
+                    }
+                    existingIds.add(key);
+                    insertedAny = true;
+                }
+            });
+
+            if (!insertedAny) return;
+
+            if (wasAtTop) {
+                list.scrollTop = 0;
+            }
+
+            while (list.children.length > 500) {
+                list.lastElementChild.remove();
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function renderChatHtml(raw) {
+            if (!raw) return '';
+            const str = String(raw);
+            if (!/[<>]/.test(str)) {
+                return escapeHtml(str);
+            }
+            return str
+                .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+                .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+                .replace(/<embed\b[^>]*>/gi, '')
+                .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+                .replace(/javascript\s*:/gi, '');
+        }
+
+        // 1.0초마다 실시간 동기화
+        setInterval(fetchHostData, 1000);
+        fetchHostData();
+
+        // OBS 스튜디오 [새로운 방송 시작] / [이전 방송 복원] / [쇼호스트 뷰 원격 새로고침] 즉시 동기화 (0ms)
+        try {
+            const hostSyncChannel = new BroadcastChannel('obs_overlay_sync');
+            hostSyncChannel.onmessage = (event) => {
+                if (!event.data) return;
+                if (event.data.type === 'RELOAD_HOST_VIEW') {
+                    window.location.reload();
+                } else if (event.data.type === 'NEW_BROADCAST_RESET' || event.data.type === 'RESTORE_BROADCAST') {
+                    resetHostViewForNewBroadcast();
+                    fetchHostData(true);
+                } else if (event.data.type === 'PIN_PRODUCT' || event.data.type === 'TIMER_UPDATE' || event.data.type === 'SITE_MIRROR_UPDATE' || event.data.type === 'HOST_VIEW_MODE_UPDATE' || event.data.type === 'LIVE_CHAT_SENT') {
+                    fetchHostData(true);
+                }
+            };
+        } catch (e) {}
+
+        // ==========================================
+        // 📷 쇼호스트 실시간 모니터링 PiP 제어 엔진
+        // ==========================================
+        let isHostPipOpen = false;
+        let hostPipStream = null;
+        let isHostPipMirrored = true;
+        let hostPipSizeIndex = 1; // 0: sm, 1: md, 2: lg
+        const pipSizes = ['size-sm', 'size-md', 'size-lg'];
+
+        async function toggleHostPip() {
+            isHostPipOpen = !isHostPipOpen;
+            const container = document.getElementById('hostCameraPip');
+            const btn = document.getElementById('btnCameraPip');
+
+            if (isHostPipOpen) {
+                container.style.display = 'flex';
+                if (btn) btn.classList.add('active');
+                await startHostPipCamera();
+            } else {
+                container.style.display = 'none';
+                if (btn) btn.classList.remove('active');
+                stopHostPipCamera();
+            }
+        }
+
+        async function changeHostPipSource() {
+            if (isHostPipOpen) {
+                await startHostPipCamera();
+            }
+        }
+
+        let isHostPipMobileActive = false;
+        let hostPipWebRtcPc = null;
+        let hostPipWebRtcRetryTimer = null;
+        let hostPipWebRtcAttempts = 0;
+        const MAX_HOST_PIP_WEBRTC_ATTEMPTS = 2;
+
+        function stopHostPipWebRtc() {
+            if (hostPipWebRtcRetryTimer) {
+                clearTimeout(hostPipWebRtcRetryTimer);
+                hostPipWebRtcRetryTimer = null;
+            }
+            if (hostPipWebRtcPc) {
+                try { hostPipWebRtcPc.close(); } catch (e) {}
+                hostPipWebRtcPc = null;
+            }
+        }
+
+        async function connectHostPipMobileWebRtc() {
+            stopHostPipWebRtc();
+            if (!isHostPipMobileActive || !window.RTCPeerConnection) return;
+            if (hostPipWebRtcAttempts >= MAX_HOST_PIP_WEBRTC_ATTEMPTS) return;
+            hostPipWebRtcAttempts++;
+
+            const video = document.getElementById('hostPipVideo');
+            const img = document.getElementById('hostPipStreamImg');
+            const peerId = 'prompter_' + Math.random().toString(36).substring(2, 9);
+
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                });
+                hostPipWebRtcPc = pc;
+                pc.addTransceiver('video', { direction: 'recvonly' });
+
+                let connected = false;
+                const activateHostPipWebRtcIfReady = () => {
+                    if (!isHostPipMobileActive || hostPipWebRtcPc !== pc || connected) return;
+                    if (video.videoWidth > 0 && video.readyState >= 2) {
+                        connected = true;
+                        hostPipWebRtcAttempts = 0;
+                        video.style.display = 'block';
+                        img.src = '';
+                        img.style.display = 'none';
+                    }
+                };
+
+                pc.ontrack = (event) => {
+                    if (!isHostPipMobileActive) return;
+                    if (event.streams && event.streams[0]) {
+                        video.srcObject = event.streams[0];
+                        video.onloadeddata = activateHostPipWebRtcIfReady;
+                        video.onplaying = activateHostPipWebRtcIfReady;
+                        video.play().then(activateHostPipWebRtcIfReady).catch(() => {});
+                    }
+                };
+
+                pc.onconnectionstatechange = () => {
+                    if (!isHostPipMobileActive) return;
+                    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                        stopHostPipWebRtc();
+                        video.style.display = 'none';
+                        if (!img.src || !img.src.includes('/api/camera/stream')) {
+                            img.src = '/api/camera/stream?t=' + Date.now();
+                        }
+                        img.style.display = 'block';
+                        if (hostPipWebRtcAttempts < MAX_HOST_PIP_WEBRTC_ATTEMPTS) {
+                            hostPipWebRtcRetryTimer = setTimeout(connectHostPipMobileWebRtc, 5000);
+                        }
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                await new Promise((resolve) => {
+                    if (pc.iceGatheringState === 'complete') return resolve();
+                    const timer = setTimeout(resolve, 1000);
+                    pc.onicegatheringstatechange = () => {
+                        if (pc.iceGatheringState === 'complete') {
+                            clearTimeout(timer);
+                            resolve();
+                        }
+                    };
+                });
+
+                if (!isHostPipMobileActive || hostPipWebRtcPc !== pc) return;
+
+                await fetch('/api/camera/webrtc/offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        peer_id: peerId,
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type
+                    })
+                });
+
+                const startWait = Date.now();
+                const pollAnswer = async () => {
+                    if (!isHostPipMobileActive || hostPipWebRtcPc !== pc) return;
+                    if (Date.now() - startWait > 6000) {
+                        if (!connected) {
+                            stopHostPipWebRtc();
+                            if (isHostPipMobileActive && hostPipWebRtcAttempts < MAX_HOST_PIP_WEBRTC_ATTEMPTS) {
+                                hostPipWebRtcRetryTimer = setTimeout(connectHostPipMobileWebRtc, 5000);
+                            }
+                        }
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/camera/webrtc/answer/' + peerId);
+                        const data = await res.json();
+                        if (data.status === 'answered' && data.sdp) {
+                            await pc.setRemoteDescription(new RTCSessionDescription({
+                                type: data.type || 'answer',
+                                sdp: data.sdp
+                            }));
+                            hostPipWebRtcRetryTimer = setTimeout(() => {
+                                if (!connected && hostPipWebRtcPc === pc) {
+                                    stopHostPipWebRtc();
+                                    if (isHostPipMobileActive && hostPipWebRtcAttempts < MAX_HOST_PIP_WEBRTC_ATTEMPTS) {
+                                        hostPipWebRtcRetryTimer = setTimeout(connectHostPipMobileWebRtc, 5000);
+                                    }
+                                }
+                            }, 5000);
+                            return;
+                        }
+                    } catch (e) {}
+                    hostPipWebRtcRetryTimer = setTimeout(pollAnswer, 500);
+                };
+                pollAnswer();
+            } catch (e) {
+                stopHostPipWebRtc();
+                if (isHostPipMobileActive && hostPipWebRtcAttempts < MAX_HOST_PIP_WEBRTC_ATTEMPTS) {
+                    hostPipWebRtcRetryTimer = setTimeout(connectHostPipMobileWebRtc, 5000);
+                }
+            }
+        }
+
+        async function startHostPipCamera() {
+            stopHostPipCamera();
+            const source = document.getElementById('hostPipSource').value;
+            const video = document.getElementById('hostPipVideo');
+            const img = document.getElementById('hostPipStreamImg');
+
+            if (source === 'webcam') {
+                img.style.display = 'none';
+                try {
+                    hostPipStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false
+                    });
+                    video.srcObject = hostPipStream;
+                    video.style.display = 'block';
+                    await video.play();
+                } catch(e) {
+                    alert('웹캠 접근 권한 오류: ' + e.message);
+                }
+            } else if (source === 'mobile' || source === 'cam1' || source === 'cam2') {
+                video.style.display = 'none';
+                const camParam = source === 'cam1' ? '&cam=1' : (source === 'cam2' ? '&cam=2' : '');
+                img.src = '/api/camera/stream?t=' + Date.now() + camParam;
+                img.style.display = 'block';
+                isHostPipMobileActive = true;
+                hostPipWebRtcAttempts = 0;
+                if (source === 'mobile') connectHostPipMobileWebRtc();
+            }
+        }
+
+        function renderHostCameraSwitcherBadge(sw) {
+            if (!sw) return;
+            const activeCam = Number(sw.active_main_cam || 1);
+            const layout = sw.layout_mode || 'single';
+            const btn = document.getElementById('hostActiveCamBadgeBtn');
+            const pipTitle = document.getElementById('hostPipTitleText');
+            const layoutLabel = layout === 'single' ? '' : ` (${layout.toUpperCase()})`;
+            if (btn) {
+                btn.innerText = `🔴 ON AIR: CAM ${activeCam}${layoutLabel} ⇄`;
+                btn.style.borderColor = activeCam === 1 ? '#ef4444' : '#38bdf8';
+                btn.style.color = activeCam === 1 ? '#fca5a5' : '#7dd3fc';
+                btn.style.background = activeCam === 1 ? 'rgba(239,68,68,0.22)' : 'rgba(14,165,233,0.22)';
+            }
+            if (pipTitle) {
+                pipTitle.innerText = `ON AIR · CAM ${activeCam}`;
+            }
+        }
+
+        async function toggleHostMainCameraSwitch() {
+            try {
+                const res = await fetch('/api/camera/switcher', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'toggle' })
+                });
+                const data = await res.json();
+                if (data.switcher) {
+                    renderHostCameraSwitcherBadge(data.switcher);
+                    try {
+                        const bc = new BroadcastChannel('obs_overlay_sync');
+                        bc.postMessage({ type: 'CAMERA_SWITCHER_UPDATE', switcher: data.switcher });
+                        bc.close();
+                    } catch (e) {}
+                }
+            } catch (e) {}
+        }
+
+        function stopHostPipCamera() {
+            isHostPipMobileActive = false;
+            stopHostPipWebRtc();
+            const video = document.getElementById('hostPipVideo');
+            const img = document.getElementById('hostPipStreamImg');
+
+            if (hostPipStream) {
+                hostPipStream.getTracks().forEach(t => t.stop());
+                hostPipStream = null;
+            }
+            video.srcObject = null;
+            video.style.display = 'none';
+
+            img.src = '';
+            img.style.display = 'none';
+        }
+
+        function toggleHostPipMirror() {
+            isHostPipMirrored = !isHostPipMirrored;
+            const body = document.getElementById('hostPipBody');
+            if (isHostPipMirrored) body.classList.add('mirrored');
+            else body.classList.remove('mirrored');
+        }
+
+        function cycleHostPipSize() {
+            hostPipSizeIndex = (hostPipSizeIndex + 1) % pipSizes.length;
+            const container = document.getElementById('hostCameraPip');
+            pipSizes.forEach(s => container.classList.remove(s));
+            container.classList.add(pipSizes[hostPipSizeIndex]);
+        }
+
+        // PiP 창 드래그 이동 기능
+        (function initPipDrag() {
+            const pip = document.getElementById('hostCameraPip');
+            const header = document.getElementById('hostPipHeader');
+            if (!pip || !header) return;
+
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return;
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const rect = pip.getBoundingClientRect();
+                initialLeft = rect.left;
+                initialTop = rect.top;
+
+                pip.style.bottom = 'auto';
+                pip.style.right = 'auto';
+                pip.style.left = initialLeft + 'px';
+                pip.style.top = initialTop + 'px';
+
+                function onMouseMove(ev) {
+                    if (!isDragging) return;
+                    const dx = ev.clientX - startX;
+                    const dy = ev.clientY - startY;
+                    pip.style.left = (initialLeft + dx) + 'px';
+                    pip.style.top = (initialTop + dy) + 'px';
+                }
+
+                function onMouseUp() {
+                    isDragging = false;
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                }
+
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+        })();
+    </script>
+</body>
+</html>

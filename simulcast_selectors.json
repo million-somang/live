@@ -1,0 +1,216 @@
+{
+  "version": "1.1.0",
+  "updated_at": "2026-11-13T12:00:00+09:00",
+  "description": "유튜브 스튜디오 · 인스타그램 Live Producer · 틱톡 LIVE Center CDP 자동화 브릿지 원격 핫픽스(Hotfix) 셀렉터 및 네트워크 API 패턴 설정",
+  "youtube": {
+    "home_url": "https://studio.youtube.com/channel/UCAHMDwerww8SD23NQ4fKHEQ/livestreaming",
+    "fallback_url": "https://studio.youtube.com/",
+    "login_check_selectors": [
+      "input[type='email']",
+      "input[type='password']",
+      "#identifierId",
+      "a[href*='ServiceLogin']"
+    ],
+    "logged_in_cookie_names": [
+      "SID",
+      "SSID",
+      "SAPISID",
+      "LOGIN_INFO"
+    ],
+    "network_patterns": [
+      "/youtubei/v1/live/get_broadcast_status",
+      "/youtubei/v1/live/create_broadcast"
+    ],
+    "json_url_keys": [],
+    "go_live_btn_texts": [
+      "실시간 스트리밍 시작",
+      "Go live",
+      "스트리밍 시작"
+    ],
+    "go_live_btn_selectors": [
+      "ytcp-button#go-live-button",
+      "#go-live-button",
+      "ytcp-button:has-text('실시간 스트리밍 시작')",
+      "ytcp-button:has-text('Go live')",
+      "button:has-text('실시간 스트리밍 시작')",
+      "button:has-text('Go live')"
+    ],
+    "readonly_input_selectors": [
+      "input#stream-key",
+      "input[aria-label*='스트림 키']",
+      "input[aria-label*='Stream key' i]",
+      "input[readonly]"
+    ]
+  },
+  "instagram": {
+    "home_url": "https://www.instagram.com/",
+    "login_check_selectors": [
+      "input[name='username']",
+      "form#loginForm",
+      "input[name='password']"
+    ],
+    "logged_in_cookie_names": [
+      "sessionid",
+      "ds_user_id"
+    ],
+    "network_patterns": [
+      "/api/v1/live/create/",
+      "/live/create/",
+      "broadcast/create",
+      "live_create"
+    ],
+    "json_url_keys": [
+      "upload_url",
+      "broadcast_url",
+      "rtmp_url"
+    ],
+    "create_btn_texts": [
+      "만들기",
+      "Create",
+      "새로운 게시물"
+    ],
+    "create_btn_selectors": [
+      "svg[aria-label='새로운 게시물']",
+      "svg[aria-label='New post']",
+      "svg[aria-label='만들기']",
+      "svg[aria-label='Create']",
+      "a[href='#'] svg[aria-label*='게시물']",
+      "span:has-text('만들기')",
+      "span:has-text('Create')"
+    ],
+    "live_menu_texts": [
+      "라이브 방송",
+      "Live video",
+      "Live"
+    ],
+    "live_menu_selectors": [
+      "span:has-text('라이브 방송')",
+      "span:has-text('Live video')",
+      "div[role='menuitem']:has-text('라이브 방송')",
+      "div[role='menuitem']:has-text('Live video')",
+      "a:has-text('라이브 방송')",
+      "a:has-text('Live video')"
+    ],
+    "title_input_selectors": [
+      "input[placeholder*='제목']",
+      "input[placeholder*='title' i]",
+      "textarea[placeholder*='제목']",
+      "textarea[placeholder*='title' i]",
+      "div[role='dialog'] input[type='text']",
+      "div[role='dialog'] textarea"
+    ],
+    "audience_trigger_texts": [
+      "공개 범위",
+      "Audience",
+      "공개",
+      "Public",
+      "팔로워",
+      "Practice",
+      "연습"
+    ],
+    "audience_public_texts": [
+      "공개",
+      "Public",
+      "팔로워"
+    ],
+    "next_btn_texts": [
+      "다음",
+      "Next"
+    ],
+    "next_btn_selectors": [
+      "div[role='dialog'] button:has-text('다음')",
+      "div[role='dialog'] button:has-text('Next')",
+      "div[role='dialog'] div[role='button']:has-text('다음')",
+      "div[role='dialog'] div[role='button']:has-text('Next')",
+      "button:has-text('다음')",
+      "button:has-text('Next')"
+    ],
+    "readonly_input_selectors": [
+      "input[readonly]",
+      "input[type='text'][disabled]",
+      "div[role='dialog'] input"
+    ],
+    "go_live_btn_texts": [
+      "방송 시작",
+      "Go live",
+      "라이브 방송 시작"
+    ],
+    "go_live_btn_selectors": [
+      "button:has-text('방송 시작')",
+      "button:has-text('Go live')",
+      "div[role='button']:has-text('방송 시작')",
+      "div[role='button']:has-text('Go live')"
+    ],
+    "end_live_btn_texts": [
+      "방송 종료",
+      "End live video",
+      "종료"
+    ],
+    "chat_item_selectors": [
+      "[role='log'] li",
+      "[role='log'] > div",
+      "section ul li",
+      "div[class*='Comment']"
+    ]
+  },
+  "tiktok": {
+    "home_url": "https://livecenter.tiktok.com/",
+    "fallback_url": "https://www.tiktok.com/live/studio",
+    "login_check_selectors": [
+      "input[name='username']",
+      "div[id*='login-modal']",
+      "button[data-e2e='top-login-button']"
+    ],
+    "logged_in_cookie_names": [
+      "sessionid",
+      "sid_tt",
+      "uid_tt",
+      "sessionid_ss"
+    ],
+    "network_patterns": [
+      "/webcast/room/create/",
+      "/webcast/room/info/",
+      "/webcast/live_studio/",
+      "stream_url",
+      "obs_info"
+    ],
+    "json_url_keys": [
+      "rtmp_push_url",
+      "AnchorNetUrl",
+      "stream_url",
+      "push_url"
+    ],
+    "title_input_selectors": [
+      "input[placeholder*='제목']",
+      "input[placeholder*='title' i]",
+      "input[placeholder*='라이브']",
+      "textarea[placeholder*='제목']",
+      "textarea[placeholder*='title' i]",
+      "input[type='text']"
+    ],
+    "go_live_btn_texts": [
+      "Go LIVE",
+      "방송 시작",
+      "라이브 시작",
+      "스트림 키 발급",
+      "Get stream key"
+    ],
+    "go_live_btn_selectors": [
+      "button:has-text('Go LIVE')",
+      "button:has-text('방송 시작')",
+      "button:has-text('라이브 시작')",
+      "div[role='button']:has-text('Go LIVE')",
+      "div[role='button']:has-text('방송 시작')"
+    ],
+    "readonly_input_selectors": [
+      "input[readonly]",
+      "input[disabled]",
+      "input[type='text']"
+    ],
+    "chat_item_selectors": [
+      "[data-e2e='chat-message']",
+      "[class*='DivChatMessage']",
+      "[class*='chat-message']"
+    ]
+  }
+}

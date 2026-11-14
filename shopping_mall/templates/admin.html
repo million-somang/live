@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}⚙️ 쇼핑몰 어드민 — 골라방 LIVE 몰{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:22px;">
+    <div>
+        <h1 style="font-size:1.6rem; font-weight:900;">⚙️ 독립 쇼핑몰 관리자 (Port 3000)</h1>
+        <p style="font-size:0.86rem; color:#64748b; margin-top:4px;">쇼핑몰 전용 DB(<code>shopping_mall.db</code>)에 동기화된 상품 및 쇼핑몰 주문 내역을 관리합니다.</p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <div style="display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #cbd5e1; border-radius:12px; padding:4px 8px;">
+            <span style="font-size:0.82rem; font-weight:800; color:#334155;">할인율(%)</span>
+            <input type="number" id="adminDiscountPctInput" value="30" min="0" max="95" style="width:58px; padding:5px 8px; border:1px solid #cbd5e1; border-radius:8px; font-weight:800; text-align:center;">
+            <button type="button" onclick="applyAdminDiscountNow()" style="padding:7px 12px; border-radius:9px; border:none; background:#059669; color:#fff; font-weight:900; cursor:pointer;">
+                🏷️ 일괄 적용
+            </button>
+        </div>
+        <button type="button" onclick="syncProductsFromObsNow()" style="padding:11px 18px; border-radius:12px; border:none; background:#4f46e5; color:#fff; font-weight:900; cursor:pointer;">
+            🔄 OBS 상품/상태 즉시 동기화
+        </button>
+        {% if live_state and live_state.is_live %}
+        <a href="/live" style="padding:11px 18px; border-radius:12px; background:#e11d48; color:#fff; font-weight:900;">
+            🔴 라이브 커머스 페이지 열기
+        </a>
+        {% else %}
+        <span style="padding:11px 18px; border-radius:12px; background:#cbd5e1; color:#64748b; font-weight:900; cursor:not-allowed;" title="현재 진행 중인 라이브 방송이 없습니다">
+            ⚪ 라이브 방송 대기중
+        </span>
+        {% endif %}
+    </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start;">
+    <!-- 동기화된 상품 목록 -->
+    <div style="background:#fff; border-radius:20px; padding:22px; border:1px solid var(--border);">
+        <h3 style="font-size:1.08rem; font-weight:900; margin-bottom:14px;">📦 쇼핑몰 DB 동기화 상품 ({{ products|length }}건)</h3>
+        <div style="max-height:520px; overflow-y:auto;">
+            {% for p in products %}
+            <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+                {% if p.image_url %}
+                <img src="{{ p.image_url }}" style="width:52px; height:52px; border-radius:10px; object-fit:cover;">
+                {% else %}
+                <div style="width:52px; height:52px; border-radius:10px; background:#f1f5f9; display:flex; align-items:center; justify-content:center;">🛍️</div>
+                {% endif %}
+                <div style="flex:1;">
+                    <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#{{ p.num }}번 ({{ p.category }})</div>
+                    <div style="font-size:0.94rem; font-weight:900;">{{ p.name }}</div>
+                    <div style="font-size:0.82rem; color:#64748b;">판매가 {{ "{:,}".format(p.price) }}원 • 총 재고 {{ p.total_stock }}개</div>
+                </div>
+                {% if live_state and live_state.selected_product and live_state.selected_product.num == p.num %}
+                <span style="background:#ffe4e6; color:#e11d48; padding:4px 9px; border-radius:8px; font-size:0.75rem; font-weight:900;">📌 현재 선택됨</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 쇼핑몰 주문 관리 -->
+    <div style="background:#fff; border-radius:20px; padding:22px; border:1px solid var(--border);">
+        <h3 style="font-size:1.08rem; font-weight:900; margin-bottom:14px;">🧾 쇼핑몰 웹 주문 내역 ({{ orders|length }}건)</h3>
+        <div style="max-height:520px; overflow-y:auto;">
+            {% for ord in orders %}
+            <div style="padding:12px 0; border-bottom:1px solid #f1f5f9; font-size:0.86rem;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <strong>{{ ord.order_code }} ({{ ord.buyer_name }})</strong>
+                    <strong style="color:#e11d48;">{{ "{:,}".format(ord.total_amount) }}원</strong>
+                </div>
+                <div style="color:#64748b; margin-bottom:6px;">{{ ord.address }} {{ ord.address_detail }} ({{ ord.buyer_phone }})</div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select onchange="updateOrderStatus({{ ord.id }}, this.value)" class="form-input" style="padding:5px 8px; font-size:0.8rem; width:auto;">
+                        {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
+                        <option value="{{ st }}" {% if ord.order_status == st %}selected{% endif %}>{{ st }}</option>
+                        {% endfor %}
+                    </select>
+                    <span style="font-size:0.76rem; color:#94a3b8;">{{ ord.created_at }}</span>
+                </div>
+            </div>
+            {% else %}
+            <div style="color:#94a3b8; padding:20px; text-align:center;">접수된 쇼핑몰 주문이 없습니다.</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function syncProductsFromObsNow() {
+        try {
+            const res = await fetch('/api/sync/pull-now', { method: 'POST' });
+            const data = await res.json();
+            showMallToast(data.message || '동기화 완료');
+            setTimeout(() => location.reload(), 600);
+        } catch (e) {
+            alert('동기화 실패: ' + e.message);
+        }
+    }
+
+    async function updateOrderStatus(orderId, orderStatus) {
+        try {
+            await fetch('/api/admin/order-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_id: orderId, order_status: orderStatus })
+            });
+            showMallToast('주문 상태가 변경되었습니다.');
+        } catch (e) {}
+    }
+
+    async function applyAdminDiscountNow() {
+        const pct = Number(document.getElementById('adminDiscountPctInput')?.value ?? 30);
+        try {
+            const res = await fetch('/api/admin/apply-discount', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ discount_pct: pct })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                showMallToast(`${data.discount_pct}% 할인율이 ${data.updated}개 상품에 적용되었습니다.`);
+                setTimeout(() => location.reload(), 600);
+            } else {
+                alert(data.message || '할인율 적용 실패');
+            }
+        } catch (e) {
+            alert('할인율 적용 오류: ' + e.message);
+        }
+    }
+</script>
+{% endblock %}

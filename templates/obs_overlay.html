@@ -1,0 +1,2432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS Studio 실시간 그래픽 오버레이 | Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        function handleImgError(img) {
+            if (!img) return;
+            img.onerror = null;
+            img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23334155'/%3E%3Ctext x='50' y='55' fill='%2394a3b8' text-anchor='middle' font-size='14' font-family='sans-serif'%3E상품%3C/text%3E%3C/svg%3E";
+        }
+    </script>
+    <style>
+        :root {
+            --product-scale: 1.25;
+            --ticker-scale: 1.20;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            user-select: none;
+            word-break: keep-all;
+            overflow-wrap: break-word;
+        }
+
+        body {
+            background: transparent !important;
+            color: #ffffff;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            padding: 30px 40px;
+            word-break: keep-all;
+            overflow-wrap: break-word;
+        }
+
+        /* 1. 상단 좌측: 타임어택 카운트다운 타이머 배너 (고시인성 대형 전광판 스타일) */
+        .timer-banner {
+            position: absolute;
+            top: 25px;
+            left: 35px;
+            display: none;
+            align-items: center;
+            gap: 18px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(69, 10, 10, 0.94) 100%);
+            border: 2.5px solid #ff4d4f;
+            border-radius: 56px;
+            padding: 12px 26px 12px 16px;
+            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.75), 0 0 35px rgba(239, 68, 68, 0.65), inset 0 0 20px rgba(239, 68, 68, 0.25);
+            backdrop-filter: blur(16px);
+            animation: pulseGlow 1.6s infinite alternate;
+            z-index: 900;
+        }
+
+        .timer-badge {
+            background: linear-gradient(135deg, #ff2e2e 0%, #f97316 100%);
+            color: #ffffff;
+            font-size: 1.25rem;
+            font-weight: 900;
+            padding: 9px 20px;
+            border-radius: 32px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: -0.3px;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+            white-space: nowrap;
+        }
+
+        .timer-text {
+            font-size: 1.38rem;
+            font-weight: 800;
+            color: #fef08a;
+            letter-spacing: -0.4px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 12px rgba(250, 204, 21, 0.35);
+            white-space: normal;
+            word-break: keep-all;
+            overflow-wrap: break-word;
+        }
+
+        .timer-digits {
+            font-size: 2.45rem;
+            font-weight: 900;
+            color: #ffffff;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 2px;
+            line-height: 1;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(251, 191, 36, 0.75);
+            border-radius: 20px;
+            padding: 6px 18px;
+            box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.85), 0 0 18px rgba(251, 191, 36, 0.35);
+            text-shadow: 0 0 14px rgba(251, 191, 36, 0.95), 0 0 28px rgba(239, 68, 68, 0.9);
+        }
+
+        .timer-banner.urgent {
+            border-color: #fde047;
+            animation: urgentPulse 0.75s infinite alternate;
+        }
+
+        .timer-banner.urgent .timer-digits {
+            color: #fde047;
+            border-color: #ef4444;
+            background: rgba(127, 29, 29, 0.75);
+            text-shadow: 0 0 18px rgba(253, 224, 71, 1), 0 0 32px rgba(239, 68, 68, 1);
+        }
+
+        @keyframes pulseGlow {
+            from {
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 20px rgba(239, 68, 68, 0.45), inset 0 0 15px rgba(239, 68, 68, 0.2);
+                transform: scale(1);
+            }
+            to {
+                box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85), 0 0 42px rgba(239, 68, 68, 0.85), 0 0 18px rgba(251, 191, 36, 0.45), inset 0 0 24px rgba(239, 68, 68, 0.35);
+                transform: scale(1.02);
+            }
+        }
+
+        @keyframes urgentPulse {
+            from {
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 25px rgba(239, 68, 68, 0.65);
+                transform: scale(1);
+            }
+            to {
+                box-shadow: 0 12px 45px rgba(0, 0, 0, 0.9), 0 0 55px rgba(250, 204, 21, 0.95), 0 0 30px rgba(239, 68, 68, 0.95);
+                transform: scale(1.045);
+            }
+        }
+
+        /* 2. 상단 우측: 실시간 구매 알림 토스트 컨테이너 */
+        .toast-container {
+            position: absolute;
+            top: 25px;
+            right: 35px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            transition: top 0.3s ease;
+        }
+
+        body.has-custom-top-right-image .toast-container,
+        body.has-top-right-logo .toast-container {
+            top: 135px !important;
+        }
+
+        .purchase-toast {
+            background: rgba(15, 23, 42, 0.92);
+            border: 1.5px solid rgba(245, 158, 11, 0.7);
+            border-radius: 16px;
+            padding: 12px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 380px;
+            max-width: 480px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(245, 158, 11, 0.35);
+            backdrop-filter: blur(14px);
+            animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .purchase-toast::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: linear-gradient(180deg, #f59e0b, #fbbf24);
+        }
+
+        @keyframes toastSlideIn {
+            from {
+                opacity: 0;
+                transform: translateX(60px) scale(0.92);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0) scale(1);
+            }
+        }
+
+        .toast-platform-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .toast-platform-icon.youtube { background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; }
+        .toast-platform-icon.instagram { background: rgba(236, 72, 153, 0.25); border: 1px solid #ec4899; }
+        .toast-platform-icon.tiktok { background: rgba(6, 182, 212, 0.25); border: 1px solid #06b6d4; }
+
+        .toast-body {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .toast-title {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #fbbf24;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: -0.3px;
+        }
+
+        .toast-desc {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.35;
+            white-space: normal;
+            word-break: keep-all;
+            overflow-wrap: break-word;
+        }
+
+        .toast-desc strong {
+            color: #38bdf8;
+        }
+
+        /* 3. 상단: 현재 소개 핀 상품 배너 카드 (컴팩트 & 대형 이미지 강조 레이아웃) */
+        .pinned-product-card {
+            position: absolute;
+            top: 25px;
+            bottom: auto;
+            left: 35px;
+            right: 35px;
+            width: calc(100% - 70px);
+            display: none;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(23, 37, 84, 0.92) 100%);
+            border: 2px solid rgba(99, 102, 241, 0.75);
+            border-radius: 18px;
+            padding: calc(8px * var(--product-scale)) calc(14px * var(--product-scale));
+            z-index: 500;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.78), 0 0 22px rgba(99, 102, 241, 0.35);
+            backdrop-filter: blur(16px);
+            animation: cardFadeUp 0.4s ease-out forwards;
+            transition: top 0.25s ease, padding 0.15s ease;
+        }
+
+        @keyframes cardFadeUp {
+            from { opacity: 0; transform: translateY(-16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pinned-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: calc(6px * var(--product-scale));
+            padding-bottom: calc(5px * var(--product-scale));
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            gap: 10px;
+        }
+
+        .pinned-badge {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #ffffff;
+            font-size: calc(0.94rem * var(--product-scale));
+            font-weight: 800;
+            padding: calc(4px * var(--product-scale)) calc(11px * var(--product-scale));
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 3px 10px rgba(99, 102, 241, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            white-space: nowrap;
+        }
+
+        .pinned-stock-tag {
+            font-size: calc(0.94rem * var(--product-scale));
+            font-weight: 800;
+            color: #6ee7b7;
+            background: rgba(16, 185, 129, 0.22);
+            border: 1.5px solid #10b981;
+            padding: calc(3px * var(--product-scale)) calc(12px * var(--product-scale));
+            border-radius: 999px;
+            white-space: nowrap;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.22);
+        }
+
+        .pinned-stock-tag.low {
+            color: #fecaca;
+            background: rgba(239, 68, 68, 0.28);
+            border-color: #ef4444;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.45);
+            animation: pulseText 1s infinite alternate;
+        }
+
+        @keyframes pulseText {
+            from { opacity: 0.75; }
+            to { opacity: 1; }
+        }
+
+        .pinned-content {
+            display: flex;
+            gap: calc(12px * var(--product-scale));
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        .pinned-img {
+            width: calc(114px * var(--product-scale)) !important;
+            height: calc(114px * var(--product-scale)) !important;
+            border-radius: 14px;
+            object-fit: cover;
+            border: 2px solid rgba(129, 140, 248, 0.65);
+            background: #1e293b;
+            flex-shrink: 0;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+        }
+
+        .pinned-details {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: calc(6px * var(--product-scale));
+        }
+
+        /* 1번째 줄: 상품 이름 (썸네일 우측 전체 가로폭을 사용하여 무조건 1줄 표시) */
+        .pinned-name {
+            font-size: calc(1.28rem * var(--product-scale)) !important;
+            font-weight: 900;
+            color: #ffffff;
+            line-height: 1.22;
+            display: block !important;
+            width: 100%;
+            white-space: nowrap !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+            letter-spacing: -0.3px;
+        }
+
+        /* 2·3번째 줄(좌) + 라이브 특가 가격 박스(우) 정렬 컨테이너 */
+        .pinned-bottom-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: calc(10px * var(--product-scale));
+            width: 100%;
+            min-width: 0;
+        }
+
+        .pinned-sub-rows {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: calc(6px * var(--product-scale));
+        }
+
+        /* 2번째 줄: 할인율 + 정가 (무조건 1줄 나란히 표시) */
+        .pinned-meta-row {
+            display: flex;
+            align-items: center;
+            gap: calc(7px * var(--product-scale));
+            flex-wrap: nowrap !important;
+            white-space: nowrap !important;
+            overflow: hidden;
+        }
+
+        .pinned-discount-badge {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: #ffffff;
+            font-size: calc(0.88rem * var(--product-scale));
+            font-weight: 900;
+            padding: calc(2.5px * var(--product-scale)) calc(8px * var(--product-scale));
+            border-radius: 6px;
+            box-shadow: 0 3px 10px rgba(239, 68, 68, 0.4);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .pinned-consumer-price {
+            font-size: calc(0.95rem * var(--product-scale));
+            font-weight: 700;
+            color: #cbd5e1;
+            text-decoration: line-through;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* 3번째 줄: 옵션/사이즈 (무조건 1줄 나란히 표시) */
+        .pinned-sizes-row {
+            display: flex;
+            align-items: center;
+            gap: calc(5px * var(--product-scale));
+            flex-wrap: nowrap !important;
+            white-space: nowrap !important;
+            overflow: hidden;
+            margin-top: 0;
+        }
+
+        .pinned-size-label {
+            font-size: calc(0.84rem * var(--product-scale));
+            font-weight: 800;
+            color: #93c5fd;
+            background: rgba(59, 130, 246, 0.22);
+            border: 1.5px solid rgba(96, 165, 250, 0.5);
+            padding: calc(2px * var(--product-scale)) calc(7px * var(--product-scale));
+            border-radius: 6px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .pinned-size-chip {
+            font-size: calc(0.90rem * var(--product-scale));
+            font-weight: 800;
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1.5px solid rgba(255, 255, 255, 0.32);
+            padding: calc(2px * var(--product-scale)) calc(8px * var(--product-scale));
+            border-radius: 6px;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .pinned-size-chip.soldout {
+            color: #fca5a5;
+            background: rgba(239, 68, 68, 0.18);
+            border-color: rgba(239, 68, 68, 0.45);
+            text-decoration: line-through;
+            opacity: 0.75;
+        }
+
+        .pinned-price-box {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(250, 204, 21, 0.18) 0%, rgba(234, 179, 8, 0.08) 100%);
+            border: 1.5px solid rgba(250, 204, 21, 0.65);
+            border-radius: 12px;
+            padding: calc(6px * var(--product-scale)) calc(12px * var(--product-scale));
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 0 12px rgba(250, 204, 21, 0.12);
+        }
+
+        .pinned-price-label {
+            font-size: calc(0.84rem * var(--product-scale));
+            font-weight: 800;
+            color: #fde047;
+            letter-spacing: -0.2px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+        }
+
+        .pinned-sell-price {
+            font-size: calc(1.46rem * var(--product-scale)) !important;
+            font-weight: 900;
+            color: #fbbf24;
+            letter-spacing: -0.5px;
+            line-height: 1.05;
+            text-shadow: 0 2px 10px rgba(251, 191, 36, 0.5);
+            white-space: nowrap;
+        }
+
+        /* 4. 상단: 실시간 방송 안내 띠자막 (Live Subtitle Ticker - 채팅창 가림 방지 상단 자막 바) */
+        .bottom-ticker-bar {
+            position: absolute;
+            top: 180px;
+            bottom: auto;
+            left: 35px;
+            right: 35px;
+            background: linear-gradient(135deg, rgba(8, 15, 32, 0.96) 0%, rgba(15, 23, 42, 0.95) 60%, rgba(8, 47, 73, 0.92) 100%);
+            border: 2.5px solid rgba(56, 189, 248, 0.85);
+            border-radius: 20px;
+            padding: calc(14px * var(--ticker-scale)) calc(24px * var(--ticker-scale));
+            min-height: calc(78px * var(--ticker-scale));
+            display: flex;
+            align-items: center;
+            gap: calc(18px * var(--ticker-scale));
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.85), 0 0 25px rgba(6, 182, 212, 0.4), inset 0 0 15px rgba(56, 189, 248, 0.15);
+            backdrop-filter: blur(16px);
+            z-index: 600;
+            transition: top 0.25s ease;
+        }
+
+        .ticker-badge {
+            background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
+            color: #ffffff;
+            font-size: calc(1.22rem * var(--ticker-scale)) !important;
+            font-weight: 900;
+            padding: calc(9px * var(--ticker-scale)) calc(18px * var(--ticker-scale)) !important;
+            border-radius: 12px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            box-shadow: 0 4px 16px rgba(6, 182, 212, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            letter-spacing: -0.3px;
+        }
+
+        .ticker-message {
+            font-size: calc(1.38rem * var(--ticker-scale)) !important;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.38 !important;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            white-space: normal;
+            word-break: keep-all;
+            overflow-wrap: break-word;
+            flex: 1;
+            letter-spacing: -0.3px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+        }
+
+        .ticker-message .highlight {
+            color: #fde047;
+            font-weight: 900;
+            text-shadow: 0 0 12px rgba(250, 204, 21, 0.65);
+        }
+
+        /* 5. 중앙 상단: 럭키드로우 당첨자 축하 팝업 */
+        .lottery-winner-banner {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.96);
+            border: 2px solid #f59e0b;
+            border-radius: 24px;
+            padding: 24px 40px;
+            box-shadow: 0 0 50px rgba(245, 158, 11, 0.8), 0 20px 60px rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            animation: winnerPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            z-index: 2000;
+            text-align: center;
+        }
+
+        @keyframes winnerPop {
+            to { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .lottery-title {
+            font-size: 1.25rem;
+            font-weight: 900;
+            color: #fbbf24;
+            margin-bottom: 6px;
+            text-shadow: 0 0 15px rgba(245, 158, 11, 0.8);
+        }
+
+        .lottery-winners-list {
+            font-size: 1.6rem;
+            font-weight: 900;
+            color: #ffffff;
+            margin: 10px 0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .winner-chip {
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid #f59e0b;
+            padding: 6px 16px;
+            border-radius: 30px;
+            color: #fef08a;
+        }
+
+        /* 배경 카메라 / 화면 캡처 비디오 레이어 */
+        .cam-bg-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: -1;
+            pointer-events: none;
+        }
+        .cam-bg-layer.mirrored {
+            transform: scaleX(-1);
+        }
+
+        /* 배경 모드별 클래스 (단, 스튜디오 내부 모니터 iframe에서는 부모 창의 #monitorStreamImg 카메라 영상을 가리지 않도록 항상 투명 유지) */
+        body.bg-transparent { background: transparent !important; }
+        body.bg-chromakey { background: #00ff00 !important; }
+        body.bg-dark { background: #000000 !important; }
+        body.bg-screen { background: #000000 !important; }
+        body.monitor-mode,
+        body.monitor-mode.bg-screen,
+        body.monitor-mode.bg-dark,
+        body.monitor-mode.bg-chromakey {
+            background: transparent !important;
+        }
+
+        /* 소개 상품 핀 카드 위치 변형 */
+        .pinned-product-card.pos-top-left {
+            top: 25px;
+            left: 35px;
+            right: 35px;
+            width: calc(100% - 70px);
+            bottom: auto;
+        }
+        .pinned-product-card.pos-bottom-left {
+            bottom: 35px;
+            left: 35px;
+            right: 35px;
+            width: calc(100% - 70px);
+            top: auto;
+        }
+        .pinned-product-card.pos-bottom-right {
+            bottom: 35px;
+            right: 35px;
+            left: 35px;
+            width: calc(100% - 70px);
+            top: auto;
+        }
+
+        /* 테마별 스타일 */
+        body.theme-modern-white .pinned-product-card,
+        body.theme-modern-white .timer-banner,
+        body.theme-modern-white .bottom-ticker-bar {
+            background: rgba(255, 255, 255, 0.95);
+            color: #0f172a;
+            border-color: rgba(99, 102, 241, 0.5);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+        }
+        body.theme-modern-white .pinned-name { color: #0f172a; }
+        body.theme-modern-white .ticker-message { color: #1e293b; text-shadow: none; }
+        body.theme-modern-white .ticker-message .highlight { color: #0284c7; text-shadow: none; }
+        body.theme-modern-white .timer-text { color: #b91c1c; text-shadow: none; }
+        body.theme-modern-white .timer-digits { color: #ffffff; background: #0f172a; border-color: #ef4444; }
+
+        body.theme-vivid-pink .pinned-badge,
+        body.theme-vivid-pink .timer-badge,
+        body.theme-vivid-pink .ticker-badge {
+            background: linear-gradient(135deg, #ec4899, #f43f5e) !important;
+        }
+
+        /* 6. 기타 외부 제작 이미지 / 로고 / 배너 오버레이 */
+        .custom-overlay-image-wrapper {
+            position: absolute;
+            pointer-events: none;
+            z-index: 60;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s ease;
+        }
+        .custom-overlay-image-wrapper img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.6));
+        }
+        .custom-overlay-image-wrapper.pos-top-right {
+            top: 30px;
+            right: 35px;
+        }
+        .custom-overlay-image-wrapper.pos-top-left {
+            top: 30px;
+            left: 35px;
+        }
+        .custom-overlay-image-wrapper.pos-bottom-right {
+            bottom: 95px;
+            right: 35px;
+        }
+        .custom-overlay-image-wrapper.pos-bottom-left {
+            bottom: 95px;
+            left: 35px;
+        }
+        .custom-overlay-image-wrapper.pos-center {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .custom-overlay-image-wrapper.pos-fullscreen {
+            top: 0;
+            left: 0;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .custom-overlay-image-wrapper.pos-fullscreen img {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: fill;
+            filter: none;
+        }
+
+        /* 6-2. 🏷️ 우리 라이브커머스 전용 브랜드 로고 오버레이 */
+        .brand-logo-wrapper {
+            position: absolute;
+            pointer-events: none;
+            z-index: 850;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s ease, top 0.15s ease, left 0.15s ease, right 0.15s ease, bottom 0.15s ease;
+        }
+        .brand-logo-wrapper img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.75));
+        }
+        .brand-logo-default-badge {
+            width: 100%;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 41, 59, 0.92) 100%);
+            border: 2px solid rgba(236, 72, 153, 0.75);
+            border-radius: 40px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7), 0 0 20px rgba(236, 72, 153, 0.4);
+            backdrop-filter: blur(12px);
+        }
+        .brand-logo-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
+            box-shadow: 0 0 12px #ef4444;
+            flex-shrink: 0;
+            animation: pulseGlow 1.2s infinite alternate;
+        }
+        .brand-logo-text {
+            font-size: 1.25rem;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+        }
+
+        /* 화면 비율별 반응형 레이아웃 */
+        /* 📱 9:16 세로형 모바일 라이브 커머스 (인스타그램, 틱톡, 쇼핑라이브 숏클립) */
+        body.aspect-9-16 {
+            padding: 24px;
+        }
+        body.aspect-9-16 .pinned-product-card {
+            position: absolute !important;
+            width: calc(100% - 48px) !important;
+            max-width: none !important;
+            left: 24px !important;
+            right: 24px !important;
+            top: 28px;
+            bottom: auto !important;
+            padding: calc(9px * var(--product-scale)) calc(14px * var(--product-scale));
+            border-radius: 18px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7), 0 0 22px rgba(99, 102, 241, 0.35);
+        }
+        body.aspect-9-16 .pinned-product-card.pos-bottom-right,
+        body.aspect-9-16 .pinned-product-card.pos-bottom-left,
+        body.aspect-9-16 .pinned-product-card.pos-top-left {
+            top: 28px;
+            bottom: auto !important;
+            left: 24px !important;
+            right: 24px !important;
+        }
+        body.aspect-9-16 .pinned-img {
+            width: calc(118px * var(--product-scale)) !important;
+            height: calc(118px * var(--product-scale)) !important;
+            border-radius: 14px;
+        }
+        body.aspect-9-16 .pinned-badge,
+        body.aspect-9-16 .pinned-stock-tag {
+            font-size: calc(0.94rem * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .pinned-name {
+            font-size: calc(1.32rem * var(--product-scale)) !important;
+            line-height: 1.22;
+        }
+        body.aspect-9-16 .pinned-discount-badge {
+            font-size: calc(0.90rem * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .pinned-consumer-price {
+            font-size: calc(0.96rem * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .pinned-size-label {
+            font-size: calc(0.86rem * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .pinned-size-chip {
+            font-size: calc(0.92rem * var(--product-scale)) !important;
+            padding: calc(2px * var(--product-scale)) calc(8px * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .pinned-price-label {
+            font-size: calc(0.86rem * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .pinned-sell-price {
+            font-size: calc(1.48rem * var(--product-scale)) !important;
+        }
+        body.aspect-9-16 .bottom-ticker-bar {
+            left: 24px !important;
+            right: 24px !important;
+            top: 200px;
+            bottom: auto !important;
+            height: auto !important;
+            min-height: calc(88px * var(--ticker-scale)) !important;
+            padding: calc(16px * var(--ticker-scale)) calc(24px * var(--ticker-scale)) !important;
+            border-radius: 22px !important;
+            gap: calc(18px * var(--ticker-scale)) !important;
+        }
+        body.aspect-9-16 .ticker-badge {
+            font-size: calc(1.28rem * var(--ticker-scale)) !important;
+            padding: calc(10px * var(--ticker-scale)) calc(20px * var(--ticker-scale)) !important;
+            border-radius: 14px !important;
+        }
+        body.aspect-9-16 .ticker-message {
+            font-size: calc(1.42rem * var(--ticker-scale)) !important;
+            line-height: 1.38 !important;
+        }
+        body.aspect-9-16 .timer-banner {
+            top: 28px;
+            left: 24px !important;
+            right: 24px !important;
+            justify-content: space-between;
+            padding: 16px 28px 16px 20px !important;
+            border-radius: 60px !important;
+        }
+        body.aspect-9-16 .timer-badge {
+            font-size: 1.55rem !important;
+            padding: 10px 24px !important;
+        }
+        body.aspect-9-16 .timer-text {
+            font-size: 1.75rem !important;
+            flex: 1;
+            text-align: center;
+        }
+        body.aspect-9-16 .timer-digits {
+            font-size: 3.1rem !important;
+            padding: 8px 24px !important;
+        }
+        body.aspect-9-16 .toast-container {
+            top: 312px;
+            right: 24px !important;
+            max-width: calc(100% - 48px) !important;
+        }
+        body.aspect-9-16.has-custom-top-right-image .toast-container,
+        body.aspect-9-16.has-top-right-logo .toast-container {
+            top: 312px;
+        }
+
+        body.aspect-9-16 .custom-overlay-image-wrapper.pos-top-right {
+            top: 30px !important;
+            right: 24px !important;
+        }
+        body.aspect-9-16 .custom-overlay-image-wrapper.pos-top-left {
+            top: 30px !important;
+            left: 24px !important;
+        }
+        body.aspect-9-16 .custom-overlay-image-wrapper.pos-bottom-right {
+            bottom: 275px !important;
+            right: 24px !important;
+        }
+        body.aspect-9-16 .custom-overlay-image-wrapper.pos-bottom-left {
+            bottom: 275px !important;
+            left: 24px !important;
+        }
+        body.aspect-9-16 .custom-overlay-image-wrapper.pos-center {
+            top: 45% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+        }
+
+        /* 1:1 정방형 피드 라이브 */
+        body.aspect-1-1 .pinned-product-card {
+            width: calc(100% - 60px);
+            top: 25px;
+            bottom: auto;
+            left: 30px;
+            right: 30px;
+        }
+
+        /* 6-3. 📊 유튜브 송출 프레임(FPS/누적 프레임) & 실시간 음량(LED VU + 이퀄라이저) 오버레이 HUD */
+        .overlay-telemetry-hud {
+            position: absolute;
+            top: 24px;
+            right: 35px;
+            z-index: 820;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.92) 0%, rgba(10, 15, 30, 0.94) 100%);
+            border: 1.5px solid rgba(56, 189, 248, 0.55);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.2);
+            backdrop-filter: blur(12px);
+            font-variant-numeric: tabular-nums;
+            transition: top 0.18s ease, opacity 0.2s ease;
+        }
+
+        body.aspect-9-16 .overlay-telemetry-hud {
+            right: 24px;
+            padding: 9px 18px;
+        }
+
+        .ov-tel-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #94a3b8;
+            flex-shrink: 0;
+        }
+
+        .ov-tel-dot.live {
+            background: #ef4444;
+            box-shadow: 0 0 10px #ef4444;
+            animation: pulseGlow 1.1s infinite alternate;
+        }
+
+        .ov-tel-frames {
+            font-size: 0.92rem;
+            font-weight: 800;
+            color: #f8fafc;
+            white-space: nowrap;
+            letter-spacing: 0.2px;
+        }
+
+        .ov-tel-divider {
+            width: 1px;
+            height: 16px;
+            background: rgba(255, 255, 255, 0.18);
+        }
+
+        .ov-eq-bars {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 16px;
+            width: 18px;
+        }
+
+        .ov-eq-bar {
+            flex: 1;
+            height: 22%;
+            min-height: 3px;
+            border-radius: 2px;
+            background: #10b981;
+            transition: height 0.06s linear, background-color 0.1s ease;
+        }
+
+        .ov-vu-track {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            background: rgba(0, 0, 0, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 6px;
+            padding: 3px 4px;
+            height: 18px;
+            width: 112px;
+        }
+
+        .ov-vu-seg {
+            flex: 1;
+            height: 100%;
+            border-radius: 1.5px;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .ov-vu-seg.on-green {
+            background: #10b981;
+            box-shadow: 0 0 5px rgba(16, 185, 129, 0.65);
+        }
+
+        .ov-vu-seg.on-yellow {
+            background: #f59e0b;
+            box-shadow: 0 0 5px rgba(245, 158, 11, 0.7);
+        }
+
+        .ov-vu-seg.on-red {
+            background: #ef4444;
+            box-shadow: 0 0 7px rgba(239, 68, 68, 0.85);
+        }
+
+        .ov-vu-seg.peak-hold {
+            background: #ffffff !important;
+            box-shadow: 0 0 7px #ffffff !important;
+        }
+
+        .ov-tel-audio-txt {
+            font-size: 0.88rem;
+            font-weight: 800;
+            color: #94a3b8;
+            white-space: nowrap;
+            min-width: 58px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body id="overlayBody" class="bg-transparent">
+
+    <!-- 0. 배경 카메라 / 화면 캡처 피드 레이어 (2대 카메라 스위칭 & PIP/2분할 지원) -->
+    <video id="overlayCamVideo" autoplay playsinline muted class="cam-bg-layer" style="display:none;"></video>
+    <img id="overlayStreamImg" class="cam-bg-layer" style="display:none;" />
+    <img id="overlaySubStreamImg" class="cam-bg-layer" style="display:none; z-index:0;" />
+    <iframe id="overlayVdoIframe" class="cam-bg-layer" style="display:none; border:none; pointer-events:none;" allow="autoplay; fullscreen; picture-in-picture"></iframe>
+
+    <!-- 1. 타임어택 카운트다운 타이머 -->
+    <div class="timer-banner" id="timerBanner">
+        <div class="timer-badge">
+            <span>⚡ 타임특가</span>
+        </div>
+        <span class="timer-text" id="timerLabel">종료까지</span>
+        <span class="timer-digits" id="timerDigits">00:00</span>
+    </div>
+
+    <!-- 2. 실시간 구매 알림 토스트 컨테이너 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 3. 현재 방송 상품 핀 배너 (좌·중·우 꽉 찬 와이드 레이아웃) -->
+    <div class="pinned-product-card" id="pinnedCard">
+        <div class="pinned-header">
+            <span class="pinned-badge">
+                <span>📌 현재 방송 상품</span>
+            </span>
+            <span class="pinned-stock-tag" id="pinnedStock">잔여 30개</span>
+        </div>
+        <div class="pinned-content">
+            <img src="/static/uploads/products/default.png" alt="상품" class="pinned-img" id="pinnedImg" onerror="handleImgError(this)">
+            <div class="pinned-details">
+                <!-- 1번째 줄: 상품 이름 (1줄 고정) -->
+                <div class="pinned-name" id="pinnedName">1번 상품명</div>
+                <!-- 2·3번째 줄(좌) + 라이브 특가 가격 박스(우) 정렬 -->
+                <div class="pinned-bottom-row">
+                    <div class="pinned-sub-rows">
+                        <!-- 2번째 줄: 할인율 + 정가 (1줄 고정) -->
+                        <div class="pinned-meta-row" id="pinnedMetaRow">
+                            <span class="pinned-discount-badge" id="pinnedDiscount" style="display:none;">30% OFF</span>
+                            <span class="pinned-consumer-price" id="pinnedConsumerPrice">0원</span>
+                        </div>
+                        <!-- 3번째 줄: 옵션/사이즈 (1줄 고정) -->
+                        <div class="pinned-sizes-row" id="pinnedSizesRow" style="display:none;"></div>
+                    </div>
+                    <!-- 우측 가격 박스 (라벨 + 특가 2줄) -->
+                    <div class="pinned-price-box">
+                        <span class="pinned-price-label">⚡ 라이브 특가</span>
+                        <span class="pinned-sell-price" id="pinnedPrice">0원</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 실시간 방송 안내 띠자막 -->
+    <div class="bottom-ticker-bar" id="tickerBar">
+        <div class="ticker-badge">
+            <span>📢 LIVE 안내</span>
+        </div>
+        <div class="ticker-message" id="tickerMessage">
+            잠시 후 라이브 커머스 방송이 시작됩니다! 채팅창에 번호와 수량을 입력하여 간편하게 주문해 보세요.
+        </div>
+    </div>
+
+    <!-- 5. 럭키드로우 당첨자 발표 배너 -->
+    <div class="lottery-winner-banner" id="lotteryBanner">
+        <div class="lottery-title">🎉 [실시간 이벤트 당첨자 발표] 🎉</div>
+        <div class="lottery-winners-list" id="lotteryWinnersList"></div>
+        <div style="font-size:0.95rem; color:#cbd5e1; font-weight:600;">당첨되신 분들은 채팅창에 [당첨확인]을 남겨주세요!</div>
+    </div>
+
+    <!-- 6. 기타 외부 제작 이미지 / 로고 / 배너 오버레이 -->
+    <div class="custom-overlay-image-wrapper pos-top-right" id="customOverlayImageWrapper" style="display:none;">
+        <img id="customOverlayImage" src="" alt="Custom Overlay" />
+    </div>
+
+    <!-- 6-2. 🏷️ 우리 라이브커머스 전용 브랜드 로고 오버레이 -->
+    <div class="brand-logo-wrapper" id="brandLogoWrapper" style="display:none;">
+        <img id="brandLogoImg" src="" alt="Live Commerce Logo" style="display:none;" />
+        <div class="brand-logo-default-badge" id="brandLogoDefaultBadge">
+            <span class="brand-logo-dot"></span>
+            <span class="brand-logo-text" id="brandLogoTextSpan">LIVE COMMERCE</span>
+        </div>
+    </div>
+
+    <!-- 6-3. 📊 유튜브 송출 프레임(FPS) & 실시간 마이크 음량(VU) HUD 배지 -->
+    <div class="overlay-telemetry-hud" id="overlayTelemetryHud">
+        <span class="ov-tel-dot" id="ovTelDot"></span>
+        <span class="ov-tel-frames" id="ovTelFrameText">0.0 FPS · 0f</span>
+        <span class="ov-tel-divider"></span>
+        <div class="ov-eq-bars" id="ovTelEqBars">
+            <span class="ov-eq-bar"></span>
+            <span class="ov-eq-bar"></span>
+            <span class="ov-eq-bar"></span>
+            <span class="ov-eq-bar"></span>
+        </div>
+        <div class="ov-vu-track" id="ovTelVuTrack"></div>
+        <span class="ov-tel-audio-txt" id="ovTelAudioText">🎤 0%</span>
+    </div>
+
+    <!-- 7. 스마트폰 QR 코드 안내 모달 -->
+    <div id="qrModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:#0f172a; border:1px solid rgba(56,189,248,0.4); border-radius:20px; padding:24px; width:340px; text-align:center; color:#fff; display:flex; flex-direction:column; gap:12px; align-items:center;">
+            <h3 style="font-size:1.1rem; font-weight:900; color:#38bdf8; margin:0;">📱 스마트폰 카메라 무선 연결</h3>
+            <p style="font-size:0.8rem; color:#94a3b8; line-height:1.4; margin:0;">
+                스마트폰으로 아래 QR 코드를 스캔하세요.<br>
+                <span style="color:#38bdf8;">※ 최초 접속 시 [고급] ➔ [안전하지 않음으로 이동]을 1회 눌러주세요.</span>
+            </p>
+            <div style="background:#fff; padding:12px; border-radius:16px;">
+                <img id="qrImg" src="" alt="QR Code" style="width:180px; height:180px; display:block;" />
+            </div>
+            <div id="qrUrl" style="font-size:0.76rem; color:#cbd5e1; word-break:break-all; font-weight:700;">https://...</div>
+            <button type="button" onclick="closeQrModal()" style="width:100%; padding:10px; border-radius:12px; border:none; background:#0ea5e9; color:#fff; font-weight:800; cursor:pointer;">닫기</button>
+        </div>
+    </div>
+
+    <script>
+        const processedOrderIds = new Set();
+        let lastLotteryId = null;
+        let lastOverlayData = null;
+        let lastOverlayResetSeq = null;
+        const overlayWidgetVisibility = {
+            show_timer: true,
+            show_pinned: true,
+            show_toast: true,
+            show_ticker: true,
+            show_telemetry: true,
+            show_logo: false
+        };
+
+        const overlayTelemetryState = {
+            active: false,
+            currentFps: 0.0,
+            framesSent: 0,
+            targetLevelPct: 0.0,
+            targetPeakPct: 0.0,
+            displayLevelPct: 0.0,
+            displayPeakPct: 0.0
+        };
+
+        function initOverlayTelemetryHud() {
+            const track = document.getElementById('ovTelVuTrack');
+            if (track && track.children.length === 0) {
+                for (let i = 0; i < 12; i++) {
+                    const seg = document.createElement('span');
+                    seg.className = 'ov-vu-seg';
+                    track.appendChild(seg);
+                }
+            }
+            requestAnimationFrame(animateOverlayTelemetryHud);
+        }
+
+        function updateOverlayTelemetryData(rtmp) {
+            if (!rtmp) return;
+            overlayTelemetryState.active = !!rtmp.active;
+            overlayTelemetryState.currentFps = Number(rtmp.current_fps !== undefined ? rtmp.current_fps : (rtmp.active ? rtmp.fps : 0)) || 0;
+            overlayTelemetryState.framesSent = Number(rtmp.frames_sent || 0);
+            overlayTelemetryState.targetLevelPct = Number(rtmp.audio_level_pct || 0);
+            overlayTelemetryState.targetPeakPct = Number(rtmp.audio_peak_pct || 0);
+
+            const dot = document.getElementById('ovTelDot');
+            const frameTxt = document.getElementById('ovTelFrameText');
+            if (dot) {
+                dot.className = rtmp.active ? 'ov-tel-dot live' : 'ov-tel-dot';
+            }
+            if (frameTxt) {
+                const fpsStr = overlayTelemetryState.currentFps.toFixed(1);
+                const fStr = overlayTelemetryState.framesSent.toLocaleString();
+                frameTxt.innerText = `${fpsStr} FPS · ${fStr}f`;
+                frameTxt.style.color = rtmp.active ? '#f8fafc' : '#cbd5e1';
+            }
+        }
+
+        function animateOverlayTelemetryHud() {
+            const st = overlayTelemetryState;
+            if (st.targetLevelPct > st.displayLevelPct) {
+                st.displayLevelPct += (st.targetLevelPct - st.displayLevelPct) * 0.42;
+            } else {
+                st.displayLevelPct += (st.targetLevelPct - st.displayLevelPct) * 0.14;
+            }
+            if (st.displayLevelPct < 0.4) st.displayLevelPct = 0;
+
+            if (st.targetPeakPct >= st.displayPeakPct) {
+                st.displayPeakPct = st.targetPeakPct;
+            } else {
+                st.displayPeakPct = Math.max(st.displayLevelPct, st.displayPeakPct - 0.55);
+            }
+            if (st.displayPeakPct < 0.5) st.displayPeakPct = 0;
+
+            const lvl = st.displayLevelPct;
+            const pk = st.displayPeakPct;
+
+            const track = document.getElementById('ovTelVuTrack');
+            if (track) {
+                const segs = track.children;
+                const total = segs.length;
+                const activeCount = Math.round((Math.max(0, Math.min(100, lvl)) / 100) * total);
+                const peakIdx = pk >= 4 ? Math.min(total - 1, Math.max(0, Math.round((pk / 100) * total) - 1)) : -1;
+                for (let i = 0; i < total; i++) {
+                    let cls = 'ov-vu-seg';
+                    if (i < activeCount) {
+                        if (i >= 10) cls += ' on-red';
+                        else if (i >= 7) cls += ' on-yellow';
+                        else cls += ' on-green';
+                    } else if (i === peakIdx && peakIdx >= activeCount) {
+                        cls += ' peak-hold';
+                    }
+                    if (segs[i].className !== cls) segs[i].className = cls;
+                }
+            }
+
+            const eqWrap = document.getElementById('ovTelEqBars');
+            if (eqWrap) {
+                const bars = eqWrap.children;
+                const phase = performance.now() * 0.016;
+                for (let i = 0; i < bars.length; i++) {
+                    let hPct = 20;
+                    if (lvl > 1.0) {
+                        const wave = Math.sin(phase + i * 1.4) * 0.28 + 0.78;
+                        hPct = Math.max(20, Math.min(100, Math.round(lvl * wave)));
+                    }
+                    bars[i].style.height = hPct + '%';
+                    bars[i].style.backgroundColor = hPct >= 85 ? '#ef4444' : (hPct >= 65 ? '#f59e0b' : '#10b981');
+                }
+            }
+
+            const audioTxt = document.getElementById('ovTelAudioText');
+            if (audioTxt) {
+                const pct = Math.round(lvl);
+                audioTxt.innerText = `🎤 ${pct}%`;
+                audioTxt.style.color = pct >= 85 ? '#fca5a5' : (pct >= 65 ? '#fde047' : (pct > 1 ? '#34d399' : '#94a3b8'));
+            }
+
+            requestAnimationFrame(animateOverlayTelemetryHud);
+        }
+
+        // 1초 간격 오버레이 상태 동기화
+        async function fetchOverlayData() {
+            try {
+                const res = await fetch('/api/overlay/data');
+                if (!res.ok) return;
+                const data = await res.json();
+                lastOverlayData = data;
+
+                if (data.broadcast_reset_seq !== undefined) {
+                    if (lastOverlayResetSeq !== null && data.broadcast_reset_seq !== lastOverlayResetSeq) {
+                        resetOverlayForNewBroadcast(data.latest_reply, false);
+                    }
+                    lastOverlayResetSeq = data.broadcast_reset_seq;
+                }
+
+                if (data.settings) {
+                    applyOverlaySettings(data.settings, false);
+                }
+
+                if (data.youtube_rtmp) {
+                    updateOverlayTelemetryData(data.youtube_rtmp);
+                }
+
+                renderPinnedProduct(data.pinned_product);
+                renderTimer(data.timer);
+                renderTicker(data.latest_reply);
+                handleNewOrders(data.recent_orders);
+                handleLottery(data.latest_lottery);
+                updateTopWidgetsLayout();
+            } catch (err) {
+                // OBS 소스는 콘솔 에러 무시
+            }
+        }
+
+        // 상단 위젯(타이머 ➔ 현재 방송 상품 ➔ LIVE 안내 ➔ 텔레메트리 HUD ➔ 주문 토스트) 자동 스택 정렬 (채팅창 가림 & 위젯 간 겹침 원천 차단)
+        function updateTopWidgetsLayout() {
+            const body = document.getElementById('overlayBody');
+            const is916 = body && body.classList.contains('aspect-9-16');
+            const timer = document.getElementById('timerBanner');
+            const card = document.getElementById('pinnedCard');
+            const ticker = document.getElementById('tickerBar');
+            const telHud = document.getElementById('overlayTelemetryHud');
+            const toast = document.getElementById('toastContainer');
+
+            let topY = is916 ? 28 : 24;
+            const gap = is916 ? 14 : 12;
+
+            // 1) 타임특가 타이머 (활성 시 최상단)
+            if (timer && timer.style.display && timer.style.display !== 'none') {
+                timer.style.setProperty('top', topY + 'px', 'important');
+                const timerH = timer.offsetHeight || (is916 ? 86 : 68);
+                topY += timerH + gap;
+            }
+
+            // 2) 현재 방송 상품 핀 카드 (상단 배치 시)
+            const isBottomPos = !is916 && card && (card.classList.contains('pos-bottom-left') || card.classList.contains('pos-bottom-right'));
+            if (card && card.style.display && card.style.display !== 'none') {
+                if (!isBottomPos) {
+                    card.style.setProperty('top', topY + 'px', 'important');
+                    card.style.setProperty('bottom', 'auto', 'important');
+                    const cardH = card.offsetHeight || (is916 ? 158 : 142);
+                    topY += cardH + gap;
+                } else {
+                    card.style.setProperty('top', 'auto', 'important');
+                    card.style.setProperty('bottom', '35px', 'important');
+                }
+            }
+
+            // 3) LIVE 안내 자막 바 (상품 카드 바로 아래 상단 고정)
+            if (ticker && ticker.style.display !== 'none') {
+                ticker.style.setProperty('top', topY + 'px', 'important');
+                ticker.style.setProperty('bottom', 'auto', 'important');
+                const tickerH = ticker.offsetHeight || (is916 ? 98 : 86);
+                topY += tickerH + gap;
+            }
+
+            // 4) 유튜브 전송 프레임 & 실시간 음량(VU) HUD 배지
+            if (telHud && telHud.style.display !== 'none') {
+                const topCardVisible = !isBottomPos && card && card.style.display && card.style.display !== 'none';
+                const tickerVisible = ticker && ticker.style.display !== 'none';
+                if (is916 || topCardVisible || tickerVisible) {
+                    telHud.style.setProperty('top', topY + 'px', 'important');
+                    const telH = telHud.offsetHeight || 44;
+                    topY += telH + gap;
+                } else {
+                    let hudTop = 24;
+                    if (body.classList.contains('has-custom-top-right-image') || body.classList.contains('has-top-right-logo')) {
+                        hudTop = 105;
+                    }
+                    telHud.style.setProperty('top', hudTop + 'px', 'important');
+                }
+            }
+
+            // 5) 실시간 주문 접수 토스트
+            if (toast) {
+                let toastTop = topY;
+                if (!is916 && (body.classList.contains('has-custom-top-right-image') || body.classList.contains('has-top-right-logo'))) {
+                    toastTop = Math.max(toastTop, 165);
+                } else if (!is916 && telHud && telHud.style.display !== 'none') {
+                    toastTop = Math.max(toastTop, 82);
+                }
+                toast.style.setProperty('top', toastTop + 'px', 'important');
+            }
+        }
+
+        // 핀 상품 렌더링
+        function renderPinnedProduct(product) {
+            const card = document.getElementById('pinnedCard');
+            if (!overlayWidgetVisibility.show_pinned || !product || !product.name) {
+                card.style.display = 'none';
+                updateTopWidgetsLayout();
+                return;
+            }
+            card.style.display = 'block';
+            const pNum = product.num || product.db_id || 1;
+            document.getElementById('pinnedName').innerText = `${pNum}번. ${product.name}`;
+            document.getElementById('pinnedPrice').innerText = `${Number(product.price || 0).toLocaleString()}원`;
+
+            const consPrice = Number(product.consumer_price || 0);
+            const sellPrice = Number(product.price || 0);
+            const consElem = document.getElementById('pinnedConsumerPrice');
+            const discElem = document.getElementById('pinnedDiscount');
+
+            if (consPrice > sellPrice && sellPrice > 0) {
+                consElem.style.display = 'inline';
+                consElem.innerText = `정가 ${consPrice.toLocaleString()}원`;
+                const discountRate = Math.round(((consPrice - sellPrice) / consPrice) * 100);
+                discElem.style.display = 'inline-block';
+                discElem.innerText = `${discountRate}% OFF`;
+            } else {
+                consElem.style.display = 'none';
+                discElem.style.display = 'none';
+            }
+
+            // 사이즈 정보 배지 렌더링
+            const sizesRow = document.getElementById('pinnedSizesRow');
+            if (sizesRow) {
+                const opts = Array.isArray(product.options) ? product.options : [];
+                const sizeMap = new Map();
+                opts.forEach(o => {
+                    const sz = String(o.size || '').trim();
+                    if (!sz || sz === '-') return;
+                    const stk = Number(o.stock || 0);
+                    sizeMap.set(sz, (sizeMap.get(sz) || 0) + stk);
+                });
+
+                if (sizeMap.size > 0) {
+                    let html = '<span class="pinned-size-label">사이즈</span>';
+                    sizeMap.forEach((stk, sz) => {
+                        if (stk > 0) {
+                            html += `<span class="pinned-size-chip">${escapeHtml(sz)}</span>`;
+                        } else {
+                            html += `<span class="pinned-size-chip soldout">${escapeHtml(sz)}(품절)</span>`;
+                        }
+                    });
+                    sizesRow.innerHTML = html;
+                    sizesRow.style.display = 'flex';
+                } else {
+                    sizesRow.innerHTML = '';
+                    sizesRow.style.display = 'none';
+                }
+            }
+
+            if (product.image_url) {
+                document.getElementById('pinnedImg').src = product.image_url;
+            }
+
+            const stockElem = document.getElementById('pinnedStock');
+            const totalStock = Number(product.total_stock || 0);
+            stockElem.innerText = `잔여 ${totalStock}개`;
+            if (totalStock <= 5) {
+                stockElem.className = 'pinned-stock-tag low';
+                stockElem.innerText = totalStock === 0 ? '⚠️ 전량 품절' : `🔥 품절임박 (${totalStock}개)`;
+            } else {
+                stockElem.className = 'pinned-stock-tag';
+            }
+            updateTopWidgetsLayout();
+        }
+
+        // 타임어택 타이머 렌더링
+        function renderTimer(timer) {
+            const banner = document.getElementById('timerBanner');
+            if (!overlayWidgetVisibility.show_timer || !timer || !timer.active) {
+                banner.style.display = 'none';
+                banner.classList.remove('urgent');
+                updateTopWidgetsLayout();
+                return;
+            }
+            banner.style.display = 'flex';
+            document.getElementById('timerLabel').innerText = timer.label || '특가 마감까지';
+
+            const remainingSec = Math.max(0, Math.floor((new Date(timer.end_time).getTime() - Date.now()) / 1000));
+            const mm = String(Math.floor(remainingSec / 60)).padStart(2, '0');
+            const ss = String(remainingSec % 60).padStart(2, '0');
+            document.getElementById('timerDigits').innerText = `${mm}:${ss}`;
+
+            if (remainingSec > 0 && remainingSec <= 60) {
+                banner.classList.add('urgent');
+                banner.style.borderColor = '#fde047';
+            } else if (remainingSec === 0) {
+                banner.classList.remove('urgent');
+                banner.style.borderColor = '#94a3b8';
+            } else {
+                banner.classList.remove('urgent');
+                banner.style.borderColor = '#ff4d4f';
+            }
+            updateTopWidgetsLayout();
+        }
+
+        // 띠자막 렌더링 (오직 사용자가 지정한 LIVE 안내 문구만 표시)
+        function renderTicker(reply) {
+            const ticker = document.getElementById('tickerBar');
+            if (ticker) {
+                ticker.style.display = overlayWidgetVisibility.show_ticker ? 'flex' : 'none';
+            }
+            const msgElem = document.getElementById('tickerMessage');
+            if (reply && reply.trim() && msgElem) {
+                msgElem.innerText = reply.trim();
+            }
+            updateTopWidgetsLayout();
+        }
+
+        // 실시간 주문 토스트 팝업 발행
+        function handleNewOrders(orders) {
+            const container = document.getElementById('toastContainer');
+            if (container) {
+                container.style.display = overlayWidgetVisibility.show_toast ? 'flex' : 'none';
+            }
+            if (!orders || !orders.length) return;
+            if (!overlayWidgetVisibility.show_toast) {
+                orders.forEach(ord => processedOrderIds.add(String(ord.id)));
+                return;
+            }
+
+            orders.forEach(ord => {
+                const oid = String(ord.id);
+                if (processedOrderIds.has(oid)) return;
+                processedOrderIds.add(oid);
+
+                if (processedOrderIds.size > 200) {
+                    const first = processedOrderIds.values().next().value;
+                    processedOrderIds.delete(first);
+                }
+
+                // 토스트 엘리먼트 생성
+                const toast = document.createElement('div');
+                toast.className = 'purchase-toast';
+
+                const pLower = (ord.platform || 'live').toLowerCase();
+                const iconMap = { youtube: '🔴', instagram: '📸', tiktok: '🎵' };
+                const iconChar = iconMap[pLower] || '🛒';
+
+                const safeBuyer = escapeHtml(ord.buyer_name || '시청자');
+                const safeItem = escapeHtml(ord.item_name || '상품');
+                const optStr = (ord.color !== '-' || ord.size !== '-') ? `(${escapeHtml(ord.color || '')}/${escapeHtml(ord.size || '')})` : '';
+
+                toast.innerHTML = `
+                    <div class="toast-platform-icon ${pLower}">${iconChar}</div>
+                    <div class="toast-body">
+                        <div class="toast-title">
+                            <span>🎉 실시간 주문 접수 완료!</span>
+                            <span style="color:#94a3b8; font-size:0.75rem;">방금 전</span>
+                        </div>
+                        <div class="toast-desc">
+                            <strong>@${safeBuyer}</strong>님이 <strong>${safeItem} ${optStr}</strong> ${ord.quantity}개를 주문하셨습니다!
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(toast);
+
+                // 6초 후 부드럽게 퇴장
+                setTimeout(() => {
+                    toast.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(60px)';
+                    setTimeout(() => toast.remove(), 450);
+                }, 6000);
+            });
+        }
+
+        // 럭키드로우 당첨자 발표
+        function handleLottery(lottery) {
+            if (!lottery || !lottery.id) return;
+            if (lastLotteryId === lottery.id) return;
+            lastLotteryId = lottery.id;
+
+            const banner = document.getElementById('lotteryBanner');
+            const listElem = document.getElementById('lotteryWinnersList');
+            listElem.innerHTML = '';
+
+            const winners = lottery.winners || [];
+            winners.forEach(w => {
+                const chip = document.createElement('span');
+                chip.className = 'winner-chip';
+                const nameStr = (typeof w === 'object' && w !== null) ? (w.name || w.user || w.username || w.buyer_name || '당첨자') : w;
+                chip.innerText = `@${nameStr}`;
+                listElem.appendChild(chip);
+            });
+
+            banner.style.display = 'flex';
+
+            // 10초 후 배너 자동 닫기
+            setTimeout(() => {
+                banner.style.display = 'none';
+            }, 10000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 루프 시작
+        initOverlayTelemetryHud();
+        setInterval(fetchOverlayData, 1000);
+        fetchOverlayData();
+
+        // ==========================================
+        // 📷 오버레이 시뮬레이터 카메라 & 배경 제어 엔진
+        // ==========================================
+        let isCamActive = false;
+        let isCamMirrored = false;
+        let activeCamStream = null;
+        let currentCamSource = 'webcam'; // 'webcam' or 'mobile'
+        let currentBgMode = 'transparent';
+
+        // OBS 브라우저 소스 환경 자동 감지 (실제 방송 송출 중일 때 툴바 숨김)
+        if (window.obsstudio) {
+            const tb = document.getElementById('simToolbar');
+            if (tb) tb.style.display = 'none';
+        }
+
+        // 단축키: 'C' (카메라 토글), 'H' (툴바 토글)
+        window.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'c' || e.key === 'C' || e.key === 'ㅊ') {
+                toggleCamPreview();
+            } else if (e.key === 'h' || e.key === 'H' || e.key === 'ㅗ') {
+                const tb = document.getElementById('simToolbar');
+                if (tb) tb.style.display = tb.style.display === 'none' ? 'flex' : 'none';
+            }
+        });
+
+        function toggleSimToolbar(show) {
+            const tb = document.getElementById('simToolbar');
+            if (tb) tb.style.display = show ? 'flex' : 'none';
+        }
+
+        async function toggleCamPreview() {
+            isCamActive = !isCamActive;
+            const btn = document.getElementById('btnToggleCam');
+            const bgSelect = document.getElementById('bgModeSelect');
+
+            if (isCamActive) {
+                btn.classList.add('active');
+                btn.innerText = '📷 카메라 끄기';
+                bgSelect.value = 'camera';
+                changeBgMode();
+                await startSelectedCamera();
+            } else {
+                btn.classList.remove('active');
+                btn.innerText = '📷 카메라 켜기';
+                stopAllCameras();
+                bgSelect.value = 'transparent';
+                changeBgMode();
+            }
+        }
+
+        async function changeCamSource() {
+            const select = document.getElementById('camSourceSelect');
+            currentCamSource = select.value;
+            const btnQr = document.getElementById('btnShowQr');
+
+            if (currentCamSource === 'mobile') {
+                btnQr.style.display = 'inline-block';
+                openQrModal();
+            } else {
+                btnQr.style.display = 'none';
+            }
+
+            if (isCamActive) {
+                await startSelectedCamera();
+            }
+        }
+
+        async function startSelectedCamera() {
+            stopAllCameras();
+            const videoElem = document.getElementById('overlayCamVideo');
+            const streamImg = document.getElementById('overlayStreamImg');
+
+            if (currentCamSource === 'webcam') {
+                // 1. PC 웹캠
+                streamImg.style.display = 'none';
+                try {
+                    activeCamStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+                        audio: false
+                    });
+                    videoElem.srcObject = activeCamStream;
+                    videoElem.style.display = 'block';
+                    await videoElem.play();
+                } catch(e) {
+                    alert('웹캠 접근 권한 오류: ' + e.message);
+                    toggleCamPreview();
+                }
+            } else if (currentCamSource === 'mobile') {
+                // 2. 스마트폰 무선 카메라 피드 (WebRTC P2P 초저지연 + MJPEG 폴백)
+                videoElem.style.display = 'none';
+                streamImg.src = '/api/camera/stream?t=' + Date.now();
+                streamImg.style.display = 'block';
+                isMobileOverlayActive = true;
+                connectOverlayMobileWebRtc();
+            }
+        }
+
+        // ==========================================
+        // 🚀 세팅 스튜디오(obs_studio.html)와의 0ms 실시간 동기화 파이프라인
+        // ==========================================
+        const syncChannel = new BroadcastChannel('obs_overlay_sync');
+
+        syncChannel.onmessage = (e) => {
+            const data = e.data || {};
+            console.log('[OBS Overlay Sync 수신]', data);
+
+            switch (data.type) {
+                case 'BG_MODE_CHANGE':
+                    applyBgMode(data.mode);
+                    break;
+                case 'PIN_PRODUCT':
+                    fetchOverlayData();
+                    break;
+                case 'TIMER_CHANGE':
+                    fetchOverlayData();
+                    break;
+                case 'TICKER_CHANGE':
+                    if (data.message) {
+                        const msgEl = document.getElementById('tickerMessage');
+                        if (msgEl) msgEl.innerText = data.message;
+                    }
+                    break;
+                case 'SETTINGS_UPDATE':
+                    applyOverlaySettings(data.settings);
+                    break;
+                case 'WEBCAM_TOGGLE':
+                    handleWebcamToggle(data.active);
+                    break;
+                case 'MOBILE_CAM_TOGGLE':
+                    handleMobileCamToggle(data.active);
+                    break;
+                case 'MIRROR_TOGGLE':
+                    handleMirrorToggle(data.isMirrored);
+                    break;
+                case 'SCREEN_SHARE_ACTIVE':
+                    if (data.active) {
+                        applyBgMode('screen');
+                    } else {
+                        applyBgMode('transparent');
+                    }
+                    break;
+                case 'NEW_BROADCAST_RESET':
+                    resetOverlayForNewBroadcast(data.welcome_ticker);
+                    break;
+                case 'YT_TELEMETRY_UPDATE':
+                    if (data.rtmp) updateOverlayTelemetryData(data.rtmp);
+                    break;
+                case 'VDO_NINJA_EMBED':
+                    handleVdoNinjaEmbed(data.embed_active, data.view_url);
+                    break;
+                case 'CAMERA_SWITCHER_UPDATE':
+                    applyOverlayCameraSwitcher(data.switcher);
+                    break;
+            }
+        };
+
+        // 부모 창(스튜디오 iframe) 직통 postMessage 수신 지원
+        window.addEventListener('message', (e) => {
+            const data = e.data || {};
+            if (data.type === 'PIN_PRODUCT') {
+                fetchOverlayData();
+            } else if (data.type === 'SETTINGS_UPDATE') {
+                applyOverlaySettings(data.settings);
+            } else if (data.type === 'BG_MODE_CHANGE') {
+                applyBgMode(data.mode);
+            } else if (data.type === 'TICKER_CHANGE') {
+                if (data.message) {
+                    const msgEl = document.getElementById('tickerMessage');
+                    if (msgEl) msgEl.innerText = data.message;
+                }
+            } else if (data.type === 'TIMER_CHANGE') {
+                fetchOverlayData();
+            } else if (data.type === 'NEW_BROADCAST_RESET') {
+                resetOverlayForNewBroadcast(data.welcome_ticker);
+            } else if (data.type === 'YT_TELEMETRY_UPDATE') {
+                if (data.rtmp) updateOverlayTelemetryData(data.rtmp);
+            } else if (data.type === 'VDO_NINJA_EMBED') {
+                handleVdoNinjaEmbed(data.embed_active, data.view_url);
+            }
+        });
+
+        function resetOverlayForNewBroadcast(welcomeTicker, shouldRefetch = true) {
+            processedOrderIds.clear();
+            lastLotteryId = null;
+            const toastContainer = document.getElementById('toastContainer');
+            if (toastContainer) toastContainer.innerHTML = '';
+            const pinnedCard = document.getElementById('pinnedCard');
+            if (pinnedCard) pinnedCard.style.display = 'none';
+            const timerBanner = document.getElementById('timerBanner');
+            if (timerBanner) {
+                timerBanner.style.display = 'none';
+                timerBanner.classList.remove('urgent');
+            }
+            const lotteryBanner = document.getElementById('lotteryBanner');
+            if (lotteryBanner) lotteryBanner.style.display = 'none';
+            const tickerMsg = document.getElementById('tickerMessage');
+            if (tickerMsg) {
+                tickerMsg.innerText = welcomeTicker || '잠시 후 라이브 커머스 방송이 시작됩니다! 채팅창에 번호와 수량을 입력하여 간편하게 주문해 보세요.';
+            }
+            if (shouldRefetch) {
+                fetchOverlayData();
+            }
+        }
+
+        window.fetchOverlayData = fetchOverlayData;
+
+        function applyBgMode(mode) {
+            const body = document.getElementById('overlayBody');
+            body.classList.remove('bg-transparent', 'bg-chromakey', 'bg-dark', 'bg-screen');
+            if (new URLSearchParams(window.location.search).get('mode') === 'monitor') {
+                body.classList.add('monitor-mode', 'bg-transparent');
+                return;
+            }
+            body.classList.add(`bg-${mode || 'transparent'}`);
+
+            if (mode === 'transparent') {
+                stopAllVideoFeeds();
+            }
+        }
+
+        function applyOverlaySettings(s, reRenderWidgets = true) {
+            if (!s) return;
+            const body = document.getElementById('overlayBody');
+            const card = document.getElementById('pinnedCard');
+            const timer = document.getElementById('timerBanner');
+            const toast = document.getElementById('toastContainer');
+            const ticker = document.getElementById('tickerBar');
+
+            // 1. 위치 설정
+            if (s.product_position && card) {
+                card.classList.remove('pos-bottom-left', 'pos-top-left', 'pos-bottom-right');
+                card.classList.add(`pos-${s.product_position}`);
+            }
+
+            // 2. 테마 및 텍스트·배너 크기 배율 설정
+            if (s.theme) {
+                body.classList.remove('theme-neon-dark', 'theme-modern-white', 'theme-vivid-pink');
+                body.classList.add(`theme-${s.theme}`);
+            }
+            if (s.product_scale !== undefined) {
+                const pScale = Math.max(0.75, Math.min(2.0, Number(s.product_scale || 125) / 100));
+                document.documentElement.style.setProperty('--product-scale', pScale.toFixed(2));
+            }
+            if (s.ticker_scale !== undefined) {
+                const tScale = Math.max(0.75, Math.min(2.0, Number(s.ticker_scale || 120) / 100));
+                document.documentElement.style.setProperty('--ticker-scale', tScale.toFixed(2));
+            }
+
+            // 3. 위젯 표시/숨김 상태 갱신 및 즉시 반영
+            if (s.show_timer !== undefined) {
+                overlayWidgetVisibility.show_timer = !!s.show_timer;
+                if (!overlayWidgetVisibility.show_timer && timer) {
+                    timer.style.display = 'none';
+                } else if (reRenderWidgets && lastOverlayData) {
+                    renderTimer(lastOverlayData.timer);
+                }
+            }
+            if (s.show_toast !== undefined) {
+                overlayWidgetVisibility.show_toast = !!s.show_toast;
+                if (toast) toast.style.display = overlayWidgetVisibility.show_toast ? 'flex' : 'none';
+            }
+            if (s.show_ticker !== undefined) {
+                overlayWidgetVisibility.show_ticker = !!s.show_ticker;
+                if (ticker) ticker.style.display = overlayWidgetVisibility.show_ticker ? 'flex' : 'none';
+                updateTopWidgetsLayout();
+            }
+            if (s.show_pinned !== undefined) {
+                overlayWidgetVisibility.show_pinned = !!s.show_pinned;
+                if (!overlayWidgetVisibility.show_pinned && card) {
+                    card.style.display = 'none';
+                    updateTopWidgetsLayout();
+                } else if (reRenderWidgets) {
+                    if (lastOverlayData) {
+                        renderPinnedProduct(lastOverlayData.pinned_product);
+                    } else {
+                        fetchOverlayData();
+                    }
+                }
+            }
+            const telHud = document.getElementById('overlayTelemetryHud');
+            if (s.show_telemetry !== undefined) {
+                overlayWidgetVisibility.show_telemetry = !!s.show_telemetry;
+                if (telHud) {
+                    telHud.style.display = overlayWidgetVisibility.show_telemetry ? 'flex' : 'none';
+                }
+            }
+
+            // 4. 화면 비율 설정
+            if (s.aspect_ratio) {
+                const ratioClass = 'aspect-' + String(s.aspect_ratio).replace(':', '-');
+                body.classList.remove('aspect-16-9', 'aspect-9-16', 'aspect-1-1', 'aspect-4-3', 'aspect-custom');
+                body.classList.add(ratioClass);
+            }
+
+            // 5. 기타 (외부 이미지 오버레이) 설정
+            const customImgWrap = document.getElementById('customOverlayImageWrapper');
+            const customImg = document.getElementById('customOverlayImage');
+            if (customImgWrap && customImg) {
+                if (s.show_custom_image && s.custom_image_url) {
+                    if (customImg.src !== s.custom_image_url && !customImg.src.endsWith(s.custom_image_url)) {
+                        customImg.src = s.custom_image_url;
+                    }
+                    customImgWrap.style.display = 'flex';
+                    const pos = s.custom_image_pos || 'top-right';
+                    customImgWrap.className = 'custom-overlay-image-wrapper pos-' + pos;
+                    if (pos === 'fullscreen') {
+                        customImg.style.width = '100%';
+                    } else {
+                        customImg.style.width = (s.custom_image_width || 250) + 'px';
+                    }
+                    const op = (s.custom_image_opacity !== undefined ? s.custom_image_opacity : 100) / 100;
+                    customImgWrap.style.opacity = op;
+                    body.classList.toggle('has-custom-top-right-image', pos === 'top-right');
+                } else {
+                    customImgWrap.style.display = 'none';
+                    body.classList.remove('has-custom-top-right-image');
+                }
+            }
+
+            // 6. 🏷️ 우리 라이브커머스 전용 브랜드 로고 설정
+            const logoWrap = document.getElementById('brandLogoWrapper');
+            const logoImg = document.getElementById('brandLogoImg');
+            const logoBadge = document.getElementById('brandLogoDefaultBadge');
+            const logoTextSpan = document.getElementById('brandLogoTextSpan');
+            if (logoWrap) {
+                if (s.show_logo !== undefined) {
+                    overlayWidgetVisibility.show_logo = !!s.show_logo;
+                }
+                const logoUrl = (s.logo_url || '').trim();
+                const logoText = (s.logo_text !== undefined ? String(s.logo_text).trim() : 'LIVE COMMERCE') || 'LIVE COMMERCE';
+                const logoPos = s.logo_pos || 'top-right';
+                const logoWidth = Number(s.logo_width || 200);
+                const offsetX = s.logo_offset_x !== undefined ? Number(s.logo_offset_x) : 35;
+                const offsetY = s.logo_offset_y !== undefined ? Number(s.logo_offset_y) : 30;
+                const logoOpacity = (s.logo_opacity !== undefined ? Number(s.logo_opacity) : 100) / 100;
+
+                if (overlayWidgetVisibility.show_logo) {
+                    logoWrap.style.display = 'flex';
+                    logoWrap.style.width = logoWidth + 'px';
+                    logoWrap.style.opacity = logoOpacity;
+
+                    if (logoUrl) {
+                        if (logoImg.getAttribute('src') !== logoUrl) {
+                            logoImg.src = logoUrl;
+                        }
+                        logoImg.style.display = 'block';
+                        if (logoBadge) logoBadge.style.display = 'none';
+                    } else {
+                        logoImg.style.display = 'none';
+                        if (logoBadge) {
+                            logoBadge.style.display = 'flex';
+                            const scaleFont = Math.max(0.75, Math.min(2.2, logoWidth / 190));
+                            if (logoTextSpan) {
+                                logoTextSpan.innerText = logoText;
+                                logoTextSpan.style.fontSize = (1.15 * scaleFont).toFixed(2) + 'rem';
+                            }
+                        }
+                    }
+
+                    // 위치 및 세부 여백(X/Y) 적용
+                    logoWrap.style.top = 'auto';
+                    logoWrap.style.bottom = 'auto';
+                    logoWrap.style.left = 'auto';
+                    logoWrap.style.right = 'auto';
+                    logoWrap.style.transform = 'none';
+
+                    if (logoPos === 'top-right') {
+                        logoWrap.style.top = offsetY + 'px';
+                        logoWrap.style.right = offsetX + 'px';
+                    } else if (logoPos === 'top-left') {
+                        logoWrap.style.top = offsetY + 'px';
+                        logoWrap.style.left = offsetX + 'px';
+                    } else if (logoPos === 'top-center') {
+                        logoWrap.style.top = offsetY + 'px';
+                        logoWrap.style.left = '50%';
+                        logoWrap.style.transform = `translateX(calc(-50% + ${offsetX - 35}px))`;
+                    } else if (logoPos === 'bottom-right') {
+                        logoWrap.style.bottom = (offsetY + 65) + 'px';
+                        logoWrap.style.right = offsetX + 'px';
+                    } else if (logoPos === 'bottom-left') {
+                        logoWrap.style.bottom = (offsetY + 65) + 'px';
+                        logoWrap.style.left = offsetX + 'px';
+                    } else if (logoPos === 'center') {
+                        logoWrap.style.top = `calc(50% + ${offsetY - 30}px)`;
+                        logoWrap.style.left = `calc(50% + ${offsetX - 35}px)`;
+                        logoWrap.style.transform = 'translate(-50%, -50%)';
+                    }
+
+                    body.classList.toggle('has-top-right-logo', logoPos === 'top-right');
+                } else {
+                    logoWrap.style.display = 'none';
+                    body.classList.remove('has-top-right-logo');
+                }
+            }
+            updateTopWidgetsLayout();
+        }
+
+        function handleImgError(img) {
+            if (!img) return;
+            img.onerror = null;
+            img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23334155'/%3E%3Ctext x='50' y='55' fill='%2394a3b8' text-anchor='middle' font-size='14' font-family='sans-serif'%3E상품%3C/text%3E%3C/svg%3E";
+        }
+
+        // 비디오 소스 제어 (activeCamStream은 상단 691줄에서 선언됨)
+        async function handleWebcamToggle(active) {
+            const videoElem = document.getElementById('overlayCamVideo');
+            const streamImg = document.getElementById('overlayStreamImg');
+
+            if (active) {
+                try {
+                    activeCamStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: 1920, height: 1080 },
+                        audio: false
+                    });
+                    videoElem.srcObject = activeCamStream;
+                    videoElem.style.display = 'block';
+                    streamImg.style.display = 'none';
+                    applyBgMode('screen');
+                } catch (e) {
+                    console.warn('OBS 오버레이 웹캠 획득 실패:', e);
+                }
+            } else {
+                stopAllVideoFeeds();
+            }
+        }
+
+        const isMonitorIframe = new URLSearchParams(window.location.search).get('mode') === 'monitor';
+        if (isMonitorIframe) {
+            document.getElementById('overlayBody')?.classList.add('monitor-mode', 'bg-transparent');
+        }
+        let isMobileOverlayActive = false;
+        let overlayWebRtcPc = null;
+        let overlayWebRtcRetryTimer = null;
+        let overlayWebRtcAttempts = 0;
+        const MAX_OVERLAY_WEBRTC_ATTEMPTS = 2;
+
+        function stopOverlayMobileWebRtc() {
+            if (overlayWebRtcRetryTimer) {
+                clearTimeout(overlayWebRtcRetryTimer);
+                overlayWebRtcRetryTimer = null;
+            }
+            if (overlayWebRtcPc) {
+                try { overlayWebRtcPc.close(); } catch (e) {}
+                overlayWebRtcPc = null;
+            }
+        }
+
+        async function connectOverlayMobileWebRtc() {
+            stopOverlayMobileWebRtc();
+            if (isMonitorIframe || !isMobileOverlayActive || !window.RTCPeerConnection) return;
+            if (overlayWebRtcAttempts >= MAX_OVERLAY_WEBRTC_ATTEMPTS) return;
+            overlayWebRtcAttempts++;
+
+            const videoElem = document.getElementById('overlayCamVideo');
+            const streamImg = document.getElementById('overlayStreamImg');
+            const peerId = 'overlay_' + Math.random().toString(36).substring(2, 9);
+
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                });
+                overlayWebRtcPc = pc;
+                pc.addTransceiver('video', { direction: 'recvonly' });
+
+                let connected = false;
+                const activateWebRtcVideoIfReady = () => {
+                    if (!isMobileOverlayActive || overlayWebRtcPc !== pc || connected) return;
+                    if (videoElem.videoWidth > 0 && videoElem.readyState >= 2) {
+                        connected = true;
+                        overlayWebRtcAttempts = 0;
+                        videoElem.style.display = 'block';
+                        streamImg.src = '';
+                        streamImg.style.display = 'none';
+                    }
+                };
+
+                pc.ontrack = (event) => {
+                    if (!isMobileOverlayActive) return;
+                    if (event.streams && event.streams[0]) {
+                        videoElem.srcObject = event.streams[0];
+                        videoElem.onloadeddata = activateWebRtcVideoIfReady;
+                        videoElem.onplaying = activateWebRtcVideoIfReady;
+                        videoElem.play().then(activateWebRtcVideoIfReady).catch(() => {});
+                    }
+                };
+
+                pc.onconnectionstatechange = () => {
+                    if (!isMobileOverlayActive) return;
+                    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                        stopOverlayMobileWebRtc();
+                        videoElem.style.display = 'none';
+                        if (!streamImg.src || !streamImg.src.includes('/api/camera/stream')) {
+                            streamImg.src = '/api/camera/stream?t=' + Date.now();
+                        }
+                        streamImg.style.display = 'block';
+                        if (overlayWebRtcAttempts < MAX_OVERLAY_WEBRTC_ATTEMPTS) {
+                            overlayWebRtcRetryTimer = setTimeout(connectOverlayMobileWebRtc, 3000);
+                        }
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                await new Promise((resolve) => {
+                    if (pc.iceGatheringState === 'complete') return resolve();
+                    const timer = setTimeout(resolve, 1200);
+                    pc.onicegatheringstatechange = () => {
+                        if (pc.iceGatheringState === 'complete') {
+                            clearTimeout(timer);
+                            resolve();
+                        }
+                    };
+                });
+
+                if (!isMobileOverlayActive || overlayWebRtcPc !== pc) return;
+
+                await fetch('/api/camera/webrtc/offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        peer_id: peerId,
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type
+                    })
+                });
+
+                const startWait = Date.now();
+                const pollAnswer = async () => {
+                    if (!isMobileOverlayActive || overlayWebRtcPc !== pc) return;
+                    if (Date.now() - startWait > 8000) {
+                        if (!connected) {
+                            stopOverlayMobileWebRtc();
+                            if (isMobileOverlayActive && overlayWebRtcAttempts < MAX_OVERLAY_WEBRTC_ATTEMPTS) {
+                                overlayWebRtcRetryTimer = setTimeout(connectOverlayMobileWebRtc, 3000);
+                            }
+                        }
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/camera/webrtc/answer/' + peerId);
+                        const data = await res.json();
+                        if (data.status === 'answered' && data.sdp) {
+                            await pc.setRemoteDescription(new RTCSessionDescription({
+                                type: data.type || 'answer',
+                                sdp: data.sdp
+                            }));
+                            setTimeout(() => {
+                                if (overlayWebRtcPc === pc && !connected) {
+                                    stopOverlayMobileWebRtc();
+                                }
+                            }, 6000);
+                            return;
+                        }
+                    } catch (e) {}
+                    overlayWebRtcRetryTimer = setTimeout(pollAnswer, 600);
+                };
+                pollAnswer();
+            } catch (e) {
+                stopOverlayMobileWebRtc();
+            }
+        }
+
+        function handleMobileCamToggle(active) {
+            if (isMonitorIframe) {
+                // 스튜디오 내부 모니터 iframe에서는 부모 창(#monitorStreamImg)이 비디오를 표시하므로 중복 스트림을 열지 않음
+                return;
+            }
+            const videoElem = document.getElementById('overlayCamVideo');
+            const streamImg = document.getElementById('overlayStreamImg');
+
+            if (active) {
+                isMobileOverlayActive = true;
+                overlayWebRtcAttempts = 0;
+                streamImg.src = '/api/camera/stream?t=' + Date.now();
+                streamImg.style.display = 'block';
+                videoElem.style.display = 'none';
+                applyBgMode('screen');
+                connectOverlayMobileWebRtc();
+            } else {
+                stopAllVideoFeeds();
+            }
+        }
+
+        function handleMirrorToggle(mirrored) {
+            const videoElem = document.getElementById('overlayCamVideo');
+            const streamImg = document.getElementById('overlayStreamImg');
+            videoElem.classList.toggle('mirrored', !!mirrored);
+            streamImg.classList.toggle('mirrored', !!mirrored);
+        }
+
+        function stopAllCameras() {
+            stopAllVideoFeeds();
+        }
+
+        async function openQrModal() {
+            try {
+                const res = await fetch('/api/camera/host-info');
+                const data = await res.json();
+                const urlEl = document.getElementById('qrUrl');
+                const imgEl = document.getElementById('qrImg');
+                const modalEl = document.getElementById('qrModal');
+                if (urlEl) urlEl.innerText = data.cam_url;
+                if (imgEl) imgEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.cam_url)}`;
+                if (modalEl) modalEl.style.display = 'flex';
+            } catch (e) {
+                console.warn('QR 코드 로드 실패:', e);
+            }
+        }
+
+        function closeQrModal() {
+            const modalEl = document.getElementById('qrModal');
+            if (modalEl) modalEl.style.display = 'none';
+        }
+
+        function handleVdoNinjaEmbed(active, viewUrl) {
+            if (isMonitorIframe) return;
+            const vdoIframe = document.getElementById('overlayVdoIframe');
+            if (!vdoIframe) return;
+            if (active && viewUrl) {
+                if (vdoIframe.src !== viewUrl) {
+                    vdoIframe.src = viewUrl;
+                }
+                vdoIframe.style.display = 'block';
+                applyBgMode('screen');
+            } else {
+                vdoIframe.style.display = 'none';
+                vdoIframe.src = '';
+            }
+        }
+
+        function stopAllVideoFeeds() {
+            isMobileOverlayActive = false;
+            stopOverlayMobileWebRtc();
+            const videoElem = document.getElementById('overlayCamVideo');
+            const streamImg = document.getElementById('overlayStreamImg');
+            const vdoIframe = document.getElementById('overlayVdoIframe');
+
+            if (activeCamStream) {
+                activeCamStream.getTracks().forEach(t => t.stop());
+                activeCamStream = null;
+            }
+            videoElem.srcObject = null;
+            videoElem.style.display = 'none';
+            streamImg.src = '';
+            streamImg.style.display = 'none';
+            if (vdoIframe) {
+                vdoIframe.style.display = 'none';
+                vdoIframe.src = '';
+            }
+        }
+
+        // 초기 서버 설정 로드 및 활성 모바일 카메라 자동 감지
+        async function loadServerSettings() {
+            try {
+                const res = await fetch('/api/overlay/settings');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.settings) {
+                    applyOverlaySettings(data.settings);
+                    if (isMobileOverlayActive || activeCamStream) {
+                        applyBgMode('screen');
+                    } else if (data.settings.bg_mode) {
+                        applyBgMode(data.settings.bg_mode);
+                    }
+                }
+                if (!isMonitorIframe) {
+                    const vdoRes = await fetch('/api/overlay/vdo-ninja');
+                    if (vdoRes.ok) {
+                        const vdoData = await vdoRes.json();
+                        if (vdoData.embed_active && vdoData.view_url) {
+                            handleVdoNinjaEmbed(true, vdoData.view_url);
+                        } else if (vdoData.receiver && vdoData.receiver.connected && !isMobileOverlayActive && !activeCamStream) {
+                            handleMobileCamToggle(true);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('초기 설정 로드 실패:', e);
+            }
+        }
+
+        let overlayLastCamActive = false;
+        let overlayLastFrameSeq = 0;
+        let overlaySwitcherState = { active_main_cam: 1, layout_mode: 'single', pip_position: 'bottom-right' };
+
+        function applyOverlayCameraSwitcher(sw) {
+            if (!sw || isMonitorIframe) return;
+            overlaySwitcherState = Object.assign({}, overlaySwitcherState, sw);
+            const streamImg = document.getElementById('overlayStreamImg');
+            const subImg = document.getElementById('overlaySubStreamImg');
+            if (!streamImg || !subImg || !isMobileOverlayActive) return;
+
+            const activeCam = Number(overlaySwitcherState.active_main_cam || 1);
+            const subCam = activeCam === 1 ? 2 : 1;
+            const layout = overlaySwitcherState.layout_mode || 'single';
+
+            if (layout === 'split_v') {
+                streamImg.style.top = '0'; streamImg.style.left = '0';
+                streamImg.style.width = '100vw'; streamImg.style.height = '50vh';
+                streamImg.src = '/api/camera/stream?cam=1&t=' + Date.now();
+                subImg.style.display = 'block';
+                subImg.style.top = '50vh'; subImg.style.left = '0';
+                subImg.style.width = '100vw'; subImg.style.height = '50vh';
+                subImg.style.borderRadius = '0'; subImg.style.border = 'none';
+                subImg.style.borderTop = '3px solid #38bdf8';
+                subImg.src = '/api/camera/stream?cam=2&t=' + Date.now();
+            } else if (layout === 'split_h') {
+                streamImg.style.top = '0'; streamImg.style.left = '0';
+                streamImg.style.width = '50vw'; streamImg.style.height = '100vh';
+                streamImg.src = '/api/camera/stream?cam=1&t=' + Date.now();
+                subImg.style.display = 'block';
+                subImg.style.top = '0'; subImg.style.left = '50vw';
+                subImg.style.width = '50vw'; subImg.style.height = '100vh';
+                subImg.style.borderRadius = '0'; subImg.style.border = 'none';
+                subImg.style.borderLeft = '3px solid #38bdf8';
+                subImg.src = '/api/camera/stream?cam=2&t=' + Date.now();
+            } else {
+                streamImg.style.top = '0'; streamImg.style.left = '0';
+                streamImg.style.width = '100vw'; streamImg.style.height = '100vh';
+                if (!streamImg.src || streamImg.src.includes('cam=')) {
+                    streamImg.src = '/api/camera/stream?t=' + Date.now();
+                }
+                if (layout === 'pip') {
+                    const pos = overlaySwitcherState.pip_position || 'bottom-right';
+                    subImg.style.display = 'block';
+                    subImg.style.width = '30vw'; subImg.style.height = '30vh';
+                    subImg.style.borderRadius = '16px';
+                    subImg.style.border = '3px solid #38bdf8';
+                    subImg.style.top = pos.includes('top') ? '3.5vh' : 'auto';
+                    subImg.style.bottom = pos.includes('bottom') ? '14vh' : 'auto';
+                    subImg.style.left = pos.includes('left') ? '3.5vw' : 'auto';
+                    subImg.style.right = pos.includes('right') ? '3.5vw' : 'auto';
+                    subImg.src = `/api/camera/stream?cam=${subCam}&t=` + Date.now();
+                } else {
+                    subImg.style.display = 'none';
+                }
+            }
+        }
+
+        async function syncOverlayMobileCamAuto() {
+            if (isMonitorIframe || activeCamStream) return;
+            try {
+                const res = await fetch('/api/camera/host-info');
+                if (!res.ok) return;
+                const data = await res.json();
+                const isNowActive = !!(data.camera_active || data.vdo_connected);
+                const curSeq = Number(data.frame_seq || 0);
+                const newlyConnected = (!overlayLastCamActive && isNowActive) || (curSeq > 0 && curSeq < overlayLastFrameSeq);
+                overlayLastCamActive = isNowActive;
+                if (curSeq > 0) overlayLastFrameSeq = curSeq;
+
+                if (isNowActive) {
+                    if (!isMobileOverlayActive || newlyConnected) {
+                        handleMobileCamToggle(true);
+                        if (data.switcher) applyOverlayCameraSwitcher(data.switcher);
+                    } else {
+                        const streamImg = document.getElementById('overlayStreamImg');
+                        const videoElem = document.getElementById('overlayCamVideo');
+                        const hasVideo = videoElem && videoElem.srcObject && videoElem.style.display !== 'none' && videoElem.readyState >= 2 && videoElem.videoWidth > 0;
+                        if (!hasVideo && streamImg && (streamImg.style.display === 'none' || !streamImg.src || (streamImg.complete && streamImg.naturalWidth === 0))) {
+                            streamImg.src = '/api/camera/stream?t=' + Date.now();
+                            streamImg.style.display = 'block';
+                            applyBgMode('screen');
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // 🎧 데스크톱 OBS Studio 브라우저 소스(/overlay/obs 단독 창)용 스마트폰 음성 자동 출력기
+        // 같은 방에서 스피커 하울링 → 2초 주기 AEC 음소거 방지를 위해 기본값 false (스튜디오에서 모니터링 ON 시에만 동기화 활성)
+        let ovAudioCtx = null;
+        let ovGainNode = null;
+        let ovAudioLastSeq = 0;
+        let ovNextPlayTime = 0;
+        let ovAudioBusy = false;
+        let ovAudioEnabled = false;
+        let ovAudioVolPct = 100;
+
+        function initOverlayPhoneAudioMonitor() {
+            if (isMonitorIframe) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                ovAudioCtx = new AudioCtx({ sampleRate: 48000 });
+                ovGainNode = ovAudioCtx.createGain();
+                ovGainNode.gain.value = ovAudioEnabled ? (ovAudioVolPct / 100.0) : 0.0;
+                ovGainNode.connect(ovAudioCtx.destination);
+                const unlock = () => {
+                    if (ovAudioCtx && ovAudioCtx.state === 'suspended' && ovAudioEnabled) {
+                        ovAudioCtx.resume().catch(() => {});
+                    }
+                };
+                window.addEventListener('pointerdown', unlock, { passive: true });
+                window.addEventListener('keydown', unlock, { passive: true });
+
+                setInterval(async () => {
+                    if (!ovAudioEnabled || ovAudioVolPct <= 0 || ovAudioBusy || !ovAudioCtx) return;
+                    if (ovAudioCtx.state === 'suspended') {
+                        ovAudioCtx.resume().catch(() => {});
+                        return;
+                    }
+                    ovAudioBusy = true;
+                    try {
+                        const res = await fetch(`/api/camera/audio/pull?after_seq=${ovAudioLastSeq}&v=2`, { cache: 'no-store' });
+                        if (!res.ok) return;
+                        const seqHdr = parseInt(res.headers.get('X-Audio-Seq') || '0', 10);
+                        if (seqHdr > 0) ovAudioLastSeq = seqHdr;
+                        const sampleRateHdr = parseInt(res.headers.get('X-Audio-Sample-Rate') || '48000', 10) || 48000;
+                        const buf = await res.arrayBuffer();
+                        if (!buf || buf.byteLength < 4) return;
+
+                        const sampleCount = buf.byteLength >> 1;
+                        const pcm16 = new Int16Array(buf, 0, sampleCount);
+                        const audioBuf = ovAudioCtx.createBuffer(1, sampleCount, sampleRateHdr);
+                        const chData = audioBuf.getChannelData(0);
+                        for (let i = 0; i < sampleCount; i++) {
+                            chData[i] = pcm16[i] / 32768.0;
+                        }
+                        const src = ovAudioCtx.createBufferSource();
+                        src.buffer = audioBuf;
+                        src.connect(ovGainNode);
+
+                        const now = ovAudioCtx.currentTime;
+                        if (ovNextPlayTime < now) {
+                            ovNextPlayTime = now + 0.09;
+                        } else if (ovNextPlayTime > now + 0.35) {
+                            ovNextPlayTime = now + 0.09;
+                        }
+                        src.start(ovNextPlayTime);
+                        ovNextPlayTime += audioBuf.duration;
+                    } catch (e) {
+                    } finally {
+                        ovAudioBusy = false;
+                    }
+                }, 30);
+            } catch (e) {}
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadServerSettings();
+            if (!isMonitorIframe) {
+                syncOverlayMobileCamAuto();
+                setInterval(syncOverlayMobileCamAuto, 1500);
+                initOverlayPhoneAudioMonitor();
+            }
+        });
+    </script>
+</body>
+</html>

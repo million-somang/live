@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>라이브 커머스 통합 비즈니스 포털</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b1120;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-green: #10b981;
+            --accent-cyan: #06b6d4;
+            --accent-purple: #8b5cf6;
+            --accent-orange: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 24px;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.12) 0px, transparent 50%),
+                radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+        }
+
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* 🌟 공통 상단 GNB 내비게이션 바 */
+        .gnb {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            backdrop-filter: blur(14px);
+            padding: 14px 26px;
+            border-radius: 16px;
+            border: 1px solid var(--card-border);
+        }
+
+        .brand-logo {
+            font-size: 1.25rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            text-decoration: none;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .nav-item {
+            color: var(--text-muted);
+            text-decoration: none;
+            padding: 9px 16px;
+            border-radius: 10px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .nav-item:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background: var(--primary);
+            box-shadow: 0 0 14px rgba(99, 102, 241, 0.4);
+        }
+
+        /* 히어로 KPI 배너 */
+        .hero-banner {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            padding: 28px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+            backdrop-filter: blur(12px);
+        }
+
+        .hero-title h2 {
+            font-size: 1.65rem;
+            font-weight: 800;
+            margin-bottom: 6px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero-title p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .quick-live-btn {
+            background: linear-gradient(135deg, #ef4444, #f43f5e);
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .quick-live-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 26px rgba(239, 68, 68, 0.6);
+        }
+
+        /* KPI 메트릭 그리드 */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 900px) {
+            .kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .kpi-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--kpi-color, #6366f1);
+        }
+
+        .kpi-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .kpi-value {
+            font-size: 1.7rem;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        .kpi-sub {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        /* 4대 핵심 서비스 네비게이션 카드 그리드 */
+        .service-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+        }
+
+        @media (max-width: 1000px) {
+            .service-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 650px) {
+            .service-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .service-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            padding: 26px 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+
+        .service-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--service-color);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3), 0 0 20px var(--service-glow);
+        }
+
+        .service-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            background: var(--service-glow);
+            color: var(--service-color);
+            border: 1px solid var(--service-color);
+        }
+
+        .service-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .service-desc {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+            flex: 1;
+        }
+
+        .service-arrow {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--service-color);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        /* 하단 2분할 섹션 */
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .bottom-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .box {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .box-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 12px;
+        }
+
+        .box-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+
+        .item-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .item-row {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            padding: 12px 16px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .badge-stock {
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 🌟 공통 상단 GNB 내비게이션 바 -->
+        {% set active_page = 'portal' %}
+        {% include 'components/header.html' %}
+
+        <!-- 히어로 라이브 상태 배너 -->
+        <div class="hero-banner">
+            <div class="hero-title">
+                <h2>오늘의 라이브 커머스 비즈니스 관제 센터</h2>
+                <p>3사(유튜브·인스타·틱톡) 실시간 방송, 주문 자동 접수, 재고 차감 및 AI CS가 정상 연동 중입니다.</p>
+            </div>
+            <a href="javascript:void(0)" class="quick-live-btn" onclick="openBroadcastWindow(event)">
+                <span>📡 실시간 방송 관제탑 열기 (새창)</span>
+                <span>➔</span>
+            </a>
+        </div>
+
+        <!-- KPI 메트릭 카드 -->
+        <div class="kpi-grid">
+            <div class="kpi-card" style="--kpi-color: #10b981;">
+                <div class="kpi-label">
+                    <span>오늘 총 매출액</span>
+                    <span>💰</span>
+                </div>
+                <div class="kpi-value">{{ "{:,}".format(total_revenue) }}원</div>
+                <div class="kpi-sub">실시간 접수된 유효 주문 기준</div>
+            </div>
+
+            <div class="kpi-card" style="--kpi-color: #6366f1;">
+                <div class="kpi-label">
+                    <span>총 주문 접수 건수</span>
+                    <span>🛒</span>
+                </div>
+                <div class="kpi-value">{{ total_orders }}건</div>
+                <div class="kpi-sub">live_orders.xlsx 실시간 누적</div>
+            </div>
+
+            <div class="kpi-card" style="--kpi-color: #06b6d4;">
+                <div class="kpi-label">
+                    <span>AI CS 실시간 답변</span>
+                    <span>💬</span>
+                </div>
+                <div class="kpi-value">{{ total_cs }}건</div>
+                <div class="kpi-sub">사이즈/배송/가격 자동 응대</div>
+            </div>
+
+            <div class="kpi-card" style="--kpi-color: #ec4899;">
+                <div class="kpi-label">
+                    <span>활성 플랫폼 수</span>
+                    <span>📡</span>
+                </div>
+                <div class="kpi-value">{{ active_platforms_count }}개사</div>
+                <div class="kpi-sub">YouTube, Instagram, TikTok</div>
+            </div>
+        </div>
+
+        <!-- 6대 핵심 서비스 메뉴 그리드 -->
+        <div class="service-grid">
+            <!-- 1. 웹방송 관제탑 -->
+            <a href="javascript:void(0)" class="service-card" onclick="openBroadcastWindow(event)" style="--service-color: #ef4444; --service-glow: rgba(239, 68, 68, 0.2);">
+                <div class="service-icon">📡</div>
+                <div class="service-title">웹방송 관제탑</div>
+                <div class="service-desc">3사 플랫폼 실시간 연결 모니터링, 실시간 댓글 추첨기, OBS 연출 및 쇼호스트 큐 지시를 통합 제어합니다.</div>
+                <div class="service-arrow">독립 새창으로 열기 ➔</div>
+            </a>
+
+            <!-- 2. OBS 방송 그래픽 오버레이 스튜디오 -->
+            <a href="/overlay/studio" target="_blank" class="service-card" style="--service-color: #6366f1; --service-glow: rgba(99, 102, 241, 0.2);">
+                <div class="service-icon">🎛️</div>
+                <div class="service-title">OBS 오버레이 스튜디오</div>
+                <div class="service-desc">실제 방송 화면 캡처, 웹캠/폰카메라 연동 및 16:9 라이브 모니터와 함께 실시간 구매 토스트, 핀 상품, 타임세일 타이머를 제어합니다.</div>
+                <div class="service-arrow">세팅 스튜디오 열기 ➔</div>
+            </a>
+
+            <!-- 3. 쇼호스트 전용 모바일 프롬프터 -->
+            <a href="/host" target="_blank" class="service-card" style="--service-color: #ec4899; --service-glow: rgba(236, 72, 153, 0.2);">
+                <div class="service-icon">📱</div>
+                <div class="service-title">쇼호스트 인이어 프롬프터</div>
+                <div class="service-desc">쇼호스트가 스마트폰이나 태블릿 거치대에서 PD의 긴급 큐 멘트, 소개 상품 가격/특징, 실시간 질문 댓글을 한눈에 확인합니다.</div>
+                <div class="service-arrow">프롬프터 뷰 열기 ➔</div>
+            </a>
+
+            <!-- 4. 재고 관리 -->
+            <a href="/inventory" class="service-card" style="--service-color: #10b981; --service-glow: rgba(16, 185, 129, 0.2);">
+                <div class="service-icon">📦</div>
+                <div class="service-title">실시간 재고 관리</div>
+                <div class="service-desc">상품/옵션별 잔여 재고 현황을 실시간 확인하고, 주문 발생 시 자동 차감 및 입고 수량을 조정합니다.</div>
+                <div class="service-arrow">재고 현황 보기 ➔</div>
+            </a>
+
+            <!-- 5. CS 관리 -->
+            <a href="/cs" class="service-card" style="--service-color: #06b6d4; --service-glow: rgba(6, 182, 212, 0.2);">
+                <div class="service-icon">💬</div>
+                <div class="service-title">CS 및 문의 관리</div>
+                <div class="service-desc">방송 중 인입된 시청자 문의(사이즈, 배송, 교환 등)와 AI 자동 답변 내역을 유형별로 관리합니다.</div>
+                <div class="service-arrow">문의 내역 확인 ➔</div>
+            </a>
+
+            <!-- 6. 판매량 분석 -->
+            <a href="/analytics" class="service-card" style="--service-color: #8b5cf6; --service-glow: rgba(139, 92, 246, 0.2);">
+                <div class="service-icon">📊</div>
+                <div class="service-title">판매량 및 통계 분석</div>
+                <div class="service-desc">플랫폼별 매출 비중, 상품별 판매 랭킹, 시간대별 주문 추이를 차트로 확인하고 엑셀을 다운로드합니다.</div>
+                <div class="service-arrow">분석 리포트 보기 ➔</div>
+            </a>
+        </div>
+
+        <!-- 하단: 판매 상품 퀵뷰 & 최근 주문 요약 -->
+        <div class="bottom-grid">
+            <div class="box">
+                <div class="box-header">
+                    <span class="box-title">🏷️ 오늘의 라이브 판매 상품</span>
+                    <a href="/inventory" style="font-size:0.8rem; color:var(--primary); text-decoration:none;">재고 상세 ➔</a>
+                </div>
+                <div class="item-list">
+                    {% if inventory_items and inventory_items|length > 0 %}
+                        {% for item in inventory_items %}
+                        <div class="item-row">
+                            <div>
+                                <strong style="font-size:0.95rem;">{{ item.num }}번 {{ item.name }}</strong>
+                                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+                                    판매가 {{ "{:,}".format(item.price) }}원 | 옵션 {{ item.options|length }}개
+                                </div>
+                            </div>
+                            {% if item.total_stock <= 0 %}
+                                <span class="badge-stock" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🚨 전량 품절 (0개)</span>
+                            {% else %}
+                                <span class="badge-stock">총 잔여 {{ item.total_stock }}개</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div style="text-align:center; padding:30px 20px; color:var(--text-muted); font-size:0.88rem;">
+                            <span style="font-size:1.6rem; display:block; margin-bottom:6px;">📦</span>
+                            등록된 라이브 판매 상품이 없습니다.<br>
+                            <a href="/inventory" style="color:var(--primary); font-weight:700; text-decoration:none; margin-top:8px; display:inline-block;">[재고 관리에서 상품 등록하기 ➔]</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="box">
+                <div class="box-header">
+                    <span class="box-title">🛒 최근 접수된 실시간 주문</span>
+                    <a href="/analytics" style="font-size:0.8rem; color:var(--primary); text-decoration:none;">주문 전체보기 ➔</a>
+                </div>
+                <div class="item-list">
+                    {% if recent_orders and recent_orders|length > 0 %}
+                        {% for ord in recent_orders[:4] %}
+                        <div class="item-row">
+                            <div>
+                                <span style="font-size:0.75rem; background:rgba(99,102,241,0.2); color:#a5b4fc; padding:2px 6px; border-radius:4px;">{{ ord[1] }}</span>
+                                <strong style="font-size:0.9rem; margin-left:4px;">{{ ord[2] }}님</strong>
+                                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+                                    {{ ord[3] }} ({{ ord[4] }}/{{ ord[5] }}) {{ ord[6] }}개
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                {% if ord[11] == 'CONFIRMED' %}
+                                    <span style="font-size:0.72rem; background:rgba(16, 185, 129, 0.2); color:#34d399; padding:2px 6px; border-radius:4px; font-weight:700; display:block; margin-bottom:2px;">차감완료</span>
+                                {% elif ord[11] == 'REJECTED' %}
+                                    <span style="font-size:0.72rem; background:rgba(148, 163, 184, 0.2); color:#94a3b8; padding:2px 6px; border-radius:4px; font-weight:700; display:block; margin-bottom:2px;">취소됨</span>
+                                {% else %}
+                                    <span style="font-size:0.72rem; background:rgba(245, 158, 11, 0.2); color:#fbbf24; padding:2px 6px; border-radius:4px; font-weight:700; display:block; margin-bottom:2px;">확인대기</span>
+                                {% endif %}
+                                <span style="font-size:0.78rem; color:var(--text-muted);">{{ ord[0].split(' ')[1] if ' ' in ord[0] else ord[0] }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:0.88rem;">
+                            아직 접수된 주문이 없습니다. 방송 관제탑에서 테스트해 보세요!
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openBroadcastWindow(e) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            // 사용자의 모니터 가용 크기 측정
+            const width = window.screen.availWidth || 1920;
+            const height = window.screen.availHeight || 1080;
+
+            // 브라우저 툴바, 메뉴바, 주소창을 제거한 단독 팝업 창 규격
+            const features = `width=${width},height=${height},left=0,top=0,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`;
+
+            // 클릭 즉시 동기 실행하여 팝업 차단 방지 및 새창 생성
+            const win = window.open('/broadcast?mode=window', '_blank', features);
+            if (win) {
+                win.focus();
+            } else {
+                // 팝업이 차단된 경우 일반 새 탭으로 즉시 열기
+                window.open('/broadcast?mode=window', '_blank');
+            }
+        }
+
+        // OBS 스튜디오 [새로운 방송 시작] / [이전 방송 복원] 시 새로고침 없이 자동 갱신
+        let lastPortalResetSeq = null;
+        async function checkPortalBroadcastReset() {
+            try {
+                const res = await fetch('/api/broadcast/current-summary');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.broadcast_reset_seq !== undefined) {
+                    if (lastPortalResetSeq !== null && data.broadcast_reset_seq !== lastPortalResetSeq) {
+                        location.reload();
+                        return;
+                    }
+                    lastPortalResetSeq = data.broadcast_reset_seq;
+                }
+            } catch (e) {}
+        }
+        checkPortalBroadcastReset();
+        setInterval(checkPortalBroadcastReset, 1500);
+
+        try {
+            const portalSyncChannel = new BroadcastChannel('obs_overlay_sync');
+            portalSyncChannel.onmessage = (e) => {
+                const msg = e.data || {};
+                if (msg.type === 'NEW_BROADCAST_RESET' || msg.type === 'RESTORE_BROADCAST') {
+                    location.reload();
+                }
+            };
+        } catch (e) {}
+    </script>
+</body>
+</html>

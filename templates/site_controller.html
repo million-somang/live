@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌐 쇼호스트 뷰 실시간 사이트 컨트롤러</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #090d16;
+            color: #f8fafc;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+        /* 상단 브라우저 컨트롤 바 */
+        .browser-toolbar {
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            flex-shrink: 0;
+        }
+        .toolbar-row-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .live-badge {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10b981;
+            color: #34d399;
+            font-size: 0.76rem;
+            font-weight: 900;
+            padding: 5px 10px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+            animation: blink 1s infinite alternate;
+        }
+        @keyframes blink {
+            from { opacity: 1; }
+            to { opacity: 0.35; }
+        }
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #e2e8f0;
+            font-size: 0.82rem;
+            font-weight: 800;
+            padding: 6px 10px;
+            border-radius: 7px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+        .nav-btn:hover {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: #38bdf8;
+            color: #fff;
+        }
+        .address-bar-wrap {
+            flex: 1;
+            display: flex;
+            gap: 6px;
+            min-width: 0;
+        }
+        .address-input {
+            flex: 1;
+            min-width: 0;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: #ffffff;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .address-input:focus {
+            outline: none;
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+        }
+        .btn-go {
+            background: linear-gradient(135deg, #0ea5e9, #2563eb);
+            border: none;
+            color: #fff;
+            font-size: 0.82rem;
+            font-weight: 800;
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-stop {
+            background: #ef4444;
+            border: none;
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 900;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-stop:hover {
+            background: #dc2626;
+        }
+        .toolbar-row-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .quick-sites {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .quick-site-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #cbd5e1;
+            font-size: 0.74rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 14px;
+            cursor: pointer;
+        }
+        .quick-site-btn:hover {
+            border-color: #38bdf8;
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.12);
+        }
+        /* 사이트 내 검색/텍스트 입력 보조 바 (한글 입력 완벽 지원) */
+        .text-type-wrap {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 1;
+            max-width: 440px;
+        }
+        .text-type-input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(236, 72, 153, 0.45);
+            border-radius: 6px;
+            padding: 4px 10px;
+            color: #fff;
+            font-size: 0.78rem;
+        }
+        .btn-type-send {
+            background: #ec4899;
+            border: none;
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        /* 메인 실시간 사이트 뷰포트 영역 */
+        .viewport-container {
+            flex: 1;
+            background: #020617;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            padding: 6px;
+        }
+        .screen-stage {
+            position: relative;
+            aspect-ratio: 1280 / 800;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.75);
+            border: 1.5px solid rgba(56, 189, 248, 0.4);
+            border-radius: 8px;
+            overflow: hidden;
+            background: #0f172a;
+            cursor: pointer;
+        }
+        #siteScreenImg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: fill;
+            pointer-events: none;
+        }
+        /* 클릭 시각적 리플 효과 */
+        .click-ripple {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            margin-left: -12px;
+            margin-top: -12px;
+            border-radius: 50%;
+            border: 2px solid #f43f5e;
+            background: rgba(244, 63, 94, 0.35);
+            pointer-events: none;
+            animation: rippleAnim 0.45s ease-out forwards;
+        }
+        @keyframes rippleAnim {
+            0% { transform: scale(0.4); opacity: 1; }
+            100% { transform: scale(1.8); opacity: 0; }
+        }
+        .footer-guide {
+            background: #0f172a;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 5px 14px;
+            font-size: 0.74rem;
+            color: #94a3b8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 1. 상단 컨트롤러 툴바 -->
+    <header class="browser-toolbar">
+        <div class="toolbar-row-top">
+            <div class="live-badge">
+                <span class="live-dot"></span>
+                <span>쇼호스트 뷰 실시간 송출 중</span>
+            </div>
+            <button type="button" class="nav-btn" onclick="sendSiteAction({type:'back'})" title="뒤로 가기">⬅ 뒤로</button>
+            <button type="button" class="nav-btn" onclick="sendSiteAction({type:'forward'})" title="앞으로 가기">➡ 앞으로</button>
+            <button type="button" class="nav-btn" onclick="sendSiteAction({type:'reload'})" title="페이지 새로고침">🔄 새로고침</button>
+
+            <div class="address-bar-wrap">
+                <input type="text" id="addressInput" class="address-input" value="{{ initial_url }}" placeholder="사이트 주소(https://...) 또는 검색어 입력 후 Enter" onkeydown="if(event.key==='Enter') navigateToInputUrl()">
+                <button type="button" class="btn-go" onclick="navigateToInputUrl()">이동 ↵</button>
+            </div>
+
+            <button type="button" class="btn-stop" onclick="stopAndCloseController()">⏹️ 송출 종료 및 창 닫기</button>
+        </div>
+
+        <div class="toolbar-row-bottom">
+            <div class="quick-sites">
+                <span style="font-size:0.72rem; color:#64748b; font-weight:800;">⚡ 빠른 이동:</span>
+                <button type="button" class="quick-site-btn" onclick="quickGo('https://www.naver.com')">🟢 네이버</button>
+                <button type="button" class="quick-site-btn" onclick="quickGo('https://shopping.naver.com')">🛍️ 네이버쇼핑</button>
+                <button type="button" class="quick-site-btn" onclick="quickGo('https://www.coupang.com')">🚀 쿠팡</button>
+                <button type="button" class="quick-site-btn" onclick="quickGo('https://www.musinsa.com')">👗 무신사</button>
+                <button type="button" class="quick-site-btn" onclick="quickGo('https://www.youtube.com')">▶️ 유튜브</button>
+                <button type="button" class="quick-site-btn" onclick="sendSiteAction({type:'wheel', delta_x:0, delta_y:-450})">⬆️ 위로 스크롤</button>
+                <button type="button" class="quick-site-btn" onclick="sendSiteAction({type:'wheel', delta_x:0, delta_y:450})">⬇️ 아래로 스크롤</button>
+            </div>
+
+            <div class="text-type-wrap">
+                <input type="text" id="pageTextInput" class="text-type-input" placeholder="사이트 내 검색창 클릭 후 여기에 글자 입력 ↵" onkeydown="if(event.key==='Enter') sendTextToPage(true)">
+                <button type="button" class="btn-type-send" onclick="sendTextToPage(true)">입력+Enter ↵</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. 실시간 인터랙티브 브라우저 화면 영역 -->
+    <main class="viewport-container" id="viewportContainer">
+        <div class="screen-stage" id="screenStage" tabindex="0">
+            <img id="siteScreenImg" src="/api/host/site-mirror/frame.jpg?t=0" alt="실시간 사이트 화면" />
+        </div>
+    </main>
+
+    <!-- 3. 하단 조작 안내 -->
+    <footer class="footer-guide">
+        <span>💡 화면 위에서 <strong>마우스 클릭</strong>, <strong>마우스 휠 스크롤</strong>을 하면 실제 사이트가 즉시 조작되며 쇼호스트 뷰(/host)에 동시에 보입니다.</span>
+        <span id="statusInfoText" style="color:#38bdf8; font-weight:700;">연결됨</span>
+    </footer>
+
+    <script>
+        const stage = document.getElementById('screenStage');
+        const screenImg = document.getElementById('siteScreenImg');
+        const addressInput = document.getElementById('addressInput');
+        const statusInfoText = document.getElementById('statusInfoText');
+        let isStopping = false;
+
+        // 화면 크기에 맞춰 16:10 (1280x800) 스테이지 비율 자동 피팅
+        function fitStageSize() {
+            const container = document.getElementById('viewportContainer');
+            if (!container || !stage) return;
+            const cw = container.clientWidth - 16;
+            const ch = container.clientHeight - 16;
+            const targetRatio = 1280 / 800;
+            if (cw / ch > targetRatio) {
+                stage.style.height = ch + 'px';
+                stage.style.width = Math.round(ch * targetRatio) + 'px';
+            } else {
+                stage.style.width = cw + 'px';
+                stage.style.height = Math.round(cw / targetRatio) + 'px';
+            }
+        }
+        window.addEventListener('resize', fitStageSize);
+        fitStageSize();
+
+        // 초기 시작 보장
+        async function ensureStarted() {
+            const initUrl = addressInput.value.trim() || 'https://www.naver.com';
+            try {
+                await fetch('/api/host/site-mirror/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: initUrl })
+                });
+                notifySyncChannel();
+            } catch (e) {}
+        }
+        ensureStarted();
+
+        function notifySyncChannel() {
+            try {
+                const ch = new BroadcastChannel('obs_overlay_sync');
+                ch.postMessage({ type: 'SITE_MIRROR_UPDATE', ts: Date.now() });
+            } catch (e) {}
+        }
+
+        // 더블 버퍼링 기반 끊김 없는 실시간 프레임 갱신 루프
+        let frameLoopRunning = false;
+        async function pollFrameLoop() {
+            if (frameLoopRunning) return;
+            frameLoopRunning = true;
+            while (!isStopping) {
+                await new Promise((resolve) => {
+                    const loader = new Image();
+                    const timer = setTimeout(resolve, 1200);
+                    loader.onload = () => {
+                        clearTimeout(timer);
+                        screenImg.src = loader.src;
+                        resolve();
+                    };
+                    loader.onerror = () => {
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    loader.src = '/api/host/site-mirror/frame.jpg?t=' + Date.now();
+                });
+                await new Promise(r => setTimeout(r, 90));
+            }
+        }
+        pollFrameLoop();
+
+        // 주기적으로 현재 사이트 주소/제목 동기화
+        setInterval(async () => {
+            if (isStopping) return;
+            try {
+                const res = await fetch('/api/host/site-mirror/state');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.site_mirror) {
+                    if (document.activeElement !== addressInput && data.site_mirror.url) {
+                        addressInput.value = data.site_mirror.url;
+                    }
+                    if (statusInfoText) {
+                        statusInfoText.innerText = data.site_mirror.title || data.site_mirror.url || '실시간 송출 중';
+                    }
+                }
+            } catch (e) {}
+        }, 1000);
+
+        async function sendSiteAction(payload) {
+            try {
+                const res = await fetch('/api/host/site-mirror/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.site_mirror && data.site_mirror.url && document.activeElement !== addressInput) {
+                    addressInput.value = data.site_mirror.url;
+                }
+                notifySyncChannel();
+            } catch (e) {}
+        }
+
+        function navigateToInputUrl() {
+            const url = addressInput.value.trim();
+            if (!url) return;
+            sendSiteAction({ type: 'goto', url: url });
+            stage.focus();
+        }
+
+        function quickGo(url) {
+            addressInput.value = url;
+            sendSiteAction({ type: 'goto', url: url });
+            stage.focus();
+        }
+
+        function sendTextToPage(submitEnter = true) {
+            const input = document.getElementById('pageTextInput');
+            if (!input) return;
+            const txt = input.value;
+            if (!txt) return;
+            sendSiteAction({ type: 'type', text: txt, submit: submitEnter });
+            input.value = '';
+            stage.focus();
+        }
+
+        // 1. 마우스 클릭 좌표 전달
+        stage.addEventListener('click', (e) => {
+            const rect = stage.getBoundingClientRect();
+            const rx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const ry = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+            // 클릭 리플 표시
+            const ripple = document.createElement('div');
+            ripple.className = 'click-ripple';
+            ripple.style.left = (e.clientX - rect.left) + 'px';
+            ripple.style.top = (e.clientY - rect.top) + 'px';
+            stage.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 450);
+
+            stage.focus();
+            sendSiteAction({ type: 'click', rx: rx, ry: ry, button: 'left', click_count: 1 });
+        });
+
+        // 2. 마우스 휠 스크롤 전달 (스로틀링으로 부드럽고 빠르게 전달)
+        let wheelAccumY = 0;
+        let wheelAccumX = 0;
+        let wheelTimer = null;
+        let lastWheelRx = 0.5;
+        let lastWheelRy = 0.5;
+
+        stage.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = stage.getBoundingClientRect();
+            lastWheelRx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            lastWheelRy = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+            wheelAccumX += e.deltaX;
+            wheelAccumY += e.deltaY;
+
+            if (!wheelTimer) {
+                wheelTimer = setTimeout(() => {
+                    const dx = Math.round(wheelAccumX);
+                    const dy = Math.round(wheelAccumY);
+                    wheelAccumX = 0;
+                    wheelAccumY = 0;
+                    wheelTimer = null;
+                    if (dx !== 0 || dy !== 0) {
+                        sendSiteAction({
+                            type: 'wheel',
+                            rx: lastWheelRx,
+                            ry: lastWheelRy,
+                            delta_x: dx,
+                            delta_y: dy
+                        });
+                    }
+                }, 45);
+            }
+        }, { passive: false });
+
+        // 3. 스테이지 포커스 시 키보드 입력 전달
+        stage.addEventListener('keydown', (e) => {
+            if (document.activeElement === addressInput || document.activeElement === document.getElementById('pageTextInput')) {
+                return;
+            }
+            const allowedKeys = ['Enter', 'Backspace', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Space'];
+            if (allowedKeys.includes(e.key) || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+                e.preventDefault();
+                sendSiteAction({ type: 'key', key: e.key });
+            }
+        });
+
+        async function stopAndCloseController() {
+            isStopping = true;
+            try {
+                await fetch('/api/host/site-mirror/stop', { method: 'POST' });
+                notifySyncChannel();
+            } catch (e) {}
+            window.close();
+        }
+    </script>
+</body>
+</html>

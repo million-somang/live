@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}📦 주문/배송 조회 — 골라방 LIVE 몰{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.65rem; font-weight:900; margin-bottom:18px;">📦 주문 / 배송 조회</h1>
+
+<form method="GET" action="/orders" style="background:#fff; border-radius:18px; padding:20px; border:1px solid var(--border); margin-bottom:24px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="text" name="order_code" value="{{ order_code }}" class="form-input" placeholder="주문번호 (예: ORD-20261112-...)" style="width:240px;">
+    <input type="text" name="buyer_name" value="{{ buyer_name }}" class="form-input" placeholder="주문자 성함" style="width:160px;">
+    <input type="text" name="buyer_phone" value="{{ buyer_phone }}" class="form-input" placeholder="연락처 뒷자리 또는 전체" style="width:200px;">
+    <button type="submit" style="padding:11px 22px; border-radius:10px; border:none; background:#0f172a; color:#fff; font-weight:900; cursor:pointer;">🔍 조회하기</button>
+    <a href="/orders" style="padding:11px 16px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.86rem; font-weight:700;">전체보기</a>
+</form>
+
+{% if orders %}
+<div style="display:flex; flex-direction:column; gap:16px;">
+    {% for ord in orders %}
+    <div style="background:#fff; border-radius:20px; padding:22px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid #f1f5f9; margin-bottom:14px;">
+            <div>
+                <span style="font-weight:900; font-size:1rem; color:#0f172a;">주문번호: {{ ord.order_code }}</span>
+                <span style="font-size:0.82rem; color:#64748b; margin-left:10px;">{{ ord.created_at }}</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <span style="background:#ecfdf5; color:#059669; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:900;">{{ ord.payment_status }}</span>
+                <span style="background:#eff6ff; color:#2563eb; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:900;">{{ ord.order_status }}</span>
+            </div>
+        </div>
+        <div style="margin-bottom:12px; font-size:0.88rem; color:#475569;">
+            <strong>수령인:</strong> {{ ord.buyer_name }} ({{ ord.buyer_phone }}) • <strong>배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
+        </div>
+        <div style="background:#f8fafc; border-radius:12px; padding:12px 16px;">
+            {% for it in ord.items %}
+            <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:0.9rem;">
+                <span><strong>#{{ it.product_num }} {{ it.product_name }}</strong> ({{ it.color }}/{{ it.size }}) × {{ it.quantity }}개</span>
+                <strong>{{ "{:,}".format(it.line_total) }}원</strong>
+            </div>
+            {% endfor %}
+        </div>
+        <div style="text-align:right; margin-top:12px; font-size:1.1rem; font-weight:900; color:#e11d48;">
+            총 결제 금액: {{ "{:,}".format(ord.total_amount) }}원
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div style="background:#fff; border-radius:20px; padding:50px 20px; text-align:center; border:1px solid var(--border); color:#64748b;">
+    조회된 주문 내역이 없습니다.
+</div>
+{% endif %}
+{% endblock %}
