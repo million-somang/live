@@ -4,5 +4,7 @@ __pycache__/
 *.db-shm
 *.db-wal
 .env
+.mall_secret_key
+.mall_admin_credentials.txt
 venv/
 .venv/

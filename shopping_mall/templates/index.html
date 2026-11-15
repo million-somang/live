@@ -140,7 +140,7 @@
             [🔴 라이브 커머스] 전용관에 입장하시면 OBS에서 쇼호스트가 소개하는 상품의 상세 화면이 페이지 이동 없이 자동으로 펼쳐집니다.
         </p>
     </div>
-    <div>
+    <div id="mallHeroLiveSlot">
         {% if live_state and live_state.is_live %}
         <a href="/live" class="hero-live-btn">
             🔴 라이브 커머스 전용관 입장하기 ➔
@@ -182,9 +182,11 @@
     <div class="product-card">
         <a href="/product/{{ p.num }}" class="product-thumb">
             <span class="num-tag">#{{ p.num }}번</span>
-            {% if live_state and live_state.selected_product and live_state.selected_product.num == p.num %}
+            <span data-csr-pin-slot="{{ p.num }}">
+            {% if live_state and live_state.is_live and live_state.selected_product and live_state.selected_product.num == p.num %}
             <span class="pinned-now-tag">📌 방송 소개중</span>
             {% endif %}
+            </span>
             {% if p.image_url %}
             <img src="{{ p.image_url }}" alt="{{ p.name }}">
             {% else %}
@@ -192,7 +194,7 @@
             {% endif %}
         </a>
         <div class="product-body">
-            <div style="font-size:0.75rem; font-weight:800; color:#64748b; margin-bottom:4px;">
+            <div data-csr-stock-num="{{ p.num }}" data-csr-cat="{{ p.category }}" style="font-size:0.75rem; font-weight:800; color:#64748b; margin-bottom:4px;">
                 {{ p.category }} • 잔여 {{ p.total_stock }}개
             </div>
             <a href="/product/{{ p.num }}" style="font-size:1.05rem; font-weight:900; color:#0f172a; margin-bottom:8px; line-height:1.4;">

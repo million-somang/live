@@ -221,6 +221,53 @@ def init_db(reset=False):
                 )
             """)
 
+            # 11. OBS 스튜디오 방송자/관리자 회원 테이블 (studio_users)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS studio_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    phone TEXT DEFAULT '',
+                    role TEXT NOT NULL DEFAULT 'BROADCASTER',
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    failed_login_count INTEGER NOT NULL DEFAULT 0,
+                    locked_until REAL NOT NULL DEFAULT 0,
+                    last_login_at TEXT DEFAULT '',
+                    approved_at TEXT DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # 12. OBS 스튜디오 가입 승인용 초대코드 테이블 (studio_invite_codes)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS studio_invite_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE NOT NULL,
+                    memo TEXT DEFAULT '',
+                    max_uses INTEGER NOT NULL DEFAULT 10,
+                    used_count INTEGER NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    expires_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT 'ADMIN',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # 13. 보안 감사 로그 테이블 (security_audit_logs)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS security_audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_time TEXT NOT NULL,
+                    actor_type TEXT NOT NULL DEFAULT 'USER',
+                    actor_id TEXT DEFAULT '',
+                    ip_address TEXT DEFAULT '',
+                    action TEXT NOT NULL,
+                    detail TEXT DEFAULT ''
+                )
+            """)
+
             # 고속 검색용 인덱스
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_num ON products (num)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_time ON orders (order_time DESC)")
@@ -230,9 +277,11 @@ def init_db(reset=False):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_customers_lookup ON customers (platform, buyer_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cues_active ON broadcast_cues (is_active, id DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_ended ON broadcast_sessions (ended_at DESC, id DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_studio_users_status ON studio_users (status, role)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_time ON security_audit_logs (event_time DESC)")
 
             conn.commit()
-            print("✅ [SQLite DB 초기화 완료] live_commerce.db 10개 테이블 및 인덱스 준비됨")
+            print("✅ [SQLite DB 초기화 완료] live_commerce.db 13개 테이블 및 인덱스 준비됨")
         finally:
             conn.close()
 
@@ -2416,24 +2465,77 @@ def export_session_orders_to_excel(session_id, excel_path):
 # ==============================================================================
 # 🛍️ 독립 쇼핑몰(shopping_mall/shopping_mall.db & Port 3000) 실시간 동기화 브릿지
 # ==============================================================================
-def sync_to_shopping_mall(action, payload=None):
+_pushed_cloud_image_sig = {}
+
+
+def get_cloud_mall_config():
+    """클라우드/독립 쇼핑몰 연동 URL 및 시크릿 설정을 반환합니다 (DB 저장값 우선, 환경변수 폴백)."""
+    saved = get_overlay_state("cloud_mall_config", None)
+    env_url = os.getenv("MALL_SERVER_URL", "http://127.0.0.1:3000").strip().rstrip("/")
+    env_sec = os.getenv("MALL_SYNC_SECRET", "").strip()
+    env_agent_only = os.getenv("AGENT_ONLY_MODE", "0").strip() in ("1", "true", "True", "yes")
+    if isinstance(saved, dict):
+        url = str(saved.get("mall_url") or env_url).strip().rstrip("/")
+        sec = str(saved.get("sync_secret") if saved.get("sync_secret") is not None else env_sec).strip()
+        agent_only = bool(saved.get("agent_only_mode", env_agent_only))
+    else:
+        url, sec, agent_only = env_url, env_sec, env_agent_only
+    is_remote = bool(url) and not any(h in url for h in ("127.0.0.1", "localhost"))
+    return {
+        "mall_url": url,
+        "sync_secret": sec,
+        "agent_only_mode": bool(agent_only or is_remote),
+        "is_remote": is_remote
+    }
+
+
+def _read_local_product_image_b64_if_changed(base_dir, img_url, force=False):
+    """원격 클라우드 쇼핑몰로 전송할 상품 이미지를 Base64로 읽되, 이미 전송한 동일 파일(mtime+size)은 생략합니다."""
+    import base64
+    if not img_url or not str(img_url).startswith("/static/uploads/products/"):
+        return None, None
+    fname = os.path.basename(str(img_url).split("?")[0])
+    if not fname:
+        return None, None
+    src_p = os.path.join(base_dir, "static", "uploads", "products", fname)
+    if not os.path.exists(src_p):
+        return fname, None
+    try:
+        st = os.stat(src_p)
+        sig = f"{st.st_size}:{int(st.st_mtime)}"
+        if not force and _pushed_cloud_image_sig.get(fname) == sig:
+            return fname, None
+        with open(src_p, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        _pushed_cloud_image_sig[fname] = sig
+        return fname, b64
+    except Exception:
+        return fname, None
+
+
+def sync_to_shopping_mall(action, payload=None, blocking=False):
     """
     OBS DB의 상품/옵션/재고 변경 또는 선택된(Pin) 상품 변경 시:
-    1) 로컬 shopping_mall 폴더가 존재하면 shopping_mall.db에 직접 즉시 반영 및 이미지 파일 복사
-    2) 원격 또는 로컬 쇼핑몰 서버(MALL_SERVER_URL, 기본 http://127.0.0.1:3000)로 비동기 웹훅 푸시
+    1) 로컬 shopping_mall 폴더가 존재하고 로컬 모드이면 shopping_mall.db에 직접 즉시 반영 및 이미지 파일 복사
+    2) 원격 클라우드 또는 로컬 쇼핑몰 서버(MALL_SERVER_URL)로 X-Mall-Sync-Secret 인증 헤더와 함께 Outbound 웹훅 푸시
     """
     import json
     import shutil
     import threading
     import urllib.request
 
+    cfg = get_cloud_mall_config()
+    mall_url = cfg["mall_url"]
+    sync_secret = cfg["sync_secret"]
+    is_remote = cfg["is_remote"]
+
     payload = dict(payload or {})
     payload["action"] = action
     base_dir = os.path.dirname(os.path.abspath(__file__))
     mall_dir = os.path.join(base_dir, "shopping_mall")
 
-    # 1. 로컬 shopping_mall DB 및 이미지 파일 직접 동기화 (쇼핑몰 서버 기동 전에도 100% 정합성 보장)
-    if os.path.isdir(mall_dir):
+    # 1. 로컬 동시 운영 모드일 때만 로컬 shopping_mall DB 및 이미지 파일 직접 동기화
+    if os.path.isdir(mall_dir) and not is_remote:
         try:
             if mall_dir not in sys.path:
                 sys.path.append(mall_dir)
@@ -2469,58 +2571,454 @@ def sync_to_shopping_mall(action, payload=None):
                     num=payload.get("num"),
                     obs_product_id=payload.get("obs_product_id")
                 )
-            elif action in ("pin_product", "live_state"):
+            elif action in ("pin_product", "live_state", "heartbeat"):
                 state_bundle = {
                     k: payload[k]
-                    for k in ("pinned_product_num", "is_live", "broadcast_title", "ticker_message", "timer")
+                    for k in (
+                        "pinned_product_num",
+                        "is_live",
+                        "broadcast_title",
+                        "ticker_message",
+                        "timer",
+                        "live_urls",
+                        "youtube_embed_url",
+                        "youtube_video_id",
+                        "heartbeat"
+                    )
                     if k in payload
                 }
+                if action == "heartbeat":
+                    state_bundle["heartbeat"] = True
                 if state_bundle:
                     mdb.update_live_state_bundle(state_bundle)
         except Exception as local_sync_err:
             print(f"⚠️ [로컬 쇼핑몰 DB 동기화 경고] {local_sync_err}")
 
-    # 2. 쇼핑몰 HTTP 서버(Port 3000 또는 외부 배포 서버)로 비동기 웹훅 전송
-    mall_url = os.getenv("MALL_SERVER_URL", "http://127.0.0.1:3000").rstrip("/")
+    # 2. 쇼핑몰 HTTP 서버(원격 클라우드 또는 로컬 Port 3000)로 Outbound 웹훅 전송
     if mall_url:
+        # 원격 클라우드 서버인 경우 변경된 로컬 상품 이미지를 Base64로 함께 첨부
+        if is_remote or not os.path.isdir(mall_dir):
+            if action == "upsert_product" and isinstance(payload.get("product"), dict):
+                _, b64 = _read_local_product_image_b64_if_changed(base_dir, payload["product"].get("image_url"))
+                if b64:
+                    payload["image_b64"] = b64
+            elif action == "bulk_sync" and isinstance(payload.get("products"), list):
+                images_b64 = dict(payload.get("images_b64") or {})
+                for p in payload["products"]:
+                    if isinstance(p, dict):
+                        fname, b64 = _read_local_product_image_b64_if_changed(base_dir, p.get("image_url"))
+                        if fname and b64:
+                            images_b64[fname] = b64
+                if images_b64:
+                    payload["images_b64"] = images_b64
+
         def _push_webhook():
             try:
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                headers = {"Content-Type": "application/json"}
+                if sync_secret:
+                    headers["X-Mall-Sync-Secret"] = sync_secret
                 req = urllib.request.Request(
                     f"{mall_url}/api/sync/from-obs",
                     data=body,
-                    headers={"Content-Type": "application/json"},
+                    headers=headers,
                     method="POST"
                 )
-                urllib.request.urlopen(req, timeout=1.5).read()
+                urllib.request.urlopen(req, timeout=3.5).read()
+                return True
             except Exception:
-                pass
+                return False
+
+        if blocking:
+            return _push_webhook()
         threading.Thread(target=_push_webhook, daemon=True).start()
+    return True
 
 
-def sync_all_products_to_shopping_mall(is_live=False):
+def sync_all_products_to_shopping_mall(is_live=False, live_urls=None, youtube_embed_url="", blocking=False):
     """OBS DB에 등록된 전체 상품 및 현재 핀 고정 상품 번호를 쇼핑몰 DB로 일괄 동기화합니다."""
     all_prods = get_all_products()
     pinned_num = get_overlay_state("pinned_product_num", None)
     title = get_overlay_state("simulcast_unified_title", "실시간 라이브 커머스 특가 방송")
     ticker = get_overlay_state("obs_ticker_custom", "")
     timer = get_overlay_state("flash_timer", {"active": False})
+    live_state_payload = {
+        "is_live": bool(is_live),
+        "pinned_product_num": pinned_num,
+        "broadcast_title": title,
+        "ticker_message": ticker,
+        "timer": timer,
+        "heartbeat": bool(is_live)
+    }
+    if live_urls is not None:
+        live_state_payload["live_urls"] = live_urls
+    if youtube_embed_url:
+        live_state_payload["youtube_embed_url"] = youtube_embed_url
     sync_to_shopping_mall("bulk_sync", {
         "products": all_prods,
         "delete_missing": True,
-        "live_state": {
-            "is_live": bool(is_live),
-            "pinned_product_num": pinned_num,
-            "broadcast_title": title,
-            "ticker_message": ticker,
-            "timer": timer
-        }
-    })
+        "live_state": live_state_payload
+    }, blocking=blocking)
     return len(all_prods)
+
+
+# ==========================================
+# 🔐 OBS 스튜디오 방송자 회원 · 초대코드 · 보안 감사로그 API
+# ==========================================
+
+import time as _time
+import secrets as _secrets
+import security_core
+
+
+def log_security_audit(action: str, actor_id: str = "", actor_type: str = "USER", ip_address: str = "", detail: str = ""):
+    """보안 감사 로그를 기록합니다."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO security_audit_logs (event_time, actor_type, actor_id, ip_address, action, detail)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (now_str, str(actor_type or "USER"), str(actor_id or ""), str(ip_address or ""), str(action), str(detail or "")))
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+
+def list_security_audit_logs(limit: int = 80):
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM security_audit_logs ORDER BY id DESC LIMIT ?", (int(limit),))
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+
+def ensure_default_studio_admin():
+    """
+    최초 기동 시 OBS 스튜디오 관리자 계정을 보장합니다.
+    - 환경변수 STUDIO_ADMIN_USERNAME / STUDIO_ADMIN_EMAIL / STUDIO_ADMIN_PASSWORD 우선 사용
+    - 미설정 시 .studio_admin_credentials.txt에 난수 비밀번호를 1회 생성·보관하여 하드코딩 취약점을 방지합니다.
+    """
+    admin_user = (os.getenv("STUDIO_ADMIN_USERNAME") or "admin").strip().lower()
+    admin_email = (os.getenv("STUDIO_ADMIN_EMAIL") or "admin@studio.local").strip().lower()
+    admin_pw = (os.getenv("STUDIO_ADMIN_PASSWORD") or "").strip()
+    cred_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".studio_admin_credentials.txt")
+
+    if not admin_pw:
+        if os.path.exists(cred_file):
+            try:
+                with open(cred_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("PASSWORD="):
+                            admin_pw = line.split("=", 1)[1].strip()
+                            break
+            except Exception:
+                pass
+        if not admin_pw:
+            admin_pw = "Admin!" + _secrets.token_urlsafe(9)
+            try:
+                with open(cred_file, "w", encoding="utf-8") as f:
+                    f.write(f"USERNAME={admin_user}\nEMAIL={admin_email}\nPASSWORD={admin_pw}\n")
+                print(f"🔐 [OBS 스튜디오 초기 관리자 생성] ID: {admin_user} ({admin_email}) | 초기 비밀번호는 .studio_admin_credentials.txt 에 저장되었습니다.")
+            except Exception:
+                pass
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, role FROM studio_users WHERE username = ? OR email = ?", (admin_user, admin_email))
+            row = cur.fetchone()
+            if not row:
+                pw_hash = security_core.hash_password(admin_pw)
+                cur.execute("""
+                    INSERT INTO studio_users (username, email, password_hash, display_name, phone, role, status, approved_at, created_at)
+                    VALUES (?, ?, ?, ?, '', 'ADMIN', 'APPROVED', ?, ?)
+                """, (admin_user, admin_email, pw_hash, "스튜디오 총괄관리자", now_str, now_str))
+            elif os.getenv("STUDIO_ADMIN_PASSWORD"):
+                pw_hash = security_core.hash_password(admin_pw)
+                cur.execute("""
+                    UPDATE studio_users
+                    SET password_hash = ?, role = 'ADMIN', status = 'APPROVED'
+                    WHERE id = ?
+                """, (pw_hash, row["id"]))
+
+            # 기본 초대 코드(환경변수 STUDIO_DEFAULT_INVITE_CODE 설정 시) 보장
+            default_inv = (os.getenv("STUDIO_DEFAULT_INVITE_CODE") or "").strip()
+            if default_inv:
+                cur.execute("SELECT id FROM studio_invite_codes WHERE code = ?", (default_inv,))
+                if not cur.fetchone():
+                    cur.execute("""
+                        INSERT INTO studio_invite_codes (code, memo, max_uses, used_count, is_active, created_by, created_at)
+                        VALUES (?, '환경변수 기본 초대코드', 9999, 0, 1, 'SYSTEM', ?)
+                    """, (default_inv, now_str))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def create_studio_user(username: str, email: str, password: str, display_name: str, phone: str = "", invite_code: str = "", ip_address: str = "") -> dict:
+    """
+    OBS 스튜디오 신규 방송자 회원가입을 처리합니다.
+    - 유효한 초대 코드(invite_code) 입력 시 즉시 APPROVED 활성화
+    - 초대 코드 미입력 시 PENDING(관리자 승인 대기) 상태로 저장
+    """
+    uname = str(username or "").strip().lower()
+    mail = str(email or "").strip().lower()
+    dname = str(display_name or "").strip() or uname
+    ph = str(phone or "").strip()
+    inv = str(invite_code or "").strip()
+
+    if len(uname) < 3 or len(uname) > 40:
+        return {"ok": False, "message": "아이디는 3~40자 사이로 입력해 주세요."}
+    if "@" not in mail or "." not in mail:
+        return {"ok": False, "message": "유효한 이메일 주소를 입력해 주세요."}
+
+    valid_pw, pw_msg = security_core.validate_password_policy(password, min_len=8)
+    if not valid_pw:
+        return {"ok": False, "message": pw_msg}
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM studio_users WHERE username = ? OR email = ?", (uname, mail))
+            if cur.fetchone():
+                return {"ok": False, "message": "이미 사용 중인 아이디 또는 이메일입니다."}
+
+            initial_status = "PENDING"
+            approved_at = ""
+            if inv:
+                cur.execute("""
+                    SELECT id, max_uses, used_count, is_active, expires_at
+                    FROM studio_invite_codes
+                    WHERE code = ?
+                """, (inv,))
+                inv_row = cur.fetchone()
+                if not inv_row or not inv_row["is_active"]:
+                    return {"ok": False, "message": "유효하지 않거나 비활성화된 초대 코드입니다."}
+                if int(inv_row["used_count"]) >= int(inv_row["max_uses"]):
+                    return {"ok": False, "message": "사용 한도가 초과된 초대 코드입니다."}
+                exp_str = str(inv_row["expires_at"] or "").strip()
+                if exp_str and exp_str < now_str:
+                    return {"ok": False, "message": "만료된 초대 코드입니다."}
+                cur.execute("UPDATE studio_invite_codes SET used_count = used_count + 1 WHERE id = ?", (inv_row["id"],))
+                initial_status = "APPROVED"
+                approved_at = now_str
+
+            pw_hash = security_core.hash_password(password)
+            cur.execute("""
+                INSERT INTO studio_users (username, email, password_hash, display_name, phone, role, status, approved_at, created_at)
+                VALUES (?, ?, ?, ?, ?, 'BROADCASTER', ?, ?, ?)
+            """, (uname, mail, pw_hash, dname, ph, initial_status, approved_at, now_str))
+            user_id = cur.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+
+    log_security_audit(
+        action="STUDIO_REGISTER",
+        actor_id=uname,
+        ip_address=ip_address,
+        detail=f"status={initial_status}, invite={'YES' if inv else 'NO'}"
+    )
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "username": uname,
+        "email": mail,
+        "display_name": dname,
+        "role": "BROADCASTER",
+        "status": initial_status
+    }
+
+
+def authenticate_studio_user(login_id: str, password: str, ip_address: str = "") -> dict:
+    """OBS 스튜디오 회원 로그인을 검증합니다 (5회 실패 시 10분 계정 잠금)."""
+    ident = str(login_id or "").strip().lower()
+    if not ident or not password:
+        return {"ok": False, "code": "INVALID", "message": "아이디(또는 이메일)와 비밀번호를 입력해 주세요."}
+
+    now_ts = _time.time()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, username, email, password_hash, display_name, phone, role, status, failed_login_count, locked_until
+                FROM studio_users
+                WHERE username = ? OR email = ?
+            """, (ident, ident))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "code": "INVALID", "message": "아이디 또는 비밀번호가 올바르지 않습니다."}
+
+            locked_until = float(row["locked_until"] or 0.0)
+            if locked_until > now_ts:
+                remain_sec = max(1, int(round(locked_until - now_ts)))
+                return {
+                    "ok": False,
+                    "code": "LOCKED",
+                    "message": f"비밀번호 5회 연속 오류로 계정이 잠겼습니다. {remain_sec}초 후 다시 시도해 주세요."
+                }
+
+            if not security_core.verify_password(row["password_hash"], password):
+                fails = int(row["failed_login_count"] or 0) + 1
+                new_lock = (now_ts + 600.0) if fails >= 5 else 0.0
+                cur.execute("""
+                    UPDATE studio_users
+                    SET failed_login_count = ?, locked_until = ?
+                    WHERE id = ?
+                """, (fails, new_lock, row["id"]))
+                conn.commit()
+                log_security_audit("STUDIO_LOGIN_FAIL", actor_id=row["username"], ip_address=ip_address, detail=f"fails={fails}")
+                if new_lock > 0:
+                    return {"ok": False, "code": "LOCKED", "message": "비밀번호 5회 오류로 10분간 로그인이 제한됩니다."}
+                return {"ok": False, "code": "INVALID", "message": "아이디 또는 비밀번호가 올바르지 않습니다."}
+
+            cur.execute("""
+                UPDATE studio_users
+                SET failed_login_count = 0, locked_until = 0, last_login_at = ?
+                WHERE id = ?
+            """, (now_str, row["id"]))
+            conn.commit()
+            user_dict = {
+                "id": row["id"],
+                "username": row["username"],
+                "email": row["email"],
+                "display_name": row["display_name"],
+                "phone": row["phone"],
+                "role": row["role"],
+                "status": row["status"]
+            }
+        finally:
+            conn.close()
+
+    log_security_audit("STUDIO_LOGIN_OK", actor_id=user_dict["username"], ip_address=ip_address, detail=f"status={user_dict['status']}")
+    return {"ok": True, "user": user_dict}
+
+
+def get_studio_user_by_id(user_id: int):
+    if not user_id:
+        return None
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, username, email, display_name, phone, role, status, last_login_at, approved_at, created_at
+                FROM studio_users
+                WHERE id = ?
+            """, (int(user_id),))
+            row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def list_studio_users():
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, username, email, display_name, phone, role, status, failed_login_count, last_login_at, approved_at, created_at
+                FROM studio_users
+                ORDER BY CASE status WHEN 'PENDING' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END, id DESC
+            """)
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+
+def update_studio_user_status(user_id: int, new_status: str, new_role: str = None, actor_id: str = "", ip_address: str = "") -> bool:
+    allowed_status = {"PENDING", "APPROVED", "REJECTED", "SUSPENDED"}
+    st = str(new_status or "").upper()
+    if st not in allowed_status:
+        return False
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            if new_role and str(new_role).upper() in ("BROADCASTER", "ADMIN"):
+                cur.execute("""
+                    UPDATE studio_users
+                    SET status = ?, role = ?, approved_at = CASE WHEN ? = 'APPROVED' THEN ? ELSE approved_at END,
+                        failed_login_count = 0, locked_until = 0
+                    WHERE id = ?
+                """, (st, str(new_role).upper(), st, now_str, int(user_id)))
+            else:
+                cur.execute("""
+                    UPDATE studio_users
+                    SET status = ?, approved_at = CASE WHEN ? = 'APPROVED' THEN ? ELSE approved_at END,
+                        failed_login_count = 0, locked_until = 0
+                    WHERE id = ?
+                """, (st, st, now_str, int(user_id)))
+            updated = cur.rowcount > 0
+            conn.commit()
+        finally:
+            conn.close()
+    if updated:
+        log_security_audit("STUDIO_USER_STATUS_CHANGE", actor_id=actor_id, ip_address=ip_address, detail=f"target_id={user_id}, status={st}, role={new_role or ''}")
+    return updated
+
+
+def create_studio_invite_code(code: str = "", memo: str = "", max_uses: int = 10, created_by: str = "ADMIN") -> dict:
+    code_str = (str(code or "").strip().upper()) or ("OBS-" + _secrets.token_hex(4).upper())
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO studio_invite_codes (code, memo, max_uses, used_count, is_active, created_by, created_at)
+                VALUES (?, ?, ?, 0, 1, ?, ?)
+            """, (code_str, str(memo or "").strip(), max(1, int(max_uses or 10)), str(created_by or "ADMIN"), now_str))
+            conn.commit()
+            return {"ok": True, "code": code_str}
+        except Exception as e:
+            return {"ok": False, "message": f"초대 코드 생성 실패: {e}"}
+        finally:
+            conn.close()
+
+
+def list_studio_invite_codes():
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM studio_invite_codes ORDER BY id DESC")
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+
+def toggle_studio_invite_code(code_id: int, is_active: bool) -> bool:
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("UPDATE studio_invite_codes SET is_active = ? WHERE id = ?", (1 if is_active else 0, int(code_id)))
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
 
 
 # 모듈 임포트 시 DB 자동 초기화 (테이블 없으면 자동 생성) 및 기존 중복 저장된 방송 정리
 init_db(reset=False)
+ensure_default_studio_admin()
 deduplicate_broadcast_sessions()
 try:
     sync_all_products_to_shopping_mall(is_live=False)

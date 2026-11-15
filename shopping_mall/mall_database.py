@@ -7,15 +7,53 @@
 """
 
 import os
+import time
 import json
 import uuid
 import sqlite3
 from datetime import datetime
-from threading import RLock
+from threading import RLock, Condition
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MALL_DB_PATH = os.getenv("MALL_DB_PATH", os.path.join(BASE_DIR, "shopping_mall.db"))
+HEARTBEAT_TIMEOUT_SEC = float(os.getenv("MALL_HEARTBEAT_TIMEOUT_SEC", "35"))
 mall_db_lock = RLock()
+mall_state_cond = Condition()
+
+
+def bump_state_version(bump_catalog=False):
+    """실시간 상태 버전(state_version) 및 선택적 카탈로그 버전(catalog_version)을 단조 증가시키고 SSE 대기 스레드를 깨웁니다."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT value FROM mall_live_state WHERE key = 'state_version'")
+            row = cur.fetchone()
+            cur_v = int(json.loads(row["value"])) if row and str(row["value"]).strip().isdigit() else 0
+            next_v = cur_v + 1
+            cur.execute("""
+                INSERT INTO mall_live_state (key, value, updated_at)
+                VALUES ('state_version', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """, (json.dumps(next_v), now_str))
+
+            if bump_catalog:
+                cur.execute("SELECT value FROM mall_live_state WHERE key = 'catalog_version'")
+                crow = cur.fetchone()
+                cur_cv = int(json.loads(crow["value"])) if crow and str(crow["value"]).strip().isdigit() else 0
+                next_cv = cur_cv + 1
+                cur.execute("""
+                    INSERT INTO mall_live_state (key, value, updated_at)
+                    VALUES ('catalog_version', ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                """, (json.dumps(next_cv), now_str))
+            conn.commit()
+        finally:
+            conn.close()
+    with mall_state_cond:
+        mall_state_cond.notify_all()
+    return next_v
 
 
 def get_connection():
@@ -125,14 +163,50 @@ def init_mall_db():
                 )
             """)
 
+            # 7. 쇼핑몰 전용 회원 테이블 (도메인 1 OBS 방송자 DB와 완전 분리)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    zipcode TEXT DEFAULT '',
+                    address TEXT DEFAULT '',
+                    address_detail TEXT DEFAULT '',
+                    role TEXT NOT NULL DEFAULT 'MEMBER',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    failed_login_count INTEGER NOT NULL DEFAULT 0,
+                    locked_until REAL NOT NULL DEFAULT 0,
+                    last_login_at TEXT DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # 기존 mall_orders 호환성 마이그레이션 (회원 ID, 비회원 여부, 비회원 주문조회 비밀번호 해시)
+            for col_name, col_def in [
+                ("user_id", "INTEGER DEFAULT NULL"),
+                ("is_guest", "INTEGER NOT NULL DEFAULT 0"),
+                ("guest_password_hash", "TEXT DEFAULT ''")
+            ]:
+                try:
+                    cur.execute(f"ALTER TABLE mall_orders ADD COLUMN {col_name} {col_def}")
+                except Exception:
+                    pass
+
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_products_num ON mall_products (num)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_orders_code ON mall_orders (order_code)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_orders_lookup ON mall_orders (buyer_name, buyer_phone)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_orders_user ON mall_orders (user_id, id DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_reviews_num ON mall_reviews (product_num, id DESC)")
 
             conn.commit()
         finally:
             conn.close()
+    try:
+        ensure_default_mall_admin()
+    except Exception:
+        pass
 
 
 def _infer_category(name, specs=""):
@@ -253,6 +327,7 @@ def upsert_product_from_obs(prod_data):
                     """, (mall_pid, c, s, stk))
 
             conn.commit()
+            bump_state_version(bump_catalog=True)
             return get_mall_product_by_num(num)
         finally:
             conn.close()
@@ -300,7 +375,10 @@ def delete_product_by_num_or_obs_id(num=None, obs_product_id=None):
                 real_id = int(str(obs_product_id).replace("item-", ""))
                 cur.execute("DELETE FROM mall_products WHERE obs_product_id = ?", (real_id,))
             conn.commit()
-            return cur.rowcount > 0
+            deleted = cur.rowcount > 0
+            if deleted:
+                bump_state_version(bump_catalog=True)
+            return deleted
         finally:
             conn.close()
 
@@ -429,16 +507,31 @@ def get_live_state_key(key, default=None):
 
 
 def update_live_state_bundle(state_dict):
-    """OBS에서 전달된 실시간 라이브 상태(선택된 상품 번호, 방송중 여부, 자막, 타이머 등)를 일괄 갱신합니다."""
+    """OBS에서 전달된 실시간 라이브 상태(선택된 상품 번호, 방송중 여부, 자막, 타이머, 하트비트 등)를 일괄 갱신합니다."""
     if not isinstance(state_dict, dict):
         return
+    incoming = dict(state_dict)
+    is_hb = bool(incoming.pop("heartbeat", False))
+
+    if "last_heartbeat_ts" not in incoming:
+        if "is_live" in incoming and not incoming["is_live"]:
+            incoming["last_heartbeat_ts"] = 0.0
+        elif is_hb or incoming.get("is_live") is True:
+            incoming["last_heartbeat_ts"] = time.time()
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    meaningful_changed = False
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            for k, v in state_dict.items():
+            cur.execute("SELECT key, value FROM mall_live_state")
+            existing = {r["key"]: r["value"] for r in cur.fetchall()}
+
+            for k, v in incoming.items():
                 val_str = json.dumps(v, ensure_ascii=False)
+                if k != "last_heartbeat_ts" and existing.get(str(k)) != val_str:
+                    meaningful_changed = True
                 cur.execute("""
                     INSERT INTO mall_live_state (key, value, updated_at)
                     VALUES (?, ?, ?)
@@ -448,9 +541,35 @@ def update_live_state_bundle(state_dict):
         finally:
             conn.close()
 
+    if meaningful_changed:
+        bump_state_version(bump_catalog=False)
 
-def get_full_live_state():
-    """쇼핑몰 /live 페이지에서 실시간으로 폴링할 전체 라이브 상태 및 현재 선택된(Pin) 상품 상세 데이터를 반환합니다."""
+
+def _derive_youtube_embed_url(raw):
+    """저장된 youtube_embed_url, live_urls.YOUTUBE, 또는 youtube_video_id에서 YouTube iframe 임베드 URL을 도출합니다."""
+    explicit = str(raw.get("youtube_embed_url") or "").strip()
+    if explicit:
+        return explicit
+    live_urls = raw.get("live_urls") or {}
+    yt_info = live_urls.get("YOUTUBE") if isinstance(live_urls, dict) else {}
+    if isinstance(yt_info, dict):
+        emb = str(yt_info.get("embed_url") or "").strip()
+        if emb:
+            return emb
+        lurl = str(yt_info.get("live_url") or "").strip()
+        if "watch?v=" in lurl:
+            vid = lurl.split("watch?v=", 1)[1].split("&")[0].strip()
+            if vid:
+                return f"https://www.youtube.com/embed/{vid}?autoplay=1&mute=1&playsinline=1&rel=0"
+    vid = str(raw.get("youtube_video_id") or "").strip()
+    if vid:
+        return f"https://www.youtube.com/embed/{vid}?autoplay=1&mute=1&playsinline=1&rel=0"
+    return ""
+
+
+def _read_raw_live_state_and_check_heartbeat():
+    """DB에서 mall_live_state 전체 키를 읽고 하트비트 만료(방송 PC 비정상 종료 등) 시 자동으로 is_live=False 처리합니다."""
+    expired = False
     with mall_db_lock:
         conn = get_connection()
         try:
@@ -466,8 +585,35 @@ def get_full_live_state():
                     raw[r["key"]] = r["value"]
                 if r["updated_at"] > latest_upd:
                     latest_upd = r["updated_at"]
+
+            is_live = bool(raw.get("is_live", False))
+            hb_ts = float(raw.get("last_heartbeat_ts") or 0.0)
+            if is_live and hb_ts > 0.0 and (time.time() - hb_ts) > HEARTBEAT_TIMEOUT_SEC:
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                for k, v in (("is_live", False), ("last_heartbeat_ts", 0.0)):
+                    cur.execute("""
+                        INSERT INTO mall_live_state (key, value, updated_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                    """, (k, json.dumps(v), now_str))
+                conn.commit()
+                raw["is_live"] = False
+                raw["last_heartbeat_ts"] = 0.0
+                latest_upd = now_str
+                expired = True
         finally:
             conn.close()
+
+    if expired:
+        new_v = bump_state_version(bump_catalog=False)
+        raw["state_version"] = new_v
+
+    return raw, latest_upd
+
+
+def get_full_live_state():
+    """쇼핑몰 초기 렌더링 및 전체 상태 조회용 데이터(전체 상품 포함)를 반환합니다."""
+    raw, latest_upd = _read_raw_live_state_and_check_heartbeat()
 
     all_products = get_all_mall_products()
     pinned_num = raw.get("pinned_product_num")
@@ -475,12 +621,10 @@ def get_full_live_state():
 
     if pinned_num is not None and str(pinned_num).strip() != "":
         p_str = str(pinned_num).replace("item-", "").strip()
-        # 1차: 방송 상품 번호(num) 정확 일치 최우선 탐색 (내부 PK id와의 충돌 원천 차단)
         for p in all_products:
             if str(p.get("num")).strip() == p_str:
                 selected_product = p
                 break
-        # 2차 폴백: num 일치가 없을 때만 obs_product_id 비교
         if selected_product is None:
             for p in all_products:
                 if p.get("obs_product_id") is not None and str(p.get("obs_product_id")).strip() == p_str:
@@ -489,12 +633,13 @@ def get_full_live_state():
         if selected_product is not None:
             pinned_num = selected_product["num"]
 
-    # 만약 아직 OBS에서 핀 고정한 상품이 없다면 첫 번째 등록 상품을 기본 노출하되 is_pinned_by_obs 플래그로 구분
     is_pinned_by_obs = selected_product is not None
     if selected_product is None and all_products:
         selected_product = all_products[0]
 
     return {
+        "state_version": int(raw.get("state_version") or 1),
+        "catalog_version": int(raw.get("catalog_version") or 1),
         "is_live": bool(raw.get("is_live", False)),
         "broadcast_title": str(raw.get("broadcast_title") or "실시간 라이브 커머스 특가 방송"),
         "ticker_message": str(raw.get("ticker_message") or "라이브 방송 중 선택된 상품을 페이지 이동 없이 바로 확인하고 특가로 구매하세요!"),
@@ -505,8 +650,73 @@ def get_full_live_state():
         "timer": raw.get("timer") or {"active": False},
         "youtube_video_id": str(raw.get("youtube_video_id") or ""),
         "youtube_channel_input": str(raw.get("youtube_channel_input") or ""),
+        "youtube_embed_url": _derive_youtube_embed_url(raw),
         "live_urls": raw.get("live_urls") or {},
+        "last_heartbeat_ts": float(raw.get("last_heartbeat_ts") or 0.0),
         "obs_server_url": str(raw.get("obs_server_url") or "http://localhost:5000"),
+        "updated_at": latest_upd or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+
+def get_lite_live_state():
+    """
+    CSR 실시간 구독(SSE / ETag 폴링)용 초경량 상태 페이로드를 반환합니다.
+    - 전체 21개 상품 배열(all_products)을 제외하고 선택 상품 및 상품별 총재고 맵만 포함하여 트래픽을 90% 이상 절감합니다.
+    """
+    raw, latest_upd = _read_raw_live_state_and_check_heartbeat()
+
+    pinned_num = raw.get("pinned_product_num")
+    selected_product = None
+    if pinned_num is not None and str(pinned_num).strip() != "":
+        try:
+            selected_product = get_mall_product_by_id(pinned_num)
+        except Exception:
+            selected_product = None
+        if selected_product is not None:
+            pinned_num = selected_product["num"]
+
+    is_pinned_by_obs = selected_product is not None
+
+    product_stocks = {}
+    first_num = None
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT p.num, p.price, COALESCE(SUM(o.stock), 0) AS total_stock
+                FROM mall_products p
+                LEFT JOIN mall_product_options o ON o.product_id = p.id
+                GROUP BY p.id
+                ORDER BY p.num ASC, p.id DESC
+            """)
+            for r in cur.fetchall():
+                if first_num is None:
+                    first_num = r["num"]
+                product_stocks[str(r["num"])] = {
+                    "total_stock": int(r["total_stock"] or 0),
+                    "price": int(r["price"] or 0)
+                }
+        finally:
+            conn.close()
+
+    if selected_product is None and first_num is not None:
+        selected_product = get_mall_product_by_num(first_num)
+
+    return {
+        "state_version": int(raw.get("state_version") or 1),
+        "catalog_version": int(raw.get("catalog_version") or 1),
+        "is_live": bool(raw.get("is_live", False)),
+        "broadcast_title": str(raw.get("broadcast_title") or "실시간 라이브 커머스 특가 방송"),
+        "ticker_message": str(raw.get("ticker_message") or "라이브 방송 중 선택된 상품을 페이지 이동 없이 바로 확인하고 특가로 구매하세요!"),
+        "pinned_product_num": pinned_num,
+        "is_pinned_by_obs": is_pinned_by_obs,
+        "selected_product": selected_product,
+        "product_stocks": product_stocks,
+        "timer": raw.get("timer") or {"active": False},
+        "youtube_video_id": str(raw.get("youtube_video_id") or ""),
+        "youtube_embed_url": _derive_youtube_embed_url(raw),
+        "live_urls": raw.get("live_urls") or {},
         "updated_at": latest_upd or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
@@ -538,6 +748,8 @@ def apply_mall_discount_rate(discount_pct=30):
             conn.commit()
         finally:
             conn.close()
+    if updated > 0:
+        bump_state_version(bump_catalog=True)
     return {"updated": updated, "discount_pct": pct}
 
 
@@ -631,14 +843,25 @@ def create_mall_order(order_data):
             pay_status = "입금대기" if payment_method == "BANK" else "결제완료"
             ord_status = "결제대기" if payment_method == "BANK" else "상품준비중"
 
+            user_id = order_data.get("user_id")
+            user_id = int(user_id) if user_id is not None and str(user_id).strip().isdigit() else None
+            is_guest = 1 if (not user_id or order_data.get("is_guest")) else 0
+            guest_pw_raw = str(order_data.get("guest_password") or "").strip()
+            guest_pw_hash = ""
+            if is_guest and guest_pw_raw:
+                import mall_security
+                guest_pw_hash = mall_security.hash_password(guest_pw_raw)
+
             cur.execute("""
                 INSERT INTO mall_orders
                 (order_code, buyer_name, buyer_phone, zipcode, address, address_detail, delivery_memo,
-                 payment_method, payment_status, order_status, subtotal_amount, shipping_fee, total_amount, source_page, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 payment_method, payment_status, order_status, subtotal_amount, shipping_fee, total_amount,
+                 source_page, user_id, is_guest, guest_password_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 order_code, buyer_name, buyer_phone, zipcode, address, address_detail, delivery_memo,
-                payment_method, pay_status, ord_status, subtotal, shipping_fee, total_amount, source_page, now_str
+                payment_method, pay_status, ord_status, subtotal, shipping_fee, total_amount,
+                source_page, user_id, is_guest, guest_pw_hash, now_str
             ))
             order_id = cur.lastrowid
 
@@ -660,6 +883,7 @@ def create_mall_order(order_data):
                 ))
 
             conn.commit()
+            bump_state_version(bump_catalog=True)
             return {
                 "ok": True,
                 "order_id": order_id,
@@ -682,8 +906,32 @@ def create_mall_order(order_data):
             conn.close()
 
 
+def get_mall_orders_after(after_id=0, limit=100):
+    """클라우드 단독 운영 시 로컬 라이브 에이전트가 증분 Pull하여 OBS 재고를 차감할 수 있도록 신규 주문 목록을 오름차순으로 반환합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM mall_orders WHERE id > ? ORDER BY id ASC LIMIT ?",
+                (int(after_id or 0), int(limit))
+            )
+            ord_rows = cur.fetchall()
+            orders = []
+            for r in ord_rows:
+                cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
+                items = [dict(ir) for ir in cur.fetchall()]
+                d = dict(r)
+                d.pop("guest_password_hash", None)
+                d["items"] = items
+                orders.append(d)
+            return orders
+        finally:
+            conn.close()
+
+
 def get_mall_orders(buyer_name=None, buyer_phone=None, order_code=None, limit=100):
-    """쇼핑몰 주문 내역을 조회합니다."""
+    """쇼핑몰 주문 내역을 조회합니다 (관리자 전용)."""
     with mall_db_lock:
         conn = get_connection()
         try:
@@ -709,9 +957,73 @@ def get_mall_orders(buyer_name=None, buyer_phone=None, order_code=None, limit=10
                 cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
                 items = [dict(ir) for ir in cur.fetchall()]
                 d = dict(r)
+                d.pop("guest_password_hash", None)
                 d["items"] = items
                 orders.append(d)
             return orders
+        finally:
+            conn.close()
+
+
+def get_mall_orders_by_user(user_id: int, limit: int = 50):
+    """로그인한 쇼핑몰 회원의 본인 주문 내역만 안전하게 조회합니다."""
+    if not user_id:
+        return []
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM mall_orders WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                (int(user_id), int(limit))
+            )
+            ord_rows = cur.fetchall()
+            orders = []
+            for r in ord_rows:
+                cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
+                items = [dict(ir) for ir in cur.fetchall()]
+                d = dict(r)
+                d.pop("guest_password_hash", None)
+                d["items"] = items
+                orders.append(d)
+            return orders
+        finally:
+            conn.close()
+
+
+def lookup_guest_mall_order(order_code: str, buyer_phone: str, guest_password: str):
+    """
+    비회원 라이브 주문 단건 조회 (3중 검증: 주문번호 + 연락처 숫자일치 + 비회원 주문 비밀번호 해시 일치).
+    개인정보 노출 방지를 위해 3가지 중 하나라도 틀리면 빈 리스트를 반환합니다.
+    """
+    code = str(order_code or "").strip()
+    clean_phone = "".join(ch for ch in str(buyer_phone or "") if ch.isdigit())
+    pw = str(guest_password or "").strip()
+    if not code or not clean_phone or not pw:
+        return []
+
+    import mall_security
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM mall_orders WHERE order_code = ? LIMIT 1", (code,))
+            row = cur.fetchone()
+            if not row:
+                return []
+            row_phone = "".join(ch for ch in str(row["buyer_phone"] or "") if ch.isdigit())
+            if row_phone != clean_phone:
+                return []
+            stored_hash = str(row["guest_password_hash"] or "")
+            if not stored_hash or not mall_security.verify_password(stored_hash, pw):
+                return []
+
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (row["id"],))
+            items = [dict(ir) for ir in cur.fetchall()]
+            d = dict(row)
+            d.pop("guest_password_hash", None)
+            d["items"] = items
+            return [d]
         finally:
             conn.close()
 
@@ -726,7 +1038,10 @@ def update_mall_order_status(order_id, payment_status=None, order_status=None):
             if order_status:
                 cur.execute("UPDATE mall_orders SET order_status = ? WHERE id = ?", (order_status, int(order_id)))
             conn.commit()
-            return cur.rowcount > 0
+            deleted = cur.rowcount > 0
+            if deleted:
+                bump_state_version(bump_catalog=True)
+            return deleted
         finally:
             conn.close()
 
@@ -760,5 +1075,189 @@ def add_mall_review(product_num, author, rating, content):
             ))
             conn.commit()
             return True
+        finally:
+            conn.close()
+
+
+# ==============================================================================
+# 🔐 쇼핑몰 전용 회원(mall_users) 및 관리자 인증 API
+# ==============================================================================
+
+import secrets as _secrets
+import mall_security
+
+
+def ensure_default_mall_admin():
+    """최초 기동 시 쇼핑몰 관리자 계정을 보장합니다."""
+    admin_email = (os.getenv("MALL_ADMIN_EMAIL") or "admin@mall.local").strip().lower()
+    admin_pw = (os.getenv("MALL_ADMIN_PASSWORD") or "").strip()
+    cred_file = os.path.join(BASE_DIR, ".mall_admin_credentials.txt")
+
+    if not admin_pw:
+        if os.path.exists(cred_file):
+            try:
+                with open(cred_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("PASSWORD="):
+                            admin_pw = line.split("=", 1)[1].strip()
+                            break
+            except Exception:
+                pass
+        if not admin_pw:
+            admin_pw = "MallAdmin!" + _secrets.token_urlsafe(9)
+            try:
+                with open(cred_file, "w", encoding="utf-8") as f:
+                    f.write(f"EMAIL={admin_email}\nPASSWORD={admin_pw}\n")
+                print(f"🔐 [쇼핑몰 초기 관리자 생성] 이메일: {admin_email} | 초기 비밀번호는 shopping_mall/.mall_admin_credentials.txt 에 저장되었습니다.")
+            except Exception:
+                pass
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM mall_users WHERE email = ?", (admin_email,))
+            row = cur.fetchone()
+            pw_hash = mall_security.hash_password(admin_pw)
+            if not row:
+                cur.execute("""
+                    INSERT INTO mall_users (email, password_hash, name, phone, role, is_active, created_at)
+                    VALUES (?, ?, '쇼핑몰 관리자', '010-0000-0000', 'ADMIN', 1, ?)
+                """, (admin_email, pw_hash, now_str))
+            elif os.getenv("MALL_ADMIN_PASSWORD"):
+                cur.execute("""
+                    UPDATE mall_users SET password_hash = ?, role = 'ADMIN', is_active = 1
+                    WHERE id = ?
+                """, (pw_hash, row["id"]))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def create_mall_user(email: str, password: str, name: str, phone: str, zipcode: str = "", address: str = "", address_detail: str = "") -> dict:
+    mail = str(email or "").strip().lower()
+    nm = str(name or "").strip()
+    ph = str(phone or "").strip()
+    if "@" not in mail or "." not in mail:
+        return {"ok": False, "message": "유효한 이메일 주소를 입력해 주세요."}
+    if not nm or not ph:
+        return {"ok": False, "message": "성함과 연락처를 모두 입력해 주세요."}
+
+    valid_pw, pw_msg = mall_security.validate_password_policy(password, min_len=8)
+    if not valid_pw:
+        return {"ok": False, "message": pw_msg}
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM mall_users WHERE email = ?", (mail,))
+            if cur.fetchone():
+                return {"ok": False, "message": "이미 가입된 이메일 주소입니다."}
+            pw_hash = mall_security.hash_password(password)
+            cur.execute("""
+                INSERT INTO mall_users (email, password_hash, name, phone, zipcode, address, address_detail, role, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'MEMBER', 1, ?)
+            """, (
+                mail, pw_hash, nm, ph,
+                str(zipcode or "").strip(),
+                str(address or "").strip(),
+                str(address_detail or "").strip(),
+                now_str
+            ))
+            uid = cur.lastrowid
+            conn.commit()
+            return {
+                "ok": True,
+                "user": {
+                    "id": uid,
+                    "email": mail,
+                    "name": nm,
+                    "phone": ph,
+                    "zipcode": str(zipcode or "").strip(),
+                    "address": str(address or "").strip(),
+                    "address_detail": str(address_detail or "").strip(),
+                    "role": "MEMBER"
+                }
+            }
+        finally:
+            conn.close()
+
+
+def authenticate_mall_user(email: str, password: str) -> dict:
+    mail = str(email or "").strip().lower()
+    if not mail or not password:
+        return {"ok": False, "code": "INVALID", "message": "이메일과 비밀번호를 입력해 주세요."}
+
+    now_ts = time.time()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, email, password_hash, name, phone, zipcode, address, address_detail, role, is_active, failed_login_count, locked_until
+                FROM mall_users
+                WHERE email = ?
+            """, (mail,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "code": "INVALID", "message": "이메일 또는 비밀번호가 올바르지 않습니다."}
+            if not row["is_active"]:
+                return {"ok": False, "code": "SUSPENDED", "message": "이용이 정지된 계정입니다."}
+
+            locked_until = float(row["locked_until"] or 0.0)
+            if locked_until > now_ts:
+                remain = max(1, int(round(locked_until - now_ts)))
+                return {"ok": False, "code": "LOCKED", "message": f"비밀번호 5회 연속 오류로 계정이 잠겼습니다. {remain}초 후 다시 시도해 주세요."}
+
+            if not mall_security.verify_password(row["password_hash"], password):
+                fails = int(row["failed_login_count"] or 0) + 1
+                new_lock = (now_ts + 600.0) if fails >= 5 else 0.0
+                cur.execute("""
+                    UPDATE mall_users SET failed_login_count = ?, locked_until = ? WHERE id = ?
+                """, (fails, new_lock, row["id"]))
+                conn.commit()
+                if new_lock > 0:
+                    return {"ok": False, "code": "LOCKED", "message": "비밀번호 5회 오류로 10분간 로그인이 제한됩니다."}
+                return {"ok": False, "code": "INVALID", "message": "이메일 또는 비밀번호가 올바르지 않습니다."}
+
+            cur.execute("""
+                UPDATE mall_users SET failed_login_count = 0, locked_until = 0, last_login_at = ? WHERE id = ?
+            """, (now_str, row["id"]))
+            conn.commit()
+            return {
+                "ok": True,
+                "user": {
+                    "id": row["id"],
+                    "email": row["email"],
+                    "name": row["name"],
+                    "phone": row["phone"],
+                    "zipcode": row["zipcode"] or "",
+                    "address": row["address"] or "",
+                    "address_detail": row["address_detail"] or "",
+                    "role": row["role"]
+                }
+            }
+        finally:
+            conn.close()
+
+
+def get_mall_user_by_id(user_id: int):
+    if not user_id:
+        return None
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, created_at
+                FROM mall_users
+                WHERE id = ? AND is_active = 1
+            """, (int(user_id),))
+            row = cur.fetchone()
+            return dict(row) if row else None
         finally:
             conn.close()

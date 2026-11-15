@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS 스튜디오 회원 승인 & 보안 관리 — Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b1120;
+            --card-bg: rgba(30, 41, 59, 0.78);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+        body { background: var(--bg-color); color: var(--text-main); min-height: 100vh; padding: 24px; }
+        .container { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            padding: 24px;
+        }
+        .panel h2 { font-size: 1.25rem; font-weight: 800; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { padding: 11px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th { color: var(--text-muted); font-weight: 700; }
+        .pill {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 800;
+        }
+        .pill.PENDING { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+        .pill.APPROVED { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+        .pill.REJECTED, .pill.SUSPENDED { background: rgba(244, 63, 94, 0.2); color: #fda4af; }
+        .btn-act {
+            padding: 6px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(15, 23, 42, 0.8);
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-right: 4px;
+        }
+        .btn-act.approve { background: #10b981; color: #052e16; border: none; }
+        .btn-act.reject { background: #e11d48; color: #fff; border: none; }
+        .form-inline { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+        .input-sm {
+            padding: 9px 12px;
+            border-radius: 9px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(15, 23, 42, 0.85);
+            color: #fff;
+            font-size: 0.88rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% set active_page = 'admin_users' %}
+        {% include 'components/header.html' %}
+
+        <section class="panel">
+            <h2>👥 OBS 스튜디오 방송자 가입 신청 & 회원 권한 관리</h2>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>아이디</th>
+                            <th>이메일</th>
+                            <th>방송자명</th>
+                            <th>권한</th>
+                            <th>상태</th>
+                            <th>최근 로그인</th>
+                            <th>가입일</th>
+                            <th>관리 액션</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td>#{{ u.id }}</td>
+                            <td><strong>{{ u.username }}</strong></td>
+                            <td>{{ u.email }}</td>
+                            <td>{{ u.display_name }}</td>
+                            <td>{{ u.role }}</td>
+                            <td><span class="pill {{ u.status }}">{{ u.status }}</span></td>
+                            <td>{{ u.last_login_at or '-' }}</td>
+                            <td>{{ u.created_at }}</td>
+                            <td>
+                                <button class="btn-act approve" onclick="changeUserStatus({{ u.id }}, 'APPROVED')">승인</button>
+                                <button class="btn-act reject" onclick="changeUserStatus({{ u.id }}, 'SUSPENDED')">정지</button>
+                                <button class="btn-act" onclick="changeUserStatus({{ u.id }}, 'PENDING')">대기전환</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>🔑 즉시 승인용 초대 코드(Invite Code) 발급 관리</h2>
+            <form class="form-inline" onsubmit="createInviteCode(event)">
+                <input type="text" id="invCode" class="input-sm" placeholder="직접 입력 (비워두면 자동생성)">
+                <input type="text" id="invMemo" class="input-sm" placeholder="메모 (예: 파트너 셀러용)" style="min-width:220px;">
+                <input type="number" id="invMaxUses" class="input-sm" value="10" min="1" max="1000" style="width:110px;">
+                <button type="submit" class="btn-act approve" style="padding:9px 16px;">+ 초대 코드 생성</button>
+            </form>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>초대 코드</th>
+                            <th>메모</th>
+                            <th>사용량</th>
+                            <th>활성 여부</th>
+                            <th>생성일</th>
+                            <th>제어</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in invite_codes %}
+                        <tr>
+                            <td><code style="color:#a5b4fc; font-weight:800;">{{ c.code }}</code></td>
+                            <td>{{ c.memo or '-' }}</td>
+                            <td>{{ c.used_count }} / {{ c.max_uses }}</td>
+                            <td>{{ '활성' if c.is_active else '비활성' }}</td>
+                            <td>{{ c.created_at }}</td>
+                            <td>
+                                <button class="btn-act" onclick="toggleInvite({{ c.id }}, {{ 'false' if c.is_active else 'true' }})">
+                                    {{ '비활성화' if c.is_active else '활성화' }}
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="color:var(--text-muted);">발급된 초대 코드가 없습니다.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>🛡️ 최근 보안 감사 로그 (Security Audit Logs)</h2>
+            <div style="overflow-x:auto; max-height:320px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>시각</th>
+                            <th>이벤트</th>
+                            <th>계정</th>
+                            <th>IP</th>
+                            <th>상세</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in audit_logs %}
+                        <tr>
+                            <td>{{ log.event_time }}</td>
+                            <td><strong>{{ log.action }}</strong></td>
+                            <td>{{ log.actor_id or '-' }}</td>
+                            <td>{{ log.ip_address or '-' }}</td>
+                            <td style="color:var(--text-muted);">{{ log.detail }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        async function changeUserStatus(userId, status) {
+            const res = await fetch('/api/studio/admin/user-status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, status: status})
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                location.reload();
+            } else {
+                alert(data.message || '처리 실패');
+            }
+        }
+        async function createInviteCode(e) {
+            e.preventDefault();
+            const res = await fetch('/api/studio/admin/invite-code', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    code: document.getElementById('invCode').value,
+                    memo: document.getElementById('invMemo').value,
+                    max_uses: Number(document.getElementById('invMaxUses').value || 10)
+                })
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                location.reload();
+            } else {
+                alert(data.message || '생성 실패');
+            }
+        }
+        async function toggleInvite(codeId, active) {
+            const res = await fetch('/api/studio/admin/invite-toggle', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({code_id: codeId, is_active: active})
+            });
+            if (res.ok) location.reload();
+        }
+    </script>
+</body>
+</html>

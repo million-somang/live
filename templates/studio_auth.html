@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS 스튜디오 방송자 인증 — Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #070b14;
+            --card-bg: rgba(15, 23, 42, 0.85);
+            --border: rgba(148, 163, 184, 0.16);
+            --primary: #6366f1;
+            --emerald: #10b981;
+            --text-main: #f8fafc;
+            --text-sub: #cbd5e1;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image:
+                radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.2) 0px, transparent 50%),
+                radial-gradient(at 85% 85%, rgba(16, 185, 129, 0.15) 0px, transparent 50%);
+        }
+        a { color: inherit; text-decoration: none; }
+        .top-bar {
+            padding: 16px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            background: rgba(7, 11, 20, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .brand { font-weight: 900; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
+        .top-links { display: flex; gap: 12px; font-size: 0.88rem; font-weight: 700; color: var(--text-sub); }
+        .auth-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 36px 20px;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 470px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 34px 32px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(16px);
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            background: rgba(16, 185, 129, 0.18);
+            color: #6ee7b7;
+            margin-bottom: 10px;
+        }
+        .auth-card h1 { font-size: 1.55rem; font-weight: 900; margin-bottom: 6px; }
+        .auth-card p.desc { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 22px; line-height: 1.5; }
+        .alert {
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            margin-bottom: 18px;
+            line-height: 1.45;
+        }
+        .alert.error { background: rgba(244, 63, 94, 0.16); border: 1px solid rgba(244, 63, 94, 0.4); color: #fda4af; }
+        .alert.success { background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.84rem; font-weight: 700; color: var(--text-sub); margin-bottom: 6px; }
+        .form-input {
+            width: 100%;
+            padding: 11px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(7, 11, 20, 0.7);
+            color: #fff;
+            font-size: 0.94rem;
+            outline: none;
+        }
+        .form-input:focus { border-color: var(--primary); }
+        .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
+        .btn-submit {
+            width: 100%;
+            padding: 13px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #fff;
+            font-size: 0.98rem;
+            font-weight: 800;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        .switch-row {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            text-align: center;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+        .switch-row a { color: #a5b4fc; font-weight: 700; margin-left: 6px; }
+    </style>
+</head>
+<body>
+    <header class="top-bar">
+        <a href="/" class="brand">🎬 Live Commerce OS</a>
+        <div class="top-links">
+            <a href="/">① 홍보 홈페이지</a>
+            <a href="{{ mall_public_url }}" target="_blank" rel="noopener">② 독립 쇼핑몰 ↗</a>
+        </div>
+    </header>
+
+    <main class="auth-container">
+        <div class="auth-card">
+            {% if mode == 'login' %}
+                <span class="badge">🔒 OBS 스튜디오 방송자 전용</span>
+                <h1>OBS 스튜디오 로그인</h1>
+                <p class="desc">승인된 방송자 및 관리자 계정만 OBS 스튜디오와 방송 관제탑을 이용할 수 있습니다.</p>
+
+                {% if error %}
+                    <div class="alert error">{{ error }}</div>
+                {% endif %}
+                {% if message %}
+                    <div class="alert success">{{ message }}</div>
+                {% endif %}
+
+                <form method="POST" action="/auth/login">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="next" value="{{ next_url or '/overlay/studio' }}">
+                    <div class="form-group">
+                        <label for="login_id">아이디 또는 이메일</label>
+                        <input type="text" id="login_id" name="login_id" class="form-input" placeholder="아이디 또는 이메일 입력" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">비밀번호</label>
+                        <input type="password" id="password" name="password" class="form-input" placeholder="비밀번호 입력" required>
+                    </div>
+                    <button type="submit" class="btn-submit">OBS 스튜디오 로그인</button>
+                </form>
+
+                <div class="switch-row">
+                    아직 방송자 계정이 없으신가요?
+                    <a href="/auth/register">방송자 회원가입 신청</a>
+                </div>
+
+            {% elif mode == 'register' %}
+                <span class="badge">✨ 방송자 회원가입 신청</span>
+                <h1>OBS 스튜디오 회원가입</h1>
+                <p class="desc">
+                    쇼핑몰 회원과는 별도로 운영되는 <strong>방송자 전용 계정</strong>입니다.<br>
+                    초대 코드를 입력하면 즉시 활성화되며, 미입력 시 관리자 승인 후 이용하실 수 있습니다.
+                </p>
+
+                {% if error %}
+                    <div class="alert error">{{ error }}</div>
+                {% endif %}
+
+                <form method="POST" action="/auth/register">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="form-group">
+                        <label for="username">로그인 아이디 *</label>
+                        <input type="text" id="username" name="username" class="form-input" placeholder="영문/숫자 3~40자" value="{{ form_data.username if form_data else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">이메일 *</label>
+                        <input type="email" id="email" name="email" class="form-input" placeholder="broadcaster@example.com" value="{{ form_data.email if form_data else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="display_name">방송자명 / 브랜드명 *</label>
+                        <input type="text" id="display_name" name="display_name" class="form-input" placeholder="예: 골라방 공식 스튜디오" value="{{ form_data.display_name if form_data else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">연락처</label>
+                        <input type="text" id="phone" name="phone" class="form-input" placeholder="010-0000-0000" value="{{ form_data.phone if form_data else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">비밀번호 * (8자 이상, 문자+숫자 포함)</label>
+                        <input type="password" id="password" name="password" class="form-input" placeholder="비밀번호 입력" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="invite_code">초대 코드 (선택)</label>
+                        <input type="text" id="invite_code" name="invite_code" class="form-input" placeholder="발급받은 초대 코드가 있다면 입력 (즉시 승인)">
+                        <div class="hint">* 초대 코드가 없어도 가입 신청이 가능하며, 관리자 승인 후 스튜디오가 활성화됩니다.</div>
+                    </div>
+                    <button type="submit" class="btn-submit">OBS 스튜디오 가입 신청</button>
+                </form>
+
+                <div class="switch-row">
+                    이미 가입하셨나요?
+                    <a href="/auth/login">로그인 화면으로</a>
+                </div>
+
+            {% else %}
+                <span class="badge">⏳ 승인 상태 안내</span>
+                <h1>
+                    {% if studio_user and studio_user.status == 'PENDING' %}
+                        관리자 승인 대기 중입니다
+                    {% elif studio_user and studio_user.status == 'REJECTED' %}
+                        가입 승인이 반려되었습니다
+                    {% elif studio_user and studio_user.status == 'SUSPENDED' %}
+                        이용이 정지된 계정입니다
+                    {% else %}
+                        계정 상태를 확인해 주세요
+                    {% endif %}
+                </h1>
+                <p class="desc" style="margin-top:10px;">
+                    {% if studio_user %}
+                        <strong>{{ studio_user.display_name }} ({{ studio_user.username }})</strong>님의 현재 계정 상태는
+                        <strong>[{{ studio_user.status }}]</strong>입니다.<br>
+                        보안 정책에 따라 OBS 스튜디오 및 방송 관제 시스템은 관리자가 가입을 승인한 이후 접근하실 수 있습니다.
+                    {% else %}
+                        로그인 후 이용해 주세요.
+                    {% endif %}
+                </p>
+                <div style="display:flex; gap:10px; margin-top:16px;">
+                    <a href="/" class="btn-submit" style="text-align:center; background:rgba(99,102,241,0.25); border:1px solid rgba(99,102,241,0.5);">홍보 홈으로 이동</a>
+                    <a href="/auth/logout" class="btn-submit" style="text-align:center; background:rgba(244,63,94,0.25); border:1px solid rgba(244,63,94,0.4);">로그아웃</a>
+                </div>
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

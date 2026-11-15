@@ -27,7 +27,8 @@ if sys.platform.startswith("win"):
     except Exception:
         pass
 
-from flask import Flask, request, jsonify, render_template, send_file, Response
+from datetime import timedelta
+from flask import Flask, request, jsonify, render_template, send_file, Response, session, redirect, url_for
 from flask_cors import CORS
 from dotenv import load_dotenv
 from openpyxl import Workbook, load_workbook
@@ -35,16 +36,204 @@ from openpyxl import Workbook, load_workbook
 from inventory_manager import inventory_manager
 from cs_manager import cs_manager
 import database
+import security_core
 
 # DB 테이블 및 인덱스 초기화 확인
 database.init_db(reset=False)
 
 # 환경 변수 로드 (.env 파일이 있으면 우선 반영)
 load_dotenv()
+database.ensure_default_studio_admin()
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
-CORS(app)  # 브라우저 확장 프로그램(Social Stream Ninja)에서의 로컬 전송 허용
+app.secret_key = security_core.load_or_create_secret_key(
+    "STUDIO_SECRET_KEY",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".studio_secret_key")
+)
+app.config["SESSION_COOKIE_NAME"] = "studio_sid"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+CORS(app)  # 브라우저 확장 프로그램(Social Stream Ninja) 및 외부 CSR 대시보드에서의 로컬 에이전트 전송 허용
+
+STUDIO_PUBLIC_URL = os.getenv("STUDIO_PUBLIC_URL", "http://localhost:5000").rstrip("/")
+MALL_PUBLIC_URL = os.getenv("MALL_PUBLIC_URL", "http://localhost:3000").rstrip("/")
+
+
+def get_studio_cam_token() -> str:
+    return security_core.create_signed_token(app.secret_key, "cam_pair", {"scope": "cam"}, ttl_sec=86400 * 7)
+
+
+def get_studio_overlay_token() -> str:
+    return security_core.create_signed_token(app.secret_key, "obs_overlay", {"scope": "overlay"}, ttl_sec=86400 * 30)
+
+
+def get_current_studio_user():
+    uid = session.get("studio_user_id")
+    if not uid:
+        return None
+    return database.get_studio_user_by_id(uid)
+
+
+def _is_direct_loopback_request() -> bool:
+    remote = str(request.remote_addr or "")
+    forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP")
+    return (remote in ("127.0.0.1", "::1", "localhost")) and not forwarded
+
+
+def _has_valid_cam_access() -> bool:
+    if session.get("cam_paired") is True:
+        return True
+    tok = (
+        request.args.get("cam_token")
+        or request.headers.get("X-Cam-Token")
+        or ""
+    ).strip()
+    if tok and security_core.verify_signed_token(app.secret_key, "cam_pair", tok) is not None:
+        session["cam_paired"] = True
+        return True
+    u = get_current_studio_user()
+    if u and u.get("status") == "APPROVED":
+        return True
+    return False
+
+
+def _has_valid_overlay_access() -> bool:
+    tok = (
+        request.args.get("ov_token")
+        or request.headers.get("X-Overlay-Token")
+        or ""
+    ).strip()
+    if tok and security_core.verify_signed_token(app.secret_key, "obs_overlay", tok) is not None:
+        return True
+    if _is_direct_loopback_request():
+        return True
+    u = get_current_studio_user()
+    return bool(u and u.get("status") == "APPROVED")
+
+
+@app.context_processor
+def _inject_studio_globals():
+    u = get_current_studio_user()
+    return {
+        "current_studio_user": u,
+        "studio_user": u,
+        "csrf_token": security_core.get_csrf_token(session),
+        "mall_public_url": os.getenv("MALL_PUBLIC_URL", MALL_PUBLIC_URL).rstrip("/"),
+        "studio_public_url": os.getenv("STUDIO_PUBLIC_URL", STUDIO_PUBLIC_URL).rstrip("/"),
+        "obs_overlay_token": get_studio_overlay_token(),
+        "camera_pair_token": get_studio_cam_token(),
+    }
+
+
+@app.before_request
+def _studio_security_gateway():
+    """
+    도메인 1 (홍보 홈페이지 + OBS 스튜디오) 중앙 보안 게이트웨이 (Deny-by-Default)
+    1) 공개 경로(/, /auth/*, /static/*, /status, OPTIONS) 허용
+    2) 특수 토큰 경로(/cam*, /overlay/obs, 웹훅) 검증
+    3) 그 외 모든 스튜디오/관제 화면 및 /api/* 제어 요청은 APPROVED 방송자 세션 필수
+    4) 상태 변경(POST/PUT/DELETE) 요청 시 CSRF 검증
+    """
+    if request.method == "OPTIONS":
+        return None
+
+    path = request.path or "/"
+
+    # 1. 정적 파일 및 기본 헬스체크 허용
+    if path.startswith("/static/") or path in ("/status", "/favicon.ico"):
+        return None
+
+    # 2. 홍보 홈페이지 (GET /) 및 인증 라우트 (/auth/*)
+    if path == "/" and request.method == "GET":
+        return None
+    if path.startswith("/auth/"):
+        if request.method == "POST" and not security_core.verify_csrf_token(session, request):
+            return render_template(
+                "studio_auth.html",
+                mode="login" if "login" in path else "register",
+                error="보안 토큰(CSRF)이 만료되었거나 유효하지 않습니다. 다시 시도해 주세요."
+            ), 403
+        return None
+
+    # 3. 로컬 에이전트 PNA 설정 조회 (GET /api/agent/cloud-config)
+    if path == "/api/agent/cloud-config" and request.method == "GET":
+        if _is_direct_loopback_request() or request.headers.get("Access-Control-Request-Private-Network") == "true" or request.headers.get("Origin"):
+            return None
+
+    # 4. 채팅/쇼핑몰 인입 웹훅 경로 (POST /, /chat, /webhook, /api/chat, /api/mall/order-webhook)
+    if path in ("/", "/chat", "/webhook", "/api/chat", "/api/mall/order-webhook") and request.method == "POST":
+        webhook_sec = (os.getenv("WEBHOOK_SECRET") or "").strip()
+        if webhook_sec:
+            req_sec = (request.headers.get("X-Webhook-Secret") or request.args.get("webhook_secret") or "").strip()
+            if not security_core.constant_time_equals(webhook_sec, req_sec) and not _is_direct_loopback_request():
+                return jsonify({"status": "error", "message": "웹훅 인증 시크릿이 유효하지 않습니다."}), 403
+        return None
+
+    # 5. OBS 브라우저 소스 읽기 전용 경로 (/overlay/obs 및 GET 오버레이/상품 데이터)
+    if path == "/overlay/obs" or (
+        request.method == "GET" and path in ("/api/overlay/data", "/api/overlay/settings", "/api/products")
+    ):
+        if _has_valid_overlay_access():
+            return None
+
+    # 6. 무선 스마트폰 카메라 경로 (/cam, /cam/<id>, /api/camera/*)
+    if path == "/cam" or path.startswith("/cam/") or path.startswith("/api/camera/"):
+        # host-info, renew-url, switcher POST는 스튜디오 운영자 전용
+        if path in ("/api/camera/host-info", "/api/camera/renew-url") or (path == "/api/camera/switcher" and request.method == "POST"):
+            pass  # 아래 스튜디오 인증으로 진행
+        else:
+            if _has_valid_cam_access():
+                return None
+            if path.startswith("/api/"):
+                return jsonify({"status": "error", "message": "무선 카메라 보안 페어링 토큰(cam_token)이 필요합니다."}), 403
+            return Response("🔒 무선 카메라 보안 토큰(cam_token)이 없거나 만료되었습니다. OBS 스튜디오에서 QR 코드를 다시 스캔해 주세요.", status=403, mimetype="text/plain; charset=utf-8")
+
+    # 7. 스튜디오 정식 회원 세션 확인
+    user = get_current_studio_user()
+    if not user:
+        if path.startswith("/api/") or request.method != "GET":
+            return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "OBS 스튜디오 로그인이 필요합니다."}), 401
+        next_q = request.full_path.rstrip("?") if request.query_string else path
+        if not security_core.is_safe_redirect_url(next_q):
+            next_q = "/overlay/studio"
+        return redirect(url_for("studio_auth_login", next=next_q))
+
+    if user.get("status") != "APPROVED":
+        if path.startswith("/api/") or request.method != "GET":
+            return jsonify({"status": "error", "code": "APPROVAL_REQUIRED", "message": "관리자 승인 완료 후 OBS 스튜디오를 이용하실 수 있습니다."}), 403
+        return redirect(url_for("studio_auth_pending"))
+
+    # 8. 관리자 전용 경로 확인 (/studio/admin/*, /api/studio/admin/*)
+    if path.startswith("/studio/admin") or path.startswith("/api/studio/admin"):
+        if user.get("role") != "ADMIN":
+            if path.startswith("/api/"):
+                return jsonify({"status": "error", "message": "스튜디오 관리자(ADMIN) 권한이 필요합니다."}), 403
+            return Response("스튜디오 관리자 전용 페이지입니다.", status=403, mimetype="text/plain; charset=utf-8")
+
+    # 9. 상태 변경 요청(POST/PUT/DELETE/PATCH) CSRF 검증
+    if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        if not security_core.verify_csrf_token(session, request):
+            return jsonify({"status": "error", "code": "CSRF_INVALID", "message": "CSRF 보안 토큰 검증에 실패했습니다. 페이지를 새로고침해 주세요."}), 403
+
+    return None
+
+
+@app.after_request
+def _add_private_network_cors_headers(response):
+    """보안 응답 헤더, CSRF 스크립트 자동 주입 및 Private Network Access 허용"""
+    if request.headers.get("Access-Control-Request-Private-Network") == "true":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    origin = request.headers.get("Origin")
+    if origin and "Access-Control-Allow-Origin" not in response.headers:
+        response.headers["Access-Control-Allow-Origin"] = origin
+
+    allow_frame = request.path.startswith("/overlay/") or request.path.startswith("/cam")
+    security_core.apply_security_headers(response, allow_framing=allow_frame)
+    security_core.inject_csrf_into_html_response(response, security_core.get_csrf_token(session))
+    return response
 
 # 1. 파일 경로 설정
 EXCEL_FILE = "live_orders.xlsx"
@@ -1303,14 +1492,19 @@ def get_dashboard_context():
 
 
 # ==========================================
-# 1. 🏢 메인 비즈니스 포털 대시보드
+# 1. 🌐 공개 홍보 홈페이지 (/) & 🏢 내부 비즈니스 포털 (/portal) & 🔐 방송자 인증
 # ==========================================
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    """라이브 커머스 비즈니스 메인 포털 홈 화면 (POST 인입 시 웹훅 처리 자동 전환)"""
+    """불특정 다수 공개 홍보 홈페이지 (POST 인입 시 웹훅 처리 하위호환 유지)"""
     if request.method == 'POST':
         return receive_chat()
+    return render_template('promo_landing.html')
 
+
+@app.route('/portal', methods=['GET'])
+def studio_portal_view():
+    """승인된 방송자 전용 내부 비즈니스 관제 포털"""
     analytics = calculate_analytics()
     cs_stats = cs_manager.get_stats()
     platforms_summary = platform_tracker.get_summary()
@@ -1325,6 +1519,188 @@ def index():
         inventory_items=inventory_manager.get_all(),
         recent_orders=analytics["orders"][:5]
     )
+
+
+@app.route('/auth/login', methods=['GET', 'POST'])
+def studio_auth_login():
+    """OBS 스튜디오 방송자 로그인"""
+    next_url = request.args.get("next") or request.form.get("next") or "/overlay/studio"
+    if not security_core.is_safe_redirect_url(next_url):
+        next_url = "/overlay/studio"
+
+    if request.method == 'GET':
+        cur_u = get_current_studio_user()
+        if cur_u:
+            if cur_u.get("status") == "APPROVED":
+                return redirect(next_url)
+            return redirect(url_for("studio_auth_pending"))
+        return render_template("studio_auth.html", mode="login", next_url=next_url)
+
+    ip_addr = str(request.remote_addr or "unknown")
+    allowed, retry_sec = security_core.rate_limiter.check("studio_login", ip_addr, max_requests=10, window_sec=60.0)
+    if not allowed:
+        return render_template(
+            "studio_auth.html",
+            mode="login",
+            next_url=next_url,
+            error=f"로그인 시도가 너무 많습니다. {retry_sec}초 후 다시 시도해 주세요."
+        ), 429
+
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        login_id = data.get("login_id") or data.get("username") or data.get("email") or ""
+        password = data.get("password") or ""
+    else:
+        login_id = request.form.get("login_id") or ""
+        password = request.form.get("password") or ""
+
+    res = database.authenticate_studio_user(login_id, password, ip_address=ip_addr)
+    if not res.get("ok"):
+        status_code = 423 if res.get("code") == "LOCKED" else 401
+        if request.is_json:
+            return jsonify({"status": "error", "code": res.get("code"), "message": res.get("message")}), status_code
+        return render_template("studio_auth.html", mode="login", next_url=next_url, error=res.get("message")), status_code
+
+    user = res["user"]
+    security_core.rotate_session(session)
+    session.permanent = True
+    session["studio_user_id"] = user["id"]
+    session["studio_role"] = user["role"]
+
+    if request.is_json:
+        return jsonify({
+            "status": "ok",
+            "user": user,
+            "csrf_token": security_core.get_csrf_token(session),
+            "redirect": next_url if user.get("status") == "APPROVED" else "/auth/pending"
+        }), 200
+
+    if user.get("status") != "APPROVED":
+        return redirect(url_for("studio_auth_pending"))
+    return redirect(next_url)
+
+
+@app.route('/auth/register', methods=['GET', 'POST'])
+def studio_auth_register():
+    """OBS 스튜디오 별도 방송자 회원가입 신청"""
+    if request.method == 'GET':
+        return render_template("studio_auth.html", mode="register", form_data={})
+
+    ip_addr = str(request.remote_addr or "unknown")
+    allowed, retry_sec = security_core.rate_limiter.check("studio_register", ip_addr, max_requests=8, window_sec=60.0)
+    if not allowed:
+        return render_template(
+            "studio_auth.html",
+            mode="register",
+            form_data={},
+            error=f"가입 요청이 너무 많습니다. {retry_sec}초 후 다시 시도해 주세요."
+        ), 429
+
+    if request.is_json:
+        form_data = request.get_json(silent=True) or {}
+    else:
+        form_data = {
+            "username": request.form.get("username", ""),
+            "email": request.form.get("email", ""),
+            "display_name": request.form.get("display_name", ""),
+            "phone": request.form.get("phone", ""),
+            "password": request.form.get("password", ""),
+            "invite_code": request.form.get("invite_code", "")
+        }
+
+    res = database.create_studio_user(
+        username=form_data.get("username", ""),
+        email=form_data.get("email", ""),
+        password=form_data.get("password", ""),
+        display_name=form_data.get("display_name", ""),
+        phone=form_data.get("phone", ""),
+        invite_code=form_data.get("invite_code", ""),
+        ip_address=ip_addr
+    )
+    if not res.get("ok"):
+        if request.is_json:
+            return jsonify({"status": "error", "message": res.get("message")}), 400
+        return render_template("studio_auth.html", mode="register", form_data=form_data, error=res.get("message")), 400
+
+    security_core.rotate_session(session)
+    session.permanent = True
+    session["studio_user_id"] = res["user_id"]
+    session["studio_role"] = res["role"]
+
+    if request.is_json:
+        return jsonify({
+            "status": "ok",
+            "user_status": res["status"],
+            "csrf_token": security_core.get_csrf_token(session),
+            "redirect": "/overlay/studio" if res["status"] == "APPROVED" else "/auth/pending"
+        }), 200
+
+    if res["status"] == "APPROVED":
+        return redirect("/overlay/studio")
+    return redirect(url_for("studio_auth_pending"))
+
+
+@app.route('/auth/pending', methods=['GET'])
+def studio_auth_pending():
+    """가입 승인 대기 / 정지 상태 안내 화면"""
+    return render_template("studio_auth.html", mode="pending")
+
+
+@app.route('/auth/logout', methods=['GET', 'POST'])
+def studio_auth_logout():
+    """OBS 스튜디오 로그아웃"""
+    session.clear()
+    if request.is_json:
+        return jsonify({"status": "ok"}), 200
+    return redirect(url_for("index"))
+
+
+@app.route('/studio/admin/users', methods=['GET'])
+def studio_admin_users_view():
+    """스튜디오 관리자 전용 방송자 승인 및 초대코드 관리 화면"""
+    return render_template(
+        "studio_admin_users.html",
+        users=database.list_studio_users(),
+        invite_codes=database.list_studio_invite_codes(),
+        audit_logs=database.list_security_audit_logs(limit=60)
+    )
+
+
+@app.route('/api/studio/admin/user-status', methods=['POST'])
+def api_studio_admin_user_status():
+    data = request.get_json(silent=True) or {}
+    uid = data.get("user_id")
+    new_st = data.get("status")
+    new_role = data.get("role")
+    cur_u = get_current_studio_user() or {}
+    ok = database.update_studio_user_status(
+        user_id=uid,
+        new_status=new_st,
+        new_role=new_role,
+        actor_id=cur_u.get("username", "admin"),
+        ip_address=str(request.remote_addr or "")
+    )
+    return jsonify({"status": "ok" if ok else "error"}), (200 if ok else 400)
+
+
+@app.route('/api/studio/admin/invite-code', methods=['POST'])
+def api_studio_admin_create_invite():
+    data = request.get_json(silent=True) or {}
+    cur_u = get_current_studio_user() or {}
+    res = database.create_studio_invite_code(
+        code=data.get("code", ""),
+        memo=data.get("memo", ""),
+        max_uses=data.get("max_uses", 10),
+        created_by=cur_u.get("username", "ADMIN")
+    )
+    return jsonify({"status": "ok" if res.get("ok") else "error", **res}), (200 if res.get("ok") else 400)
+
+
+@app.route('/api/studio/admin/invite-toggle', methods=['POST'])
+def api_studio_admin_toggle_invite():
+    data = request.get_json(silent=True) or {}
+    ok = database.toggle_studio_invite_code(data.get("code_id"), bool(data.get("is_active")))
+    return jsonify({"status": "ok" if ok else "error"}), (200 if ok else 400)
 
 
 # ==========================================
@@ -2574,6 +2950,8 @@ def obs_overlay_view():
 
 
 @app.route('/overlay/studio', methods=['GET'])
+@app.route('/obs-studio', methods=['GET'])
+@app.route('/studio', methods=['GET'])
 def obs_studio_view():
     """OBS 오버레이 전용 세팅 스튜디오 컨트롤러 화면"""
     return render_template('obs_studio.html')
@@ -2734,6 +3112,7 @@ def api_overlay_data():
             live_urls[plat_key] = {
                 "active": bool(info.get("active")),
                 "live_url": info.get("live_url") or "",
+                "embed_url": info.get("embed_url") or "",
                 "label": info.get("label") or plat_key
             }
     except Exception:
@@ -2798,9 +3177,13 @@ def api_overlay_pin():
 def api_mall_order_webhook():
     """
     독립 쇼핑몰(Port 3000)에서 고객이 주문을 완료했을 때 OBS DB의 해당 상품 옵션 재고도 함께 동기화 차감합니다.
-    (OBS DB와 쇼핑몰 DB는 분리 운영하되, 상품/재고 데이터는 양방향 일치 유지)
+    (중복 차감 방지를 위해 order_code/order_id 이력을 기록합니다.)
     """
     data = request.get_json(silent=True) or {}
+    order_key = str(data.get("order_code") or data.get("order_id") or "").strip()
+    if order_key and not _mark_mall_order_processed(order_key):
+        return jsonify({"status": "ok", "skipped_duplicate": True}), 200
+
     items = data.get("items") or []
     for it in items:
         try:
@@ -2815,16 +3198,219 @@ def api_mall_order_webhook():
     return jsonify({"status": "ok"}), 200
 
 
+_processed_mall_order_lock = Lock()
+
+
+def _mark_mall_order_processed(order_key):
+    """이미 OBS 재고 차감이 완료된 쇼핑몰 주문인지 확인하고 신규 주문이면 기록 후 True를 반환합니다."""
+    if not order_key:
+        return True
+    with _processed_mall_order_lock:
+        seen = database.get_overlay_state("mall_processed_order_keys", [])
+        if not isinstance(seen, list):
+            seen = []
+        if order_key in seen:
+            return False
+        seen.append(order_key)
+        if len(seen) > 500:
+            seen = seen[-500:]
+        database.set_overlay_state("mall_processed_order_keys", seen)
+        return True
+
+
+def _collect_current_live_sync_snapshot():
+    """클라우드/독립 쇼핑몰로 Outbound Push할 현재 라이브 방송 상태 및 플랫폼 임베드 URL을 수집합니다."""
+    yt_active = bool('youtube_direct_streamer' in globals() and youtube_direct_streamer.active)
+    tt_active = bool('tiktok_direct_streamer' in globals() and tiktok_direct_streamer.active)
+    ig_active = bool('instagram_direct_streamer' in globals() and instagram_direct_streamer.active)
+    any_live = bool(yt_active or tt_active or ig_active)
+
+    live_urls = {}
+    yt_embed = ""
+    try:
+        screens = get_host_platform_screens_info(discover_youtube=False)
+        for plat_key in ("YOUTUBE", "TIKTOK", "INSTAGRAM"):
+            info = screens.get(plat_key) or {}
+            emb = info.get("embed_url") or ""
+            if plat_key == "YOUTUBE" and emb:
+                yt_embed = emb
+            live_urls[plat_key] = {
+                "active": bool(info.get("active")),
+                "live_url": info.get("live_url") or "",
+                "embed_url": emb,
+                "label": info.get("label") or plat_key
+            }
+    except Exception:
+        live_urls = {}
+
+    return {
+        "is_live": any_live,
+        "pinned_product_num": database.get_overlay_state("pinned_product_num", None),
+        "broadcast_title": database.get_overlay_state("simulcast_unified_title", "실시간 라이브 커머스 특가 방송"),
+        "ticker_message": get_custom_live_ticker_message(),
+        "timer": database.get_overlay_state("flash_timer", {"active": False}),
+        "live_urls": live_urls,
+        "youtube_embed_url": yt_embed,
+        "heartbeat": any_live
+    }
+
+
+def pull_and_apply_pending_mall_orders(mall_url=None, sync_secret=None):
+    """
+    공유기(NAT) 뒤에 있는 로컬 라이브 에이전트가 외부 클라우드 쇼핑몰의 신규 주문을 Outbound Pull하여
+    OBS DB 재고를 실시간 차감합니다.
+    """
+    import urllib.request
+    cfg = database.get_cloud_mall_config()
+    target_url = (mall_url or cfg["mall_url"] or "").rstrip("/")
+    sec = sync_secret if sync_secret is not None else cfg["sync_secret"]
+    if not target_url:
+        return {"pulled": 0, "applied": 0}
+
+    cursor = int(database.get_overlay_state("mall_synced_order_cursor", 0) or 0)
+    headers = {"Accept": "application/json"}
+    if sec:
+        headers["X-Mall-Sync-Secret"] = sec
+
+    req = urllib.request.Request(
+        f"{target_url}/api/sync/pending-orders?after_id={cursor}&limit=100",
+        headers=headers,
+        method="GET"
+    )
+    with urllib.request.urlopen(req, timeout=3.0) as resp:
+        data = json.loads(resp.read().decode("utf-8", errors="replace"))
+
+    if data.get("status") != "ok":
+        return {"pulled": 0, "applied": 0}
+
+    orders = data.get("orders") or []
+    applied = 0
+    max_id = cursor
+    for ord_obj in orders:
+        oid = int(ord_obj.get("id") or 0)
+        if oid > max_id:
+            max_id = oid
+        order_key = str(ord_obj.get("order_code") or oid)
+        if not _mark_mall_order_processed(order_key):
+            continue
+        for it in (ord_obj.get("items") or []):
+            try:
+                p_num = it.get("product_num") or it.get("num")
+                p_name = it.get("product_name") or f"{p_num}번"
+                color = it.get("color", "-")
+                size = it.get("size", "-")
+                qty = max(1, int(it.get("quantity", 1)))
+                database.deduct_stock(p_name, color, size, qty=qty)
+            except Exception as e:
+                print(f"⚠️ [클라우드 주문 Pull 재고 차감 경고] {e}", flush=True)
+        applied += 1
+
+    if max_id > cursor:
+        database.set_overlay_state("mall_synced_order_cursor", max_id)
+    return {"pulled": len(orders), "applied": applied, "latest_order_id": max_id}
+
+
+class CloudMallSyncWorker:
+    """
+    방송자 PC 로컬 라이브 에이전트 ↔ 외부 클라우드 CSR 쇼핑몰 간 경량 Outbound 동기화 워커
+    - 영상 데이터 전송 없이 오직 상태 변화, 5초 주기 라이브 하트비트, 신규 주문 증분 Pull만 수행합니다.
+    """
+    def __init__(self):
+        self._started = False
+        self._lock = Lock()
+        self._last_pushed_sig = None
+        self._last_hb_ts = 0.0
+
+    def start(self):
+        with self._lock:
+            if self._started:
+                return
+            self._started = True
+        threading.Thread(target=self._loop, daemon=True, name="CloudMallSyncWorker").start()
+
+    def _loop(self):
+        while True:
+            try:
+                snap = _collect_current_live_sync_snapshot()
+                sig_obj = {k: v for k, v in snap.items() if k != "heartbeat"}
+                sig = json.dumps(sig_obj, sort_keys=True, ensure_ascii=False)
+                now = time.time()
+
+                if sig != self._last_pushed_sig:
+                    database.sync_to_shopping_mall("live_state", snap)
+                    self._last_pushed_sig = sig
+                    self._last_hb_ts = now
+                elif snap["is_live"] and (now - self._last_hb_ts) >= 5.0:
+                    database.sync_to_shopping_mall("heartbeat", {"is_live": True, "heartbeat": True})
+                    self._last_hb_ts = now
+
+                cfg = database.get_cloud_mall_config()
+                if cfg["is_remote"] or cfg["agent_only_mode"]:
+                    pull_and_apply_pending_mall_orders(cfg["mall_url"], cfg["sync_secret"])
+            except Exception:
+                pass
+            time.sleep(2.0)
+
+
+cloud_mall_sync_worker = CloudMallSyncWorker()
+
+
+@app.route('/api/agent/cloud-config', methods=['GET', 'POST'])
+def api_agent_cloud_config():
+    """방송자 PC 로컬 라이브 에이전트에서 연동할 외부 클라우드 쇼핑몰 URL 및 시크릿 설정 조회/저장/테스트 API"""
+    if request.method == 'GET':
+        cfg = database.get_cloud_mall_config()
+        return jsonify({
+            "status": "ok",
+            "mall_url": cfg["mall_url"],
+            "has_secret": bool(cfg["sync_secret"]),
+            "agent_only_mode": cfg["agent_only_mode"],
+            "is_remote": cfg["is_remote"]
+        }), 200
+
+    data = request.get_json(silent=True) or {}
+    cur_cfg = database.get_cloud_mall_config()
+    new_url = str(data.get("mall_url") if "mall_url" in data else cur_cfg["mall_url"]).strip().rstrip("/")
+    new_sec = str(data.get("sync_secret") if "sync_secret" in data else cur_cfg["sync_secret"]).strip()
+    new_agent_only = bool(data.get("agent_only_mode", cur_cfg["agent_only_mode"]))
+
+    database.set_overlay_state("cloud_mall_config", {
+        "mall_url": new_url,
+        "sync_secret": new_sec,
+        "agent_only_mode": new_agent_only
+    })
+
+    snap = _collect_current_live_sync_snapshot()
+    cnt = database.sync_all_products_to_shopping_mall(
+        is_live=snap["is_live"],
+        live_urls=snap["live_urls"],
+        youtube_embed_url=snap["youtube_embed_url"],
+        blocking=True
+    )
+    return jsonify({
+        "status": "ok",
+        "mall_url": new_url,
+        "agent_only_mode": new_agent_only,
+        "synced_count": cnt,
+        "message": f"클라우드 쇼핑몰({new_url}) 설정 저장 및 상품 {cnt}건 동기화가 완료되었습니다."
+    }), 200
+
+
 @app.route('/api/mall/sync', methods=['POST'])
 def api_mall_manual_sync():
-    """OBS 스튜디오에서 쇼핑몰 DB(Port 3000)로 전체 상품 및 현재 선택 상품을 즉시 동기화합니다."""
-    any_live = bool(youtube_direct_streamer.active or tiktok_direct_streamer.active or instagram_direct_streamer.active)
-    cnt = database.sync_all_products_to_shopping_mall(is_live=any_live)
+    """OBS 스튜디오에서 쇼핑몰 DB(로컬 또는 클라우드)로 전체 상품 및 현재 선택 상품을 즉시 동기화합니다."""
+    snap = _collect_current_live_sync_snapshot()
+    cnt = database.sync_all_products_to_shopping_mall(
+        is_live=snap["is_live"],
+        live_urls=snap["live_urls"],
+        youtube_embed_url=snap["youtube_embed_url"]
+    )
+    cfg = database.get_cloud_mall_config()
     return jsonify({
         "status": "ok",
         "synced_count": cnt,
-        "mall_url": os.getenv("MALL_SERVER_URL", "http://localhost:3000"),
-        "message": f"🛍️ 쇼핑몰 DB에 상품 {cnt}건 및 현재 선택 상품 동기화가 완료되었습니다!"
+        "mall_url": cfg["mall_url"],
+        "message": f"🛍️ 쇼핑몰({cfg['mall_url']})에 상품 {cnt}건 및 현재 방송 상태 동기화가 완료되었습니다!"
     }), 200
 
 
@@ -3251,12 +3837,14 @@ def api_camera_host_info():
     wifi_ip = bridged_wifi_ip or setup_upnp_cross_subnet_bridge(ip) or ip
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam"
-    cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=1"
-    cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=2"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam"
-    pub_url = public_tunnel_url or local_https_url
+    cam_tok = get_studio_cam_token()
+    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
+    cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=1&cam_token={cam_tok}"
+    cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=2&cam_token={cam_tok}"
+    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}"
+    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}"
+    pub_base = public_tunnel_url or f"https://{wifi_ip}:{https_port}/cam"
+    pub_url = f"{pub_base}{'&' if '?' in pub_base else '?'}cam_token={cam_tok}"
     primary_url = cam2_https_url if req_cam == 2 else cam1_https_url
 
     now = time.time()
@@ -3377,9 +3965,10 @@ def api_camera_renew_url():
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     wifi_ip = setup_upnp_cross_subnet_bridge(ip, ports=(https_port, port), force=True) or ip
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam"
+    cam_tok = get_studio_cam_token()
+    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
+    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}"
+    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}"
 
     # 공인 HTTPS 터널이 꺼져 있거나 재발급 요청 시 즉시 시작/갱신
     try:
@@ -3398,7 +3987,8 @@ def api_camera_renew_url():
     except Exception:
         pass
 
-    pub_url = public_tunnel_url or local_https_url
+    pub_base = public_tunnel_url or f"https://{wifi_ip}:{https_port}/cam"
+    pub_url = f"{pub_base}{'&' if '?' in pub_base else '?'}cam_token={cam_tok}"
 
     return jsonify({
         "status": "ok",
@@ -13788,23 +14378,29 @@ if __name__ == '__main__':
         tunnel_thread = threading.Thread(target=run_public_https_tunnel, args=(port,), daemon=True)
         tunnel_thread.start()
 
-    # 독립 쇼핑몰(shopping_mall/app.py, Port 3000) 자동 기동 및 초기 상품 동기화
+    # 클라우드/독립 쇼핑몰 Outbound 동기화 워커 가동 및 모드별 쇼핑몰 자동 기동 제어
     try:
+        mall_cfg = database.get_cloud_mall_config()
         database.sync_all_products_to_shopping_mall(is_live=False)
-        mall_app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shopping_mall", "app.py")
-        if os.path.exists(mall_app_path):
-            import socket
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_chk:
-                s_chk.settimeout(0.4)
-                mall_running = (s_chk.connect_ex(("127.0.0.1", 3000)) == 0)
-            if not mall_running:
-                subprocess.Popen(
-                    [sys.executable, mall_app_path],
-                    cwd=os.path.dirname(mall_app_path)
-                )
-                print("🛍️ [독립 쇼핑몰 자동 기동] http://localhost:3000 (라이브커머스: http://localhost:3000/live)", flush=True)
+        cloud_mall_sync_worker.start()
+
+        if mall_cfg["agent_only_mode"]:
+            print(f"☁️ [로컬 라이브 에이전트 단독 모드] 외부 쇼핑몰 Outbound 연동 활성: {mall_cfg['mall_url']}", flush=True)
+        else:
+            mall_app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shopping_mall", "app.py")
+            if os.path.exists(mall_app_path):
+                import socket
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_chk:
+                    s_chk.settimeout(0.4)
+                    mall_running = (s_chk.connect_ex(("127.0.0.1", 3000)) == 0)
+                if not mall_running:
+                    subprocess.Popen(
+                        [sys.executable, mall_app_path],
+                        cwd=os.path.dirname(mall_app_path)
+                    )
+                    print("🛍️ [독립 쇼핑몰 자동 기동] http://localhost:3000 (라이브커머스: http://localhost:3000/live)", flush=True)
     except Exception as mall_err:
-        print(f"⚠️ [독립 쇼핑몰 자동 기동 경고] {mall_err}", flush=True)
+        print(f"⚠️ [쇼핑몰 연동 초기화 경고] {mall_err}", flush=True)
 
     print(f"🚀 라이브 커머스 통합 AI 서버가 시작되었습니다! (http://127.0.0.1:{port}/chat)", flush=True)
     app.run(host=host, port=port, threaded=True, request_handler=KeepAliveWSGIRequestHandler)

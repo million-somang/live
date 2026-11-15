@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}로그인 — THE VINE LIVE MALL{% endblock %}
+
+{% block content %}
+<div style="max-width:440px; margin:48px auto; background:#fff; border:1px solid var(--border); border-radius:22px; padding:34px 30px; box-shadow:var(--shadow-md);">
+    <div style="display:inline-block; padding:4px 10px; border-radius:999px; background:#ffe4e6; color:#e11d48; font-size:0.76rem; font-weight:800; margin-bottom:10px;">
+        🛍️ 쇼핑몰 회원 전용 인증
+    </div>
+    <h1 style="font-size:1.5rem; font-weight:900; color:#0f172a; margin-bottom:6px;">쇼핑몰 로그인</h1>
+    <p style="font-size:0.88rem; color:var(--text-sub); margin-bottom:20px; line-height:1.5;">
+        일반 쇼핑몰 상품 구매 및 마이 주문 내역 조회는 회원 로그인 후 이용하실 수 있습니다.<br>
+        <span style="color:#e11d48; font-weight:700;">* 실시간 라이브커머스(/live) 특가 상품은 비회원도 즉시 구매 가능합니다.</span>
+    </p>
+
+    {% if error %}
+    <div style="padding:12px 14px; border-radius:12px; background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-size:0.86rem; font-weight:700; margin-bottom:16px;">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/auth/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next_url or '/' }}">
+
+        <div style="margin-bottom:14px;">
+            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:6px;">이메일 주소</label>
+            <input type="email" name="email" required autofocus placeholder="example@email.com"
+                   style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.94rem;">
+        </div>
+
+        <div style="margin-bottom:18px;">
+            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:6px;">비밀번호</label>
+            <input type="password" name="password" required placeholder="비밀번호 입력"
+                   style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.94rem;">
+        </div>
+
+        <button type="submit" style="width:100%; padding:13px; border-radius:12px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.98rem; font-weight:900; cursor:pointer;">
+            로그인하기
+        </button>
+    </form>
+
+    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border); text-align:center; font-size:0.88rem; color:var(--text-sub);">
+        아직 쇼핑몰 회원이 아니신가요?
+        <a href="/auth/register?next={{ next_url or '/' }}" style="color:#e11d48; font-weight:800; margin-left:6px;">회원가입하기 ➔</a>
+    </div>
+</div>
+{% endblock %}

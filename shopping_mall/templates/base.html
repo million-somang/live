@@ -355,6 +355,7 @@
                 <a href="/" class="nav-link {% if active_nav == 'home' %}active{% endif %}">
                     🏠 스토어 홈
                 </a>
+                <span id="mallNavLiveSlot" data-active-nav="{{ active_nav or '' }}" style="display:inline-flex;">
                 {% if live_state and live_state.is_live %}
                 <a href="/live" class="nav-link nav-live {% if active_nav == 'live' %}active{% endif %}">
                     <span class="live-dot-indicator"></span>
@@ -368,6 +369,7 @@
                     <span style="font-size:0.7rem; background:#94a3b8; color:#fff; padding:1px 6px; border-radius:6px;">대기중</span>
                 </span>
                 {% endif %}
+                </span>
                 <a href="/?category=TOP" class="nav-link {% if current_category == 'TOP' %}active{% endif %}">
                     👕 상의/탑
                 </a>
@@ -385,14 +387,34 @@
                 </a>
             </nav>
 
-            <div class="header-actions">
+            <div class="header-actions" style="display:flex; align-items:center; gap:8px;">
+                <a href="{{ studio_public_url or 'http://localhost:5000' }}" target="_blank" rel="noopener" class="cart-pill-btn" style="padding:8px 11px; color:#4f46e5; font-size:0.8rem;" title="OBS 스튜디오 및 홍보 홈페이지 이동">
+                    🎬 OBS 홍보홈 ↗
+                </a>
                 <a href="/cart" class="cart-pill-btn">
                     🛒 장바구니
                     <span class="cart-count-badge" id="navCartBadge">0</span>
                 </a>
-                <a href="/admin" class="cart-pill-btn" style="padding:9px 12px; color:#64748b;" title="쇼핑몰 주문/동기화 관리">
-                    ⚙️ 관리
-                </a>
+                {% if current_mall_user %}
+                    <a href="/orders" class="cart-pill-btn" style="padding:8px 11px; color:#0f172a; font-size:0.82rem;">
+                        👤 {{ current_mall_user.name }}님
+                    </a>
+                    {% if current_mall_user.role == 'ADMIN' %}
+                    <a href="/admin" class="cart-pill-btn" style="padding:8px 11px; color:#e11d48; font-size:0.82rem;" title="쇼핑몰 관리자">
+                        ⚙️ 관리자
+                    </a>
+                    {% endif %}
+                    <a href="/auth/logout" class="cart-pill-btn" style="padding:8px 11px; color:#64748b; font-size:0.8rem;">
+                        로그아웃
+                    </a>
+                {% else %}
+                    <a href="/auth/login" class="cart-pill-btn" style="padding:8px 12px; color:#0f172a; font-size:0.82rem;">
+                        🔐 로그인
+                    </a>
+                    <a href="/auth/register" class="cart-pill-btn" style="padding:8px 12px; background:#0f172a; color:#fff; font-size:0.82rem;">
+                        ✨ 회원가입
+                    </a>
+                {% endif %}
             </div>
         </div>
     </header>
@@ -413,17 +435,24 @@
             <form id="instantBuyForm" onsubmit="submitInstantBuyOrder(event)">
                 <div class="form-group">
                     <label class="form-label">수령인 성함 *</label>
-                    <input type="text" id="ibBuyerName" class="form-input" placeholder="예: 홍길동" required>
+                    <input type="text" id="ibBuyerName" class="form-input" placeholder="예: 홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">연락처 (휴대폰) *</label>
-                    <input type="tel" id="ibBuyerPhone" class="form-input" placeholder="예: 010-1234-5678" required>
+                    <input type="tel" id="ibBuyerPhone" class="form-input" placeholder="예: 010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
                 </div>
                 <div class="form-group">
                     <label class="form-label">배송지 주소 *</label>
-                    <input type="text" id="ibAddress" class="form-input" placeholder="도로명 또는 지번 주소 입력" required style="margin-bottom:6px;">
-                    <input type="text" id="ibAddressDetail" class="form-input" placeholder="상세 주소 (동/호수)">
+                    <input type="text" id="ibAddress" class="form-input" placeholder="도로명 또는 지번 주소 입력" value="{{ current_mall_user.address if current_mall_user else '' }}" required style="margin-bottom:6px;">
+                    <input type="text" id="ibAddressDetail" class="form-input" placeholder="상세 주소 (동/호수)" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
                 </div>
+                {% if not current_mall_user %}
+                <div class="form-group" id="ibGuestPasswordGroup" style="background:#fff1f2; border:1px solid #fecdd3; border-radius:10px; padding:11px 12px;">
+                    <label class="form-label" style="color:#be123c;">🔒 비회원 주문조회 비밀번호 * (4자 이상)</label>
+                    <input type="password" id="ibGuestPassword" class="form-input" placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)" minlength="4" required>
+                    <div style="font-size:0.75rem; color:#9f1239; margin-top:4px;">* 비회원 주문 내역 열람 시 주문번호·연락처와 함께 검증됩니다.</div>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label class="form-label">배송 요청사항</label>
                     <input type="text" id="ibMemo" class="form-input" placeholder="예: 문 앞에 놓아주세요 (당일출고 요청)">
@@ -465,6 +494,8 @@
 
     <script>
         const MALL_CART_KEY = 'gollabang_mall_cart_v1';
+        window.__MALL_USER_LOGGED_IN__ = {{ (True if current_mall_user else False) | tojson }};
+        window.__LIVE_ORDER_TOKEN__ = {{ (live_order_token or '') | tojson }};
         let pendingInstantBuyItem = null;
 
         function getMallCart() {
@@ -534,6 +565,11 @@
         }
 
         function openInstantBuyModal(item, sourcePage = 'LIVE') {
+            if (String(sourcePage || 'LIVE').toUpperCase() !== 'LIVE' && !window.__MALL_USER_LOGGED_IN__) {
+                alert('일반 쇼핑몰 상품 구매는 회원 로그인 후 이용하실 수 있습니다.\n(라이브커머스 전용관 /live 에서는 비회원도 바로구매 가능합니다!)');
+                window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+                return;
+            }
             pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
             const sumEl = document.getElementById('instantBuyItemSummary');
             const subtotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
@@ -554,11 +590,13 @@
                 `;
             }
             try {
-                const savedBuyer = JSON.parse(localStorage.getItem('mall_last_buyer_v1') || '{}');
-                if (savedBuyer.name) document.getElementById('ibBuyerName').value = savedBuyer.name;
-                if (savedBuyer.phone) document.getElementById('ibBuyerPhone').value = savedBuyer.phone;
-                if (savedBuyer.address) document.getElementById('ibAddress').value = savedBuyer.address;
-                if (savedBuyer.address_detail) document.getElementById('ibAddressDetail').value = savedBuyer.address_detail;
+                if (!window.__MALL_USER_LOGGED_IN__) {
+                    const savedBuyer = JSON.parse(localStorage.getItem('mall_last_buyer_v1') || '{}');
+                    if (savedBuyer.name) document.getElementById('ibBuyerName').value = savedBuyer.name;
+                    if (savedBuyer.phone) document.getElementById('ibBuyerPhone').value = savedBuyer.phone;
+                    if (savedBuyer.address) document.getElementById('ibAddress').value = savedBuyer.address;
+                    if (savedBuyer.address_detail) document.getElementById('ibAddressDetail').value = savedBuyer.address_detail;
+                }
             } catch (e) {}
             document.getElementById('instantBuyModal').style.display = 'flex';
         }
@@ -578,6 +616,14 @@
             const address_detail = document.getElementById('ibAddressDetail').value.trim();
             const delivery_memo = document.getElementById('ibMemo').value.trim();
             const payment_method = document.getElementById('ibPaymentMethod').value;
+            const guestPwEl = document.getElementById('ibGuestPassword');
+            const guest_password = guestPwEl ? guestPwEl.value.trim() : '';
+
+            if (!window.__MALL_USER_LOGGED_IN__ && guest_password.length < 4) {
+                alert('비회원 주문 조회 시 사용할 비밀번호를 4자 이상 입력해 주세요.');
+                if (guestPwEl) guestPwEl.focus();
+                return;
+            }
 
             try {
                 localStorage.setItem('mall_last_buyer_v1', JSON.stringify({
@@ -600,6 +646,8 @@
                         address_detail,
                         delivery_memo,
                         payment_method,
+                        guest_password,
+                        live_order_token: window.__LIVE_ORDER_TOKEN__ || '',
                         source_page: pendingInstantBuyItem.source_page || 'LIVE',
                         items: [{
                             num: pendingInstantBuyItem.num,
@@ -629,7 +677,60 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', updateNavCartBadge);
+        // 전역 CSR 경량 상태 반영기 (네비게이션 라이브 메뉴 활성/비활성 및 페이지별 실시간 재고·핀 동기화)
+        let __mallLastIsLive = {{ (live_state.is_live if live_state else false) | tojson }};
+        window.__mallApplyLiteState = function(state) {
+            if (!state || typeof state !== 'object') return;
+            const isLive = Boolean(state.is_live);
+            const navSlot = document.getElementById('mallNavLiveSlot');
+            if (navSlot && isLive !== __mallLastIsLive) {
+                const isLiveNav = navSlot.getAttribute('data-active-nav') === 'live';
+                if (isLive) {
+                    navSlot.innerHTML = `<a href="/live" class="nav-link nav-live ${isLiveNav ? 'active' : ''}"><span class="live-dot-indicator"></span>라이브 커머스<span style="font-size:0.7rem; background:#10b981; color:#fff; padding:1px 6px; border-radius:6px;">방송중</span></a>`;
+                } else {
+                    navSlot.innerHTML = `<span class="nav-link nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다"><span class="live-dot-indicator"></span>라이브 커머스<span style="font-size:0.7rem; background:#94a3b8; color:#fff; padding:1px 6px; border-radius:6px;">대기중</span></span>`;
+                }
+            }
+            const heroSlot = document.getElementById('mallHeroLiveSlot');
+            if (heroSlot && isLive !== __mallLastIsLive) {
+                heroSlot.innerHTML = isLive
+                    ? `<a href="/live" class="hero-live-btn">🔴 라이브 커머스 전용관 입장하기 ➔</a>`
+                    : `<span class="hero-live-btn disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">⚪ 현재 라이브 방송 대기 중</span>`;
+            }
+            __mallLastIsLive = isLive;
+
+            // 스토어 홈 상품 카드 실시간 재고 및 방송 소개중 핀 배지 CSR 반영
+            if (state.product_stocks && typeof state.product_stocks === 'object') {
+                document.querySelectorAll('[data-csr-stock-num]').forEach(el => {
+                    const num = el.getAttribute('data-csr-stock-num');
+                    const cat = el.getAttribute('data-csr-cat') || '';
+                    const meta = state.product_stocks[num];
+                    if (meta) {
+                        el.innerText = `${cat} • 잔여 ${Number(meta.total_stock || 0)}개`;
+                    }
+                });
+            }
+            const selNum = state.selected_product ? String(state.selected_product.num) : '';
+            document.querySelectorAll('[data-csr-pin-slot]').forEach(el => {
+                const num = el.getAttribute('data-csr-pin-slot');
+                el.innerHTML = (isLive && selNum && num === selNum)
+                    ? `<span class="pinned-now-tag">📌 방송 소개중</span>`
+                    : '';
+            });
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateNavCartBadge();
+            // /live 이외의 페이지에서도 SSE로 방송 시작/종료 및 재고 변동을 초경량 CSR 구독
+            if (window.location.pathname !== '/live' && window.EventSource) {
+                try {
+                    const es = new EventSource('/api/live/stream');
+                    es.addEventListener('live_state', (ev) => {
+                        try { window.__mallApplyLiteState(JSON.parse(ev.data)); } catch (e) {}
+                    });
+                } catch (e) {}
+            }
+        });
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>

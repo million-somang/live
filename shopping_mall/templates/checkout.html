@@ -9,16 +9,16 @@
         <h3 style="font-size:1.12rem; font-weight:900; margin-bottom:16px;">📦 배송지 정보</h3>
         <div class="form-group">
             <label class="form-label">수령인 성함 *</label>
-            <input type="text" id="coBuyerName" class="form-input" required placeholder="홍길동">
+            <input type="text" id="coBuyerName" class="form-input" required placeholder="홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}">
         </div>
         <div class="form-group">
             <label class="form-label">연락처 *</label>
-            <input type="tel" id="coBuyerPhone" class="form-input" required placeholder="010-1234-5678">
+            <input type="tel" id="coBuyerPhone" class="form-input" required placeholder="010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}">
         </div>
         <div class="form-group">
             <label class="form-label">배송지 주소 *</label>
-            <input type="text" id="coAddress" class="form-input" required placeholder="기본 주소 입력" style="margin-bottom:8px;">
-            <input type="text" id="coAddressDetail" class="form-input" placeholder="상세 주소 입력">
+            <input type="text" id="coAddress" class="form-input" required placeholder="기본 주소 입력" style="margin-bottom:8px;" value="{{ current_mall_user.address if current_mall_user else '' }}">
+            <input type="text" id="coAddressDetail" class="form-input" placeholder="상세 주소 입력" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
         </div>
         <div class="form-group">
             <label class="form-label">배송 메모</label>

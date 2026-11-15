@@ -1181,9 +1181,12 @@
             <button type="button" class="btn-header btn-copy-url" onclick="copyOverlayObsUrl()">
                 <span>🔗 OBS 브라우저 소스 URL 복사</span>
             </button>
-            <a href="http://localhost:3000/live" target="_blank" class="btn-header" style="background:linear-gradient(135deg,#e11d48,#be123c); border-color:#fb7185; color:#fff;" title="OBS 선택 상품 상세화면이 실시간 연동되는 독립 쇼핑몰(Port 3000) 라이브 커머스 페이지 열기">
+            <a id="studioCloudMallLink" href="http://localhost:3000/live" target="_blank" class="btn-header" style="background:linear-gradient(135deg,#e11d48,#be123c); border-color:#fb7185; color:#fff;" title="OBS 선택 상품 상세화면이 실시간 연동되는 쇼핑몰 라이브 커머스 페이지 열기">
                 <span>🛍️ 연동 쇼핑몰 (/live) ↗</span>
             </a>
+            <button type="button" class="btn-header" onclick="openCloudMallConfigModal()" style="border-color:#38bdf8; color:#38bdf8;" title="외부 클라우드 쇼핑몰 URL 및 시크릿키 설정">
+                <span>☁️ 클라우드몰 설정</span>
+            </button>
             <a href="/overlay/obs" target="_blank" class="btn-header btn-open-clean">
                 <span>⛶ 실제 송출 창 열기 ↗</span>
             </a>
@@ -11488,11 +11491,92 @@
             syncYouTubeDirectStatus();
             syncMobileCameraAutoConnect();
             loadVdoNinjaConfig();
+            initCloudMallHeaderLink();
             setInterval(syncYouTubeDirectStatus, 800);
             setInterval(syncMobileCameraAutoConnect, 1000);
             setInterval(loadVdoNinjaConfig, 1500);
         });
+
+        async function initCloudMallHeaderLink() {
+            try {
+                const res = await fetch('/api/agent/cloud-config');
+                if (!res.ok) return;
+                const cfg = await res.json();
+                const linkEl = document.getElementById('studioCloudMallLink');
+                if (linkEl && cfg.mall_url) {
+                    linkEl.href = cfg.mall_url.replace(/\/$/, '') + '/live';
+                }
+            } catch (e) {}
+        }
+
+        async function openCloudMallConfigModal() {
+            const modal = document.getElementById('cloudMallConfigModal');
+            if (!modal) return;
+            try {
+                const res = await fetch('/api/agent/cloud-config');
+                const cfg = await res.json();
+                document.getElementById('cloudMallUrlInput').value = cfg.mall_url || 'http://127.0.0.1:3000';
+                document.getElementById('cloudMallAgentOnlyChk').checked = Boolean(cfg.agent_only_mode);
+            } catch (e) {}
+            modal.style.display = 'flex';
+        }
+
+        function closeCloudMallConfigModal() {
+            const modal = document.getElementById('cloudMallConfigModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function saveCloudMallConfig() {
+            const mall_url = document.getElementById('cloudMallUrlInput').value.trim();
+            const sync_secret = document.getElementById('cloudMallSecretInput').value.trim();
+            const agent_only_mode = document.getElementById('cloudMallAgentOnlyChk').checked;
+            const payload = { mall_url, agent_only_mode };
+            if (sync_secret) payload.sync_secret = sync_secret;
+            try {
+                const res = await fetch('/api/agent/cloud-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    const linkEl = document.getElementById('studioCloudMallLink');
+                    if (linkEl && data.mall_url) linkEl.href = data.mall_url.replace(/\/$/, '') + '/live';
+                    alert(data.message || '클라우드 쇼핑몰 연동 설정이 저장되었습니다.');
+                    closeCloudMallConfigModal();
+                } else {
+                    alert(data.message || '설정 저장 실패');
+                }
+            } catch (e) {
+                alert('연동 오류: ' + e.message);
+            }
+        }
     </script>
+
+    <!-- ☁️ 외부 클라우드 CSR 쇼핑몰 연동 설정 모달 -->
+    <div id="cloudMallConfigModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(2,6,23,0.82); backdrop-filter:blur(6px); align-items:center; justify-content:center; padding:20px;">
+        <div style="width:100%; max-width:520px; background:#0f172a; border:1px solid rgba(56,189,248,0.5); border-radius:14px; padding:20px; display:flex; flex-direction:column; gap:12px; box-shadow:0 20px 50px rgba(0,0,0,0.7); color:#f8fafc;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="font-size:0.96rem; color:#38bdf8;">☁️ 외부 클라우드 CSR 쇼핑몰 연동 설정</strong>
+                <button type="button" class="btn-action" onclick="closeCloudMallConfigModal()" style="width:auto; padding:4px 10px; font-size:0.76rem;">닫기 ✕</button>
+            </div>
+            <div style="font-size:0.76rem; color:#cbd5e1; line-height:1.5; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.28); padding:9px 11px; border-radius:8px;">
+                영상·인코딩 자원은 현재 방송 PC 로컬 에이전트에서만 처리되고, 외부 클라우드 쇼핑몰로는 가벼운 상품·핀번호·하트비트 JSON만 Outbound 전송됩니다.
+            </div>
+            <label style="font-size:0.78rem; font-weight:800; color:#e2e8f0;">클라우드 쇼핑몰 서버 주소 (MALL_SERVER_URL)</label>
+            <input type="text" id="cloudMallUrlInput" placeholder="예: https://mall.yourdomain.com" style="width:100%; padding:9px 12px; border-radius:8px; background:#020617; border:1px solid #334155; color:#fff; font-size:0.84rem;">
+            <label style="font-size:0.78rem; font-weight:800; color:#e2e8f0;">연동 시크릿 키 (MALL_SYNC_SECRET, 변경 시에만 입력)</label>
+            <input type="password" id="cloudMallSecretInput" placeholder="클라우드 서버와 동일한 시크릿 키" style="width:100%; padding:9px 12px; border-radius:8px; background:#020617; border:1px solid #334155; color:#fff; font-size:0.84rem;">
+            <label style="font-size:0.8rem; color:#94a3b8; display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="cloudMallAgentOnlyChk">
+                로컬 라이브 에이전트 단독 모드 (로컬 3000번 쇼핑몰 중복 실행 안 함)
+            </label>
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+                <button type="button" class="btn-action" onclick="closeCloudMallConfigModal()" style="width:auto; padding:8px 16px; font-size:0.8rem;">취소</button>
+                <button type="button" class="btn-action btn-primary" onclick="saveCloudMallConfig()" style="width:auto; padding:8px 18px; font-size:0.8rem; font-weight:900; background:linear-gradient(135deg, #0284c7, #2563eb); border:none; color:#fff;">💾 저장 및 전체 상품 즉시 동기화</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 🛠️ 인스타그램·틱톡 CDP 브릿지 원격 셀렉터 핫픽스(Hotfix JSON) 모달 -->
     <div id="simulcastSelectorsModal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(2,6,23,0.82); backdrop-filter:blur(6px); align-items:center; justify-content:center; padding:20px;">

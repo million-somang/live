@@ -51,17 +51,25 @@
 </style>
 
 <nav class="gnb">
-    <a href="/" class="brand-logo">
+    <a href="/portal" class="brand-logo">
         <span>🛍️ Live Commerce OS</span>
     </a>
     <div class="nav-links">
-        <a href="/" class="nav-item {% if active_page == 'portal' %}active{% endif %}">🏢 메인 포털</a>
+        <a href="/" class="nav-item">🌐 홍보 홈</a>
+        <a href="/portal" class="nav-item {% if active_page == 'portal' %}active{% endif %}">🏢 메인 포털</a>
         <a href="javascript:void(0)" class="nav-item {% if active_page == 'broadcast' %}active{% endif %}" onclick="openBroadcastWindow(event)">📡 웹방송 관제탑</a>
         <a href="/overlay/studio" target="_blank" class="nav-item {% if active_page == 'obs' or active_page == 'studio' %}active{% endif %}">🖥️ OBS 오버레이 스튜디오</a>
         <a href="/host" target="_blank" class="nav-item {% if active_page == 'host' %}active{% endif %}">📱 쇼호스트 뷰</a>
         <a href="/inventory" class="nav-item {% if active_page == 'inventory' %}active{% endif %}">📦 재고 관리</a>
         <a href="/cs" class="nav-item {% if active_page == 'cs' %}active{% endif %}">💬 CS 관리</a>
         <a href="/analytics" class="nav-item {% if active_page == 'analytics' %}active{% endif %}">📊 판매량 분석</a>
+        <a href="{{ mall_public_url or 'http://localhost:3000' }}" target="_blank" rel="noopener" class="nav-item">🛍️ 쇼핑몰 ↗</a>
+        {% if current_studio_user and current_studio_user.role == 'ADMIN' %}
+        <a href="/studio/admin/users" class="nav-item {% if active_page == 'admin_users' %}active{% endif %}">🛡️ 회원 승인</a>
+        {% endif %}
+        {% if current_studio_user %}
+        <a href="/auth/logout" class="nav-item" style="color:#fda4af;">로그아웃 ({{ current_studio_user.display_name }})</a>
+        {% endif %}
     </div>
 </nav>
 

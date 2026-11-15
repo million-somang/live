@@ -2,15 +2,34 @@
 {% block title %}📦 주문/배송 조회 — 골라방 LIVE 몰{% endblock %}
 
 {% block content %}
-<h1 style="font-size:1.65rem; font-weight:900; margin-bottom:18px;">📦 주문 / 배송 조회</h1>
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+    <h1 style="font-size:1.65rem; font-weight:900;">
+        📦 {% if current_mall_user %}{{ current_mall_user.name }}님의 주문 / 배송 내역{% else %}비회원 라이브 주문 / 배송 조회{% endif %}
+    </h1>
+    {% if not current_mall_user %}
+    <a href="/auth/login?next=/orders" style="padding:9px 16px; border-radius:10px; background:#4f46e5; color:#fff; font-size:0.86rem; font-weight:800;">
+        🔐 회원 로그인으로 내 주문 전체 보기
+    </a>
+    {% endif %}
+</div>
 
-<form method="GET" action="/orders" style="background:#fff; border-radius:18px; padding:20px; border:1px solid var(--border); margin-bottom:24px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-    <input type="text" name="order_code" value="{{ order_code }}" class="form-input" placeholder="주문번호 (예: ORD-20261112-...)" style="width:240px;">
-    <input type="text" name="buyer_name" value="{{ buyer_name }}" class="form-input" placeholder="주문자 성함" style="width:160px;">
-    <input type="text" name="buyer_phone" value="{{ buyer_phone }}" class="form-input" placeholder="연락처 뒷자리 또는 전체" style="width:200px;">
-    <button type="submit" style="padding:11px 22px; border-radius:10px; border:none; background:#0f172a; color:#fff; font-weight:900; cursor:pointer;">🔍 조회하기</button>
-    <a href="/orders" style="padding:11px 16px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.86rem; font-weight:700;">전체보기</a>
+<!-- 비회원 3중 검증 조회 폼 (주문번호 + 연락처 + 비회원 주문 비밀번호) -->
+<form method="POST" action="/orders" style="background:#fff; border-radius:18px; padding:20px; border:1px solid var(--border); margin-bottom:24px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="text" name="order_code" value="{{ order_code }}" class="form-input" placeholder="주문번호 (예: ORD-20261115-...)" style="width:240px;" required>
+    <input type="text" name="buyer_phone" value="{{ buyer_phone }}" class="form-input" placeholder="수령인 휴대폰 번호 전체" style="width:200px;" required>
+    <input type="password" name="guest_password" class="form-input" placeholder="비회원 주문조회 비밀번호" style="width:210px;" required>
+    <button type="submit" style="padding:11px 22px; border-radius:10px; border:none; background:#0f172a; color:#fff; font-weight:900; cursor:pointer;">🔍 안전 조회하기</button>
+    {% if current_mall_user %}
+    <a href="/orders" style="padding:11px 16px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.86rem; font-weight:700;">내 회원 주문 보기</a>
+    {% endif %}
 </form>
+
+{% if lookup_error %}
+<div style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; padding:14px 18px; border-radius:14px; font-size:0.9rem; font-weight:700; margin-bottom:20px;">
+    {{ lookup_error }}
+</div>
+{% endif %}
 
 {% if orders %}
 <div style="display:flex; flex-direction:column; gap:16px;">
@@ -45,7 +64,11 @@
 </div>
 {% else %}
 <div style="background:#fff; border-radius:20px; padding:50px 20px; text-align:center; border:1px solid var(--border); color:#64748b;">
-    조회된 주문 내역이 없습니다.
+    {% if current_mall_user %}
+        아직 주문하신 내역이 없습니다.
+    {% else %}
+        개인정보 보호를 위해 비회원 주문 내역은 <strong>주문번호 + 휴대폰 번호 + 주문 비밀번호</strong>가 모두 일치할 때만 열람됩니다.
+    {% endif %}
 </div>
 {% endif %}
 {% endblock %}

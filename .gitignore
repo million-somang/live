@@ -8,6 +8,10 @@ __pycache__/
 .env
 *.pem
 *.key
+.studio_secret_key
+.studio_admin_credentials.txt
+.mall_secret_key
+.mall_admin_credentials.txt
 
 # Local databases & runtime data
 *.db
