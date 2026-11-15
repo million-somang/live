@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🌐 쇼호스트 뷰 실시간 사이트 컨트롤러</title>
+    <link rel="stylesheet" href="/static/css/light_theme.css">
     <style>
         * {
             box-sizing: border-box;
@@ -11,8 +12,8 @@
             padding: 0;
         }
         body {
-            background: #090d16;
-            color: #f8fafc;
+            background: #f5f7fa;
+            color: #0f172a;
             font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
             height: 100vh;
             display: flex;
@@ -22,13 +23,14 @@
         }
         /* 상단 브라우저 컨트롤 바 */
         .browser-toolbar {
-            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-            border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
             padding: 8px 12px;
             display: flex;
             flex-direction: column;
             gap: 7px;
             flex-shrink: 0;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
         }
         .toolbar-row-top {
             display: flex;
@@ -36,9 +38,9 @@
             gap: 8px;
         }
         .live-badge {
-            background: rgba(16, 185, 129, 0.2);
-            border: 1px solid #10b981;
-            color: #34d399;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            color: #059669;
             font-size: 0.76rem;
             font-weight: 900;
             padding: 5px 10px;
@@ -53,7 +55,7 @@
             height: 8px;
             border-radius: 50%;
             background: #10b981;
-            box-shadow: 0 0 8px #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
             animation: blink 1s infinite alternate;
         }
         @keyframes blink {
@@ -61,9 +63,9 @@
             to { opacity: 0.35; }
         }
         .nav-btn {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            color: #e2e8f0;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
             font-size: 0.82rem;
             font-weight: 800;
             padding: 6px 10px;
@@ -73,9 +75,9 @@
             transition: all 0.15s;
         }
         .nav-btn:hover {
-            background: rgba(56, 189, 248, 0.2);
-            border-color: #38bdf8;
-            color: #fff;
+            background: #eff6ff;
+            border-color: #2563eb;
+            color: #2563eb;
         }
         .address-bar-wrap {
             flex: 1;
@@ -86,21 +88,21 @@
         .address-input {
             flex: 1;
             min-width: 0;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(56, 189, 248, 0.45);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
             padding: 6px 12px;
-            color: #ffffff;
+            color: #0f172a;
             font-size: 0.85rem;
             font-weight: 600;
         }
         .address-input:focus {
             outline: none;
-            border-color: #38bdf8;
-            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
         }
         .btn-go {
-            background: linear-gradient(135deg, #0ea5e9, #2563eb);
+            background: #2563eb;
             border: none;
             color: #fff;
             font-size: 0.82rem;
@@ -111,7 +113,7 @@
             white-space: nowrap;
         }
         .btn-stop {
-            background: #ef4444;
+            background: #dc2626;
             border: none;
             color: #fff;
             font-size: 0.8rem;
@@ -122,7 +124,7 @@
             white-space: nowrap;
         }
         .btn-stop:hover {
-            background: #dc2626;
+            background: #b91c1c;
         }
         .toolbar-row-bottom {
             display: flex;
@@ -138,9 +140,9 @@
             flex-wrap: wrap;
         }
         .quick-site-btn {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            color: #cbd5e1;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: #475569;
             font-size: 0.74rem;
             font-weight: 700;
             padding: 3px 9px;
@@ -148,9 +150,9 @@
             cursor: pointer;
         }
         .quick-site-btn:hover {
-            border-color: #38bdf8;
-            color: #38bdf8;
-            background: rgba(56, 189, 248, 0.12);
+            border-color: #2563eb;
+            color: #2563eb;
+            background: #eff6ff;
         }
         /* 사이트 내 검색/텍스트 입력 보조 바 (한글 입력 완벽 지원) */
         .text-type-wrap {
@@ -162,15 +164,15 @@
         }
         .text-type-input {
             flex: 1;
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(236, 72, 153, 0.45);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             border-radius: 6px;
             padding: 4px 10px;
-            color: #fff;
+            color: #0f172a;
             font-size: 0.78rem;
         }
         .btn-type-send {
-            background: #ec4899;
+            background: #e11d48;
             border: none;
             color: #fff;
             font-size: 0.75rem;

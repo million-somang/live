@@ -1,0 +1,84 @@
+/* ==========================================================================
+   🛍️ 독립 쇼핑몰 & 라이브커머스 — Clean K-Commerce Light Theme
+   (29CM / Musinsa / Naver Shopping Live Style)
+   ========================================================================== */
+
+:root {
+    --bg-body: #f8fafc !important;
+    --bg-card: #ffffff !important;
+    --text-main: #0f172a !important;
+    --text-sub: #475569 !important;
+    --text-muted: #64748b !important;
+    --primary: #e11d48 !important;
+    --primary-dark: #be123c !important;
+    --accent: #2563eb !important;
+    --border: #e2e8f0 !important;
+    --shadow-sm: 0 1px 4px rgba(15, 23, 42, 0.05) !important;
+    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.06) !important;
+}
+
+html, body {
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+/* 상단 프로모션 바 (어두운 #0f172a 제거 ➔ 화사한 웜 로즈 배너) */
+.top-promo-bar {
+    background: #fff1f2 !important;
+    color: #881337 !important;
+    border-bottom: 1px solid #fecdd3 !important;
+}
+
+/* 하단 푸터 (어두운 #0f172a 제거 ➔ 깔끔한 라이트 그레이 푸터) */
+.site-footer {
+    background: #f1f5f9 !important;
+    color: #475569 !important;
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+.site-footer a {
+    color: #334155 !important;
+}
+
+/* 실시간 라이브커머스(/live) 다크 박스 ➔ 화이트 카드 전환 */
+.live-sync-banner {
+    background: linear-gradient(135deg, #ffffff 0%, #fff1f2 100%) !important;
+    color: #0f172a !important;
+    border: 1px solid #fecdd3 !important;
+    box-shadow: 0 4px 16px rgba(225, 29, 72, 0.06) !important;
+}
+
+.obs-sync-indicator {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+}
+
+.live-player-card {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06) !important;
+}
+
+.live-lineup-box {
+    background: #ffffff !important;
+    border-top: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.lineup-item {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.lineup-item:hover {
+    background: #f1f5f9 !important;
+    border-color: #cbd5e1 !important;
+}
+
+.lineup-item.pinned {
+    background: #fff1f2 !important;
+    border-color: #fb7185 !important;
+}

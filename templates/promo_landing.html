@@ -7,19 +7,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/light_theme.css">
     <style>
         :root {
-            --bg-dark: #070b14;
-            --bg-card: rgba(15, 23, 42, 0.78);
-            --border-subtle: rgba(148, 163, 184, 0.14);
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --accent-emerald: #10b981;
-            --accent-rose: #f43f5e;
-            --accent-cyan: #06b6d4;
-            --text-main: #f8fafc;
-            --text-sub: #cbd5e1;
-            --text-muted: #94a3b8;
+            --bg-dark: #f7f9fc;
+            --bg-card: #ffffff;
+            --border-subtle: #e2e8f0;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --accent-emerald: #059669;
+            --accent-rose: #e11d48;
+            --accent-cyan: #0284c7;
+            --text-main: #0f172a;
+            --text-sub: #334155;
+            --text-muted: #64748b;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -27,11 +28,7 @@
             background-color: var(--bg-dark);
             color: var(--text-main);
             min-height: 100vh;
-            line-height: 1.6;
-            background-image:
-                radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.18) 0px, transparent 45%),
-                radial-gradient(at 90% 15%, rgba(244, 63, 94, 0.14) 0px, transparent 45%),
-                radial-gradient(at 50% 90%, rgba(16, 185, 129, 0.12) 0px, transparent 50%);
+            line-height: 1.65;
         }
         a { color: inherit; text-decoration: none; }
         .wrap { max-width: 1260px; margin: 0 auto; padding: 0 24px; }
@@ -41,9 +38,10 @@
             position: sticky;
             top: 0;
             z-index: 100;
-            background: rgba(7, 11, 20, 0.88);
-            backdrop-filter: blur(16px);
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border-subtle);
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
         }
         .top-portal-inner {
             max-width: 1260px;
@@ -62,78 +60,92 @@
             font-size: 1.25rem;
             font-weight: 900;
             letter-spacing: -0.5px;
+            color: #0f172a;
         }
         .brand-badge {
             font-size: 0.72rem;
             padding: 3px 9px;
             border-radius: 999px;
-            background: rgba(99, 102, 241, 0.2);
-            border: 1px solid rgba(99, 102, 241, 0.45);
-            color: #a5b4fc;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
             font-weight: 700;
         }
         .three-pillars-nav {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
         }
         .pillar-tab {
             padding: 9px 16px;
-            border-radius: 12px;
+            border-radius: 10px;
             font-size: 0.9rem;
             font-weight: 700;
             border: 1px solid var(--border-subtle);
-            background: rgba(30, 41, 59, 0.55);
+            background: #f8fafc;
             color: var(--text-sub);
-            transition: all 0.2s;
+            transition: all 0.18s;
             display: inline-flex;
             align-items: center;
             gap: 7px;
         }
         .pillar-tab:hover {
-            color: #fff;
-            border-color: rgba(255, 255, 255, 0.28);
-            transform: translateY(-1px);
+            color: #0f172a;
+            background: #f1f5f9;
+            border-color: #cbd5e1;
         }
         .pillar-tab.active {
-            background: linear-gradient(135deg, #6366f1, #4f46e5);
-            color: #fff;
-            border-color: transparent;
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
         }
         .pillar-tab.mall-link {
-            border-color: rgba(244, 63, 94, 0.4);
-            color: #fda4af;
+            border-color: #fecdd3;
+            background: #fff1f2;
+            color: #be123c;
         }
         .pillar-tab.studio-link {
-            border-color: rgba(16, 185, 129, 0.4);
-            color: #6ee7b7;
+            border-color: #a7f3d0;
+            background: #ecfdf5;
+            color: #047857;
         }
         .auth-actions {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         .btn-sm {
             padding: 8px 15px;
             border-radius: 10px;
             font-size: 0.86rem;
             font-weight: 700;
-            border: 1px solid var(--border-subtle);
-            background: rgba(30, 41, 59, 0.75);
-            color: #fff;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #334155;
             cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-sm:hover {
+            background: #f8fafc;
+            color: #0f172a;
         }
         .btn-sm.primary {
-            background: var(--primary);
-            border-color: transparent;
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
         }
 
         /* 히어로 섹션 */
         .hero {
-            padding: 68px 0 44px;
+            padding: 64px 28px 48px;
+            margin: 28px 0 36px;
             text-align: center;
+            background: linear-gradient(180deg, #ffffff 0%, #f0f6ff 100%);
+            border: 1px solid #dbeafe;
+            border-radius: 24px;
+            box-shadow: 0 4px 20px rgba(37, 99, 235, 0.05);
         }
         .hero-eyebrow {
             display: inline-flex;
@@ -141,25 +153,26 @@
             gap: 8px;
             padding: 6px 16px;
             border-radius: 999px;
-            background: rgba(99, 102, 241, 0.14);
-            border: 1px solid rgba(99, 102, 241, 0.35);
-            color: #c7d2fe;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
             font-size: 0.85rem;
-            font-weight: 700;
-            margin-bottom: 20px;
+            font-weight: 800;
+            margin-bottom: 18px;
         }
         .hero h1 {
-            font-size: clamp(2rem, 4.2vw, 3.25rem);
+            font-size: clamp(1.95rem, 4vw, 3rem);
             font-weight: 900;
             letter-spacing: -1px;
-            line-height: 1.22;
-            margin-bottom: 18px;
+            line-height: 1.24;
+            margin-bottom: 16px;
+            color: #0f172a;
         }
         .hero p.lead {
             max-width: 780px;
-            margin: 0 auto 36px;
-            font-size: 1.08rem;
-            color: var(--text-sub);
+            margin: 0 auto;
+            font-size: 1.05rem;
+            color: #475569;
         }
 
         /* 3대 서비스 게이트웨이 카드 */
@@ -170,21 +183,19 @@
             margin-bottom: 64px;
         }
         .zone-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            border-radius: 22px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
             padding: 28px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             gap: 18px;
-            backdrop-filter: blur(12px);
-            position: relative;
-            overflow: hidden;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
         }
-        .zone-card.promo { border-top: 4px solid #6366f1; }
-        .zone-card.mall { border-top: 4px solid #f43f5e; }
-        .zone-card.studio { border-top: 4px solid #10b981; }
+        .zone-card.promo { border-top: 4px solid #2563eb; }
+        .zone-card.mall { border-top: 4px solid #e11d48; }
+        .zone-card.studio { border-top: 4px solid #059669; }
         .zone-badge {
             display: inline-block;
             font-size: 0.76rem;
@@ -193,20 +204,20 @@
             border-radius: 999px;
             margin-bottom: 10px;
         }
-        .zone-card.promo .zone-badge { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
-        .zone-card.mall .zone-badge { background: rgba(244, 63, 94, 0.2); color: #fda4af; }
-        .zone-card.studio .zone-badge { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
-        .zone-card h2 { font-size: 1.38rem; font-weight: 800; margin-bottom: 8px; }
-        .zone-card p { color: var(--text-sub); font-size: 0.94rem; }
+        .zone-card.promo .zone-badge { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .zone-card.mall .zone-badge { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+        .zone-card.studio .zone-badge { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+        .zone-card h2 { font-size: 1.35rem; font-weight: 800; margin-bottom: 8px; color: #0f172a; }
+        .zone-card p { color: #475569; font-size: 0.94rem; }
         .zone-meta {
             list-style: none;
             display: flex;
             flex-direction: column;
             gap: 6px;
             font-size: 0.86rem;
-            color: var(--text-muted);
-            padding-top: 8px;
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            color: #64748b;
+            padding-top: 10px;
+            border-top: 1px solid #f1f5f9;
         }
         .zone-cta {
             display: inline-flex;
@@ -218,11 +229,11 @@
             font-weight: 800;
             font-size: 0.94rem;
             text-align: center;
-            transition: all 0.2s;
+            transition: all 0.18s;
         }
-        .zone-card.promo .zone-cta { background: rgba(99, 102, 241, 0.22); color: #e0e7ff; border: 1px solid rgba(99, 102, 241, 0.45); }
-        .zone-card.mall .zone-cta { background: #e11d48; color: #fff; }
-        .zone-card.studio .zone-cta { background: #10b981; color: #052e16; }
+        .zone-card.promo .zone-cta { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .zone-card.mall .zone-cta { background: #e11d48; color: #ffffff; }
+        .zone-card.studio .zone-cta { background: #059669; color: #ffffff; }
 
         /* OBS 스튜디오 상세 설명 섹션 */
         .section-header {
@@ -230,12 +241,13 @@
             margin-bottom: 36px;
         }
         .section-header h2 {
-            font-size: 1.9rem;
+            font-size: 1.85rem;
             font-weight: 900;
             margin-bottom: 10px;
+            color: #0f172a;
         }
         .section-header p {
-            color: var(--text-muted);
+            color: #64748b;
             font-size: 1rem;
         }
         .feature-grid {
@@ -245,16 +257,18 @@
             margin-bottom: 64px;
         }
         .feature-box {
-            background: rgba(15, 23, 42, 0.65);
-            border: 1px solid var(--border-subtle);
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
             border-radius: 18px;
             padding: 24px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
         }
         .feature-icon {
             width: 46px;
             height: 46px;
             border-radius: 12px;
-            background: rgba(99, 102, 241, 0.16);
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -262,22 +276,24 @@
             margin-bottom: 14px;
         }
         .feature-box h3 {
-            font-size: 1.12rem;
+            font-size: 1.1rem;
             font-weight: 800;
             margin-bottom: 8px;
+            color: #0f172a;
         }
         .feature-box p {
             font-size: 0.9rem;
-            color: var(--text-sub);
+            color: #475569;
         }
 
         /* 작동 프로세스 */
         .workflow-section {
-            background: rgba(15, 23, 42, 0.72);
-            border: 1px solid var(--border-subtle);
-            border-radius: 24px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 22px;
             padding: 36px;
             margin-bottom: 64px;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
         }
         .steps-row {
             display: grid;
@@ -286,15 +302,15 @@
             margin-top: 24px;
         }
         .step-item {
-            background: rgba(30, 41, 59, 0.55);
-            border: 1px solid rgba(255, 255, 255, 0.07);
-            border-radius: 16px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
             padding: 20px;
         }
         .step-num {
             font-size: 0.78rem;
             font-weight: 900;
-            color: #818cf8;
+            color: #2563eb;
             letter-spacing: 0.5px;
             margin-bottom: 6px;
         }
@@ -302,17 +318,19 @@
             font-size: 1.02rem;
             font-weight: 800;
             margin-bottom: 6px;
+            color: #0f172a;
         }
         .step-item p {
             font-size: 0.86rem;
-            color: var(--text-muted);
+            color: #475569;
         }
 
         footer {
-            border-top: 1px solid var(--border-subtle);
+            border-top: 1px solid #e2e8f0;
+            background: #ffffff;
             padding: 32px 0 48px;
             text-align: center;
-            color: var(--text-muted);
+            color: #64748b;
             font-size: 0.86rem;
         }
     </style>

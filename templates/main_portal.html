@@ -7,19 +7,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/light_theme.css">
     <style>
         :root {
-            --bg-color: #0b1120;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --card-border: rgba(255, 255, 255, 0.08);
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --accent-green: #10b981;
-            --accent-cyan: #06b6d4;
-            --accent-purple: #8b5cf6;
-            --accent-orange: #f59e0b;
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent-green: #059669;
+            --accent-cyan: #0284c7;
+            --accent-purple: #4f46e5;
+            --accent-orange: #d97706;
         }
 
         * {
@@ -34,10 +35,6 @@
             color: var(--text-main);
             min-height: 100vh;
             padding: 24px;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.12) 0px, transparent 50%),
-                radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
         }
 
         .container {
@@ -48,63 +45,10 @@
             gap: 24px;
         }
 
-        /* 🌟 공통 상단 GNB 내비게이션 바 */
-        .gnb {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: var(--card-bg);
-            backdrop-filter: blur(14px);
-            padding: 14px 26px;
-            border-radius: 16px;
-            border: 1px solid var(--card-border);
-        }
-
-        .brand-logo {
-            font-size: 1.25rem;
-            font-weight: 800;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #fff;
-            text-decoration: none;
-            letter-spacing: -0.5px;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .nav-item {
-            color: var(--text-muted);
-            text-decoration: none;
-            padding: 9px 16px;
-            border-radius: 10px;
-            font-size: 0.92rem;
-            font-weight: 600;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .nav-item:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.06);
-        }
-
-        .nav-item.active {
-            color: #fff;
-            background: var(--primary);
-            box-shadow: 0 0 14px rgba(99, 102, 241, 0.4);
-        }
-
         /* 히어로 KPI 배너 */
         .hero-banner {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(139, 92, 246, 0.1));
-            border: 1px solid rgba(99, 102, 241, 0.3);
+            background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+            border: 1px solid #bfdbfe;
             border-radius: 20px;
             padding: 28px 32px;
             display: flex;
@@ -112,7 +56,7 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 20px;
-            backdrop-filter: blur(12px);
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.06);
         }
 
         .hero-title h2 {
@@ -120,15 +64,16 @@
             font-weight: 800;
             margin-bottom: 6px;
             letter-spacing: -0.5px;
+            color: #0f172a;
         }
 
         .hero-title p {
-            color: var(--text-muted);
+            color: #475569;
             font-size: 0.95rem;
         }
 
         .quick-live-btn {
-            background: linear-gradient(135deg, #ef4444, #f43f5e);
+            background: #e11d48;
             color: white;
             text-decoration: none;
             padding: 12px 24px;
@@ -138,13 +83,13 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
-            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25);
+            transition: transform 0.2s, background 0.2s;
         }
 
         .quick-live-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 0 26px rgba(239, 68, 68, 0.6);
+            transform: translateY(-1px);
+            background: #be123c;
         }
 
         /* KPI 메트릭 그리드 */
@@ -161,8 +106,7 @@
         }
 
         .kpi-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
+            background: #ffffff;
             border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 20px;
@@ -171,6 +115,7 @@
             gap: 8px;
             position: relative;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
         }
 
         .kpi-card::before {
@@ -180,7 +125,7 @@
             left: 0;
             right: 0;
             height: 3px;
-            background: var(--kpi-color, #6366f1);
+            background: var(--kpi-color, #2563eb);
         }
 
         .kpi-label {
@@ -195,7 +140,7 @@
         .kpi-value {
             font-size: 1.7rem;
             font-weight: 800;
-            color: #fff;
+            color: #0f172a;
             letter-spacing: -0.5px;
         }
 

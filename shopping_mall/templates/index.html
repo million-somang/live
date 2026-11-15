@@ -4,9 +4,10 @@
 {% block extra_head %}
 <style>
     .hero-live-banner {
-        background: linear-gradient(135deg, #0f172a 0%, #31102f 55%, #881337 100%);
-        color: #fff;
-        border-radius: 26px;
+        background: linear-gradient(135deg, #ffffff 0%, #fff1f2 60%, #ffe4e6 100%);
+        color: #0f172a;
+        border: 1px solid #fecdd3;
+        border-radius: 24px;
         padding: 36px 40px;
         margin-bottom: 32px;
         display: flex;
@@ -14,7 +15,7 @@
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 24px;
-        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+        box-shadow: 0 8px 24px rgba(225, 29, 72, 0.06);
     }
     .hero-live-btn {
         display: inline-flex;
@@ -26,15 +27,16 @@
         border-radius: 999px;
         font-size: 1rem;
         font-weight: 900;
-        box-shadow: 0 10px 25px rgba(225, 29, 72, 0.45);
+        box-shadow: 0 6px 16px rgba(225, 29, 72, 0.25);
         transition: transform 0.18s;
     }
     .hero-live-btn:hover {
         transform: translateY(-2px);
     }
     .hero-live-btn.disabled {
-        background: #334155;
-        color: #94a3b8;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        color: #64748b;
         box-shadow: none;
         cursor: not-allowed;
         pointer-events: none;
@@ -125,18 +127,18 @@
 <!-- 상단 라이브 커머스 바로가기 배너 -->
 <section class="hero-live-banner">
     <div style="max-width:680px;">
-        <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,0.14); padding:5px 13px; border-radius:999px; font-size:0.78rem; font-weight:800; margin-bottom:12px;">
+        <div style="display:inline-flex; align-items:center; gap:8px; background:#ffffff; border:1px solid #fecdd3; color:#be123c; padding:5px 13px; border-radius:999px; font-size:0.78rem; font-weight:800; margin-bottom:12px;">
             <span class="live-dot-indicator"></span>
             <span>OBS 방송 스튜디오 연동 LIVE COMMERCE</span>
         </div>
-        <h1 style="font-size:2rem; font-weight:900; line-height:1.3; margin-bottom:10px;">
+        <h1 style="font-size:2rem; font-weight:900; line-height:1.3; margin-bottom:10px; color:#0f172a;">
             {% if live_state and live_state.selected_product %}
             지금 방송 중: [#{{ live_state.selected_product.num }}번 {{ live_state.selected_product.name }}]
             {% else %}
             실시간 라이브 특가 상품을 만나보세요!
             {% endif %}
         </h1>
-        <p style="color:#e2e8f0; font-size:0.95rem; line-height:1.6;">
+        <p style="color:#475569; font-size:0.95rem; line-height:1.6;">
             [🔴 라이브 커머스] 전용관에 입장하시면 OBS에서 쇼호스트가 소개하는 상품의 상세 화면이 페이지 이동 없이 자동으로 펼쳐집니다.
         </p>
     </div>

@@ -7,16 +7,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/light_theme.css">
     <style>
         :root {
-            --bg-dark: #070b14;
-            --card-bg: rgba(15, 23, 42, 0.85);
-            --border: rgba(148, 163, 184, 0.16);
-            --primary: #6366f1;
-            --emerald: #10b981;
-            --text-main: #f8fafc;
-            --text-sub: #cbd5e1;
-            --text-muted: #94a3b8;
+            --bg-dark: #f5f7fa;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --primary: #2563eb;
+            --emerald: #059669;
+            --text-main: #0f172a;
+            --text-sub: #334155;
+            --text-muted: #64748b;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -26,9 +27,6 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            background-image:
-                radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.2) 0px, transparent 50%),
-                radial-gradient(at 85% 85%, rgba(16, 185, 129, 0.15) 0px, transparent 50%);
         }
         a { color: inherit; text-decoration: none; }
         .top-bar {
@@ -37,11 +35,11 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
-            background: rgba(7, 11, 20, 0.8);
-            backdrop-filter: blur(12px);
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
         }
-        .brand { font-weight: 900; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
-        .top-links { display: flex; gap: 12px; font-size: 0.88rem; font-weight: 700; color: var(--text-sub); }
+        .brand { font-weight: 900; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; color: #0f172a; }
+        .top-links { display: flex; gap: 14px; font-size: 0.88rem; font-weight: 700; color: var(--text-sub); }
         .auth-container {
             flex: 1;
             display: flex;
@@ -54,10 +52,9 @@
             max-width: 470px;
             background: var(--card-bg);
             border: 1px solid var(--border);
-            border-radius: 22px;
-            padding: 34px 32px;
-            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(16px);
+            border-radius: 20px;
+            padding: 36px 32px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
         }
         .badge {
             display: inline-block;
@@ -65,11 +62,12 @@
             border-radius: 999px;
             font-size: 0.75rem;
             font-weight: 800;
-            background: rgba(16, 185, 129, 0.18);
-            color: #6ee7b7;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
             margin-bottom: 10px;
         }
-        .auth-card h1 { font-size: 1.55rem; font-weight: 900; margin-bottom: 6px; }
+        .auth-card h1 { font-size: 1.55rem; font-weight: 900; margin-bottom: 6px; color: #0f172a; }
         .auth-card p.desc { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 22px; line-height: 1.5; }
         .alert {
             padding: 12px 14px;
@@ -79,43 +77,45 @@
             margin-bottom: 18px;
             line-height: 1.45;
         }
-        .alert.error { background: rgba(244, 63, 94, 0.16); border: 1px solid rgba(244, 63, 94, 0.4); color: #fda4af; }
-        .alert.success { background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; }
+        .alert.error { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+        .alert.success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; font-size: 0.84rem; font-weight: 700; color: var(--text-sub); margin-bottom: 6px; }
         .form-input {
             width: 100%;
             padding: 11px 14px;
             border-radius: 10px;
-            border: 1px solid var(--border);
-            background: rgba(7, 11, 20, 0.7);
-            color: #fff;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #0f172a;
             font-size: 0.94rem;
             outline: none;
         }
-        .form-input:focus { border-color: var(--primary); }
+        .form-input:focus { border-color: var(--primary); background: #ffffff; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
         .hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
         .btn-submit {
             width: 100%;
             padding: 13px;
             border-radius: 12px;
             border: none;
-            background: linear-gradient(135deg, #6366f1, #4f46e5);
-            color: #fff;
+            background: #2563eb;
+            color: #ffffff;
             font-size: 0.98rem;
             font-weight: 800;
             cursor: pointer;
             margin-top: 8px;
+            transition: background 0.15s;
         }
+        .btn-submit:hover { background: #1d4ed8; }
         .switch-row {
             margin-top: 20px;
             padding-top: 16px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid #e2e8f0;
             text-align: center;
             font-size: 0.88rem;
             color: var(--text-muted);
         }
-        .switch-row a { color: #a5b4fc; font-weight: 700; margin-left: 6px; }
+        .switch-row a { color: #2563eb; font-weight: 700; margin-left: 6px; }
     </style>
 </head>
 <body>

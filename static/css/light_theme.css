@@ -1,0 +1,439 @@
+/* ==========================================================================
+   🌟 Live Commerce OS — Clean Commercial Light Theme System
+   (Toss / Naver SmartStore Seller Center / Shopify Admin / Stripe Style)
+   ========================================================================== */
+
+:root {
+    --bg-color: #f5f7fa !important;
+    --bg-dark: #f5f7fa !important;
+    --bg-body: #f5f7fa !important;
+    --bg-card: #ffffff !important;
+    --card-bg: #ffffff !important;
+    --panel-bg: #ffffff !important;
+    --panel-card: #f8fafc !important;
+    --sidebar-bg: #ffffff !important;
+    --card-border: #e2e8f0 !important;
+    --border-subtle: #e2e8f0 !important;
+    --border: #e2e8f0 !important;
+    --text-main: #0f172a !important;
+    --text-sub: #334155 !important;
+    --text-muted: #64748b !important;
+    --primary: #2563eb !important;
+    --primary-hover: #1d4ed8 !important;
+    --accent-indigo: #2563eb !important;
+    --accent-emerald: #059669 !important;
+    --accent-green: #059669 !important;
+    --emerald: #059669 !important;
+    --accent-cyan: #0284c7 !important;
+    --cyan: #0284c7 !important;
+    --accent-purple: #4f46e5 !important;
+    --accent-orange: #d97706 !important;
+    --amber: #d97706 !important;
+    --accent-rose: #e11d48 !important;
+    --rose: #e11d48 !important;
+    --pink: #e11d48 !important;
+    --red: #dc2626 !important;
+    --danger-red: #dc2626 !important;
+}
+
+html, body {
+    background-color: #f5f7fa !important;
+    background-image: none !important;
+    color: #0f172a !important;
+}
+
+/* 공통 스크롤바 (밝은 슬레이트 톤) */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 1. 상단 바 / 헤더 / GNB / 사이드바 화이트 솔리드 스타일 */
+.gnb,
+.top-portal-bar,
+.top-bar,
+.admin-topbar,
+.studio-header,
+.header-bar,
+.top-status-bar,
+.admin-sidebar,
+.studio-tabs,
+.chat-center-header {
+    background: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+    color: #0f172a !important;
+}
+
+.brand-logo,
+.brand,
+.admin-brand,
+.studio-title,
+.header-title,
+.panel-title,
+.section-title,
+.card-title,
+h1, h2, h3, h4, h5, h6 {
+    color: #0f172a !important;
+}
+
+/* 2. 카드 / 패널 / 모달 / 섹션 화이트 & 라이트 그레이 표면 */
+.card,
+.panel,
+.stat-card,
+.kpi-card,
+.zone-card,
+.feature-card,
+.workflow-section,
+.step-item,
+.auth-card,
+.login-card,
+.accordion-item,
+.accordion-header,
+.accordion-body,
+.control-card,
+.control-section,
+.chat-panel,
+.chat-center-panel,
+.platform-card,
+.order-card,
+.cs-card,
+.modal-content,
+.modal-box,
+.qr-card,
+.session-modal-card,
+.yt-modal-card,
+.table-container,
+.data-card,
+.filter-bar,
+.search-bar,
+.hero-banner,
+.pending-banner,
+.current-product-box,
+.product-lineup-section,
+.qa-section,
+.metric-card,
+.pipeline-5stage-hud,
+.yt-monitor-telemetry-bar,
+.bc-yt-members-bar,
+.yt-Members-bar,
+.live-chat-composer-bar,
+.composer-options-drawer,
+.quick-phrase-editor-box,
+.chat-view-popover,
+#dualCamMultiviewDock {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+    color: #0f172a !important;
+}
+
+.hero-banner {
+    background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%) !important;
+    border: 1px solid #bfdbfe !important;
+}
+
+.pending-banner {
+    background: #fffbeb !important;
+    border: 1px solid #fde68a !important;
+    color: #92400e !important;
+}
+
+/* 서브 카드 & 아이템 행 (라이트 슬레이트 표면) */
+.stage-node-card,
+.stage-line-row,
+.history-session-item,
+.lineup-item,
+.qa-item,
+.chat-row,
+.opt-chip,
+.bc-yt-chip,
+.yt-member-chip,
+.quick-chip-item,
+.clock-display,
+.yt-tel-pill,
+.yt-tel-metric {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.stage-node-head,
+.stage-line-title,
+.chat-username,
+.chat-row-message,
+.lineup-name,
+.product-main-name,
+.stat-value,
+.metric-value {
+    color: #0f172a !important;
+}
+
+.chat-row.order {
+    background: #fffbeb !important;
+    border-color: #fcd34d !important;
+}
+
+.chat-row.question {
+    background: #f0f9ff !important;
+    border-color: #7dd3fc !important;
+}
+
+.chat-row.official-chat {
+    background: #ecfdf5 !important;
+    border-color: #6ee7b7 !important;
+}
+
+.chat-row-reply {
+    background: #f0f9ff !important;
+    border-left: 3px solid #0284c7 !important;
+    color: #0369a1 !important;
+}
+
+.pinned-question-box {
+    background: #eff6ff !important;
+    border: 2px solid #2563eb !important;
+    color: #0f172a !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12) !important;
+}
+
+.pinned-q-user {
+    color: #1d4ed8 !important;
+}
+
+.pinned-q-message {
+    color: #0f172a !important;
+}
+
+.product-specs-box {
+    background: #f8fafc !important;
+    border: 1px dashed #cbd5e1 !important;
+    color: #334155 !important;
+}
+
+.price-main,
+.lineup-price {
+    color: #e11d48 !important;
+}
+
+/* 3. 입력 폼 (Input, Select, Textarea) 밝은 스타일 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea,
+.form-input,
+.form-control,
+.input-field,
+.search-input,
+.composer-select,
+.composer-sender-input,
+.composer-msg-input {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):focus,
+select:focus,
+textarea:focus,
+.form-input:focus,
+.form-control:focus,
+.composer-sender-input:focus,
+.composer-msg-input:focus {
+    background-color: #ffffff !important;
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+    outline: none !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+label,
+.form-label,
+.input-label {
+    color: #334155 !important;
+}
+
+/* 4. 테이블 (Table, Thead, Tbody, Tr, Th, Td) */
+table,
+.history-table {
+    background: #ffffff !important;
+    color: #0f172a !important;
+}
+
+thead,
+th,
+.history-table th {
+    background: #f8fafc !important;
+    color: #475569 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+td,
+.history-table td {
+    color: #1e293b !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+}
+
+tr:hover td {
+    background-color: #f8fafc !important;
+}
+
+/* 5. 내비게이션 탭 & 버튼 */
+.side-tabs-bar,
+.yt-subtabs,
+.filter-tabs,
+.font-btn-group {
+    background: #f1f5f9 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+.nav-item,
+.pillar-tab,
+.side-btn,
+.tab-btn,
+.side-tab-btn,
+.yt-subtab-btn,
+.chat-filter-btn,
+.history-sub-tab,
+.font-btn {
+    color: #475569 !important;
+    background: transparent !important;
+}
+
+.nav-item:hover,
+.pillar-tab:hover,
+.side-btn:hover,
+.tab-btn:hover,
+.side-tab-btn:hover,
+.yt-subtab-btn:hover,
+.chat-filter-btn:hover,
+.history-sub-tab:hover {
+    color: #0f172a !important;
+    background: #e2e8f0 !important;
+}
+
+.nav-item.active,
+.pillar-tab.active,
+.side-btn.active,
+.tab-btn.active,
+.side-tab-btn.active,
+.yt-subtab-btn.active,
+.chat-filter-btn.active,
+.history-sub-tab.active,
+.font-btn.active {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border-color: #2563eb !important;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25) !important;
+}
+
+.btn-header,
+.top-btn,
+.btn-action:not(.btn-fullscreen):not(.active),
+.btn-ctrl:not(.active),
+.btn-sm:not(.primary),
+.quick-chip-btn {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #334155 !important;
+}
+
+.btn-header:hover,
+.top-btn:hover,
+.btn-action:not(.btn-fullscreen):not(.active):hover,
+.btn-ctrl:not(.active):hover,
+.btn-sm:not(.primary):hover {
+    background: #f1f5f9 !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+
+/* 6. OBS 스튜디오 분할 영역 (좌측 모니터 래퍼 / 우측 컨트롤 패널) */
+.monitor-pane {
+    background: #eef2f6 !important;
+    border-right: 1px solid #cbd5e1 !important;
+}
+
+.monitor-top-bar,
+.monitor-bottom-bar {
+    background: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.controls-pane,
+.studio-sidebar,
+.studio-controls {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+}
+
+.pane-resizer {
+    background: #e2e8f0 !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* 7. 인라인 다크 배경(AI 다크 템플릿 흔적) 자동 화이트/라이트 보정 */
+[style*="background:#0f172a"],
+[style*="background: #0f172a"],
+[style*="background-color:#0f172a"],
+[style*="background-color: #0f172a"],
+[style*="background:#0b1120"],
+[style*="background: #0b1120"],
+[style*="background:#090d16"],
+[style*="background: #090d16"],
+[style*="background:#060a14"],
+[style*="background: #060a14"],
+[style*="background:#020617"]:not(#multiviewCardCam1):not(#multiviewCardCam2),
+[style*="background: #020617"]:not(#multiviewCardCam1):not(#multiviewCardCam2),
+[style*="background:#1e293b"],
+[style*="background: #1e293b"],
+[style*="rgba(15, 23, 42"],
+[style*="rgba(15,23,42"],
+[style*="rgba(30, 41, 59"],
+[style*="rgba(30,41,59"],
+[style*="rgba(11, 17, 32"],
+[style*="rgba(2, 6, 23"] {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* 모달 오버레이 딤 배경은 반투명 슬레이트로 유지 */
+[id$="Modal"][style*="position:fixed"],
+[id$="Modal"][style*="position: fixed"],
+.modal-backdrop,
+.modal-overlay,
+.qr-modal,
+.session-modal-backdrop,
+.yt-modal-backdrop {
+    background: rgba(15, 23, 42, 0.45) !important;
+}
+
+/* 인라인 밝은 글씨(#f8fafc, #e2e8f0, #cbd5e1)를 라이트 배경 위에서 진한 슬레이트로 자동 전환 */
+[style*="color:#f8fafc"],
+[style*="color: #f8fafc"],
+[style*="color:#e2e8f0"],
+[style*="color: #e2e8f0"],
+[style*="color:#cbd5e1"],
+[style*="color: #cbd5e1"] {
+    color: #1e293b !important;
+}
+
+[style*="color:#94a3b8"],
+[style*="color: #94a3b8"] {
+    color: #64748b !important;
+}
