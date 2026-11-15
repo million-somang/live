@@ -43,63 +43,80 @@
             overflow: hidden;
         }
 
-        /* 1. 상단 글로벌 헤더 */
+        /* 1. 상단 글로벌 헤더 (무조건 1줄 고정 표시) */
         .studio-header {
             background: #ffffff;
             border-bottom: 1px solid var(--card-border);
             box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
-            padding: 10px 24px;
+            padding: 7px 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
-            gap: 16px;
+            flex-wrap: nowrap;
+            gap: 8px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .studio-header::-webkit-scrollbar {
+            display: none;
         }
 
         .header-left {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 7px;
+            flex-wrap: nowrap;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .studio-badge {
             background: #2563eb;
             color: #fff;
-            font-size: 0.75rem;
+            font-size: 0.68rem;
             font-weight: 800;
-            padding: 4px 10px;
-            border-radius: 6px;
-            letter-spacing: 0.5px;
+            padding: 3px 7px;
+            border-radius: 5px;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .studio-title {
-            font-size: 1.15rem;
+            font-size: clamp(0.82rem, 0.88vw, 0.94rem);
             font-weight: 800;
             color: #0f172a;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 4px;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+            letter-spacing: -0.4px;
         }
 
         .live-indicator {
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 6px;
-            font-size: 0.78rem;
+            gap: 4px;
+            font-size: clamp(0.65rem, 0.68vw, 0.72rem);
             font-weight: 700;
             color: #047857;
             background: #ecfdf5;
             border: 1px solid #a7f3d0;
-            padding: 3px 10px;
+            padding: 2px 7px;
             border-radius: 20px;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
         }
 
         .live-dot {
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background: #059669;
             animation: pulseDot 1.5s infinite;
+            flex-shrink: 0;
         }
 
         @keyframes pulseDot {
@@ -110,23 +127,32 @@
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 4px;
+            flex-wrap: nowrap !important;
+            flex-shrink: 0;
+            white-space: nowrap !important;
         }
 
         .btn-header {
             background: #f8fafc;
             border: 1px solid #cbd5e1;
             color: #334155;
-            padding: 7px 14px;
-            border-radius: 8px;
-            font-size: 0.82rem;
+            padding: 4px 7px;
+            border-radius: 6px;
+            font-size: clamp(0.65rem, 0.68vw, 0.73rem);
             font-weight: 700;
+            letter-spacing: -0.35px;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 3px;
             text-decoration: none;
             transition: all 0.2s;
+            white-space: nowrap !important;
+            flex-shrink: 0 !important;
+        }
+        .btn-header > span {
+            white-space: nowrap !important;
         }
 
         .btn-header:hover {
