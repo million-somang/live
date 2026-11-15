@@ -164,11 +164,19 @@ def run_security_tests():
             )
             assert r_inv.status_code == 200
 
-        # 승인 완료된 seller는 이제 /overlay/studio 정상 진입하되, /admin 접근 시 403 차단 확인
+        # 승인 완료된 seller는 이제 /auth/login 로그인 시 /portal 로 리다이렉트되며, /portal 및 /overlay/studio 정상 진입하되 /admin 접근 시 403 차단 확인
+        r_slogin = seller_client.post(
+            "/auth/login",
+            headers={"X-CSRF-Token": csrf_tok},
+            json={"login_id": uname, "password": "Password123!"}
+        )
+        assert r_slogin.status_code == 200
+        assert r_slogin.get_json()["redirect"] == "/portal"
+        assert seller_client.get("/portal").status_code == 200
         r_studio_ok = seller_client.get("/overlay/studio")
         assert r_studio_ok.status_code == 200
         assert seller_client.get("/admin").status_code == 403
-        print("✅ [5/10] 전용 관리자 콘솔(/admin) 로그인·승인(PENDING➔APPROVED)·초대코드 발급·권한 분리 검증 완료")
+        print("✅ [5/10] 전용 관리자 콘솔(/admin) 승인 및 방송자 로그인 시 /portal 이동·권한 분리 검증 완료")
 
     # 5. 초대 코드로 가입 시 즉시 APPROVED 검증 & 5회 실패 계정 잠금 검증
     with live_commerce_server.app.test_client() as inv_client:

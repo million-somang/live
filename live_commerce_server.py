@@ -267,7 +267,7 @@ def _studio_security_gateway():
             return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "OBS 스튜디오 로그인이 필요합니다."}), 401
         next_q = request.full_path.rstrip("?") if request.query_string else path
         if not security_core.is_safe_redirect_url(next_q):
-            next_q = "/overlay/studio"
+            next_q = "/portal"
         return redirect(url_for("studio_auth_login", next=next_q))
 
     if user.get("status") != "APPROVED":
@@ -1592,21 +1592,19 @@ def studio_portal_view():
 
 @app.route('/auth/login', methods=['GET', 'POST'])
 def studio_auth_login():
-    """OBS 스튜디오 방송자 로그인"""
+    """OBS 스튜디오 방송자 로그인 (로그인 성공 시 기본 /portal 로 이동)"""
     explicit_next = (request.args.get("next") or request.form.get("next") or "").strip()
-    next_url = explicit_next or "/overlay/studio"
-    if not security_core.is_safe_redirect_url(next_url):
-        next_url = "/overlay/studio"
+    next_url = explicit_next or "/portal"
+    if not security_core.is_safe_redirect_url(next_url) or next_url == "/overlay/studio":
+        next_url = "/portal"
 
     if request.method == 'GET':
         cur_u = get_current_studio_user()
         if cur_u:
             if cur_u.get("status") == "APPROVED":
-                if cur_u.get("role") == "ADMIN" and (not explicit_next or next_url == "/overlay/studio"):
-                    return redirect("/admin")
                 return redirect(next_url)
             return redirect(url_for("studio_auth_pending"))
-        return render_template("studio_auth.html", mode="login", next_url=explicit_next)
+        return render_template("studio_auth.html", mode="login", next_url=next_url)
 
     ip_addr = str(request.remote_addr or "unknown")
     allowed, retry_sec = security_core.rate_limiter.check("studio_login", ip_addr, max_requests=10, window_sec=60.0)
@@ -1614,7 +1612,7 @@ def studio_auth_login():
         return render_template(
             "studio_auth.html",
             mode="login",
-            next_url=explicit_next,
+            next_url=next_url,
             error=f"로그인 시도가 너무 많습니다. {retry_sec}초 후 다시 시도해 주세요."
         ), 429
 
@@ -1631,7 +1629,7 @@ def studio_auth_login():
         status_code = 423 if res.get("code") == "LOCKED" else 401
         if request.is_json:
             return jsonify({"status": "error", "code": res.get("code"), "message": res.get("message")}), status_code
-        return render_template("studio_auth.html", mode="login", next_url=explicit_next, error=res.get("message")), status_code
+        return render_template("studio_auth.html", mode="login", next_url=next_url, error=res.get("message")), status_code
 
     user = res["user"]
     security_core.rotate_session(session)
@@ -1640,8 +1638,6 @@ def studio_auth_login():
     session["studio_role"] = user["role"]
 
     target_after_login = next_url
-    if user.get("role") == "ADMIN" and (not explicit_next or next_url == "/overlay/studio"):
-        target_after_login = "/admin"
 
     if request.is_json:
         return jsonify({
@@ -1708,11 +1704,11 @@ def studio_auth_register():
             "status": "ok",
             "user_status": res["status"],
             "csrf_token": security_core.get_csrf_token(session),
-            "redirect": "/overlay/studio" if res["status"] == "APPROVED" else "/auth/pending"
+            "redirect": "/portal" if res["status"] == "APPROVED" else "/auth/pending"
         }), 200
 
     if res["status"] == "APPROVED":
-        return redirect("/overlay/studio")
+        return redirect("/portal")
     return redirect(url_for("studio_auth_pending"))
 
 

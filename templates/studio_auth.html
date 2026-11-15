@@ -144,7 +144,7 @@
 
                 <form method="POST" action="/auth/login">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="next" value="{{ next_url or '' }}">
+                    <input type="hidden" name="next" value="{{ next_url or '/portal' }}">
                     <div class="form-group">
                         <label for="login_id">아이디 또는 이메일</label>
                         <input type="text" id="login_id" name="login_id" class="form-input" placeholder="아이디 또는 이메일 입력" required autofocus>
