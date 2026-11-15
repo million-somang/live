@@ -167,7 +167,7 @@ def run_security_tests():
         # 승인 완료된 seller는 이제 /auth/login 로그인 시 /portal 로 리다이렉트되며, /portal 및 /overlay/studio 정상 진입하되 /admin 접근 시 403 차단 확인
         r_slogin = seller_client.post(
             "/auth/login",
-            headers={"X-CSRF-Token": csrf_tok},
+            headers={"X-CSRF-Token": reg_json["csrf_token"]},
             json={"login_id": uname, "password": "Password123!"}
         )
         assert r_slogin.status_code == 200
