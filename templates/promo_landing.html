@@ -339,10 +339,11 @@
                     </span>
                     <a href="/portal" class="btn-sm primary">관제 포털 입장</a>
                     {% if studio_user.role == 'ADMIN' %}
-                        <a href="/studio/admin/users" class="btn-sm">회원 승인 관리</a>
+                        <a href="/admin" class="btn-sm" style="border-color:rgba(16,185,129,0.5); color:#6ee7b7; font-weight:800;">🛡️ 관리자 콘솔 (/admin)</a>
                     {% endif %}
                     <a href="/auth/logout" class="btn-sm">로그아웃</a>
                 {% else %}
+                    <a href="/admin/login" class="btn-sm" style="border-color:rgba(16,185,129,0.45); color:#6ee7b7;">🛡️ 관리자 (/admin)</a>
                     <a href="/auth/login" class="btn-sm">방송자 로그인</a>
                     <a href="/auth/register" class="btn-sm primary">OBS 스튜디오 회원가입</a>
                 {% endif %}

@@ -37,6 +37,7 @@ from inventory_manager import inventory_manager
 from cs_manager import cs_manager
 import database
 import security_core
+from admin import admin_bp
 
 # DB 테이블 및 인덱스 초기화 확인
 database.init_db(reset=False)
@@ -57,9 +58,56 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 CORS(app)  # 브라우저 확장 프로그램(Social Stream Ninja) 및 외부 CSR 대시보드에서의 로컬 에이전트 전송 허용
+app.register_blueprint(admin_bp)
 
-STUDIO_PUBLIC_URL = os.getenv("STUDIO_PUBLIC_URL", "http://localhost:5000").rstrip("/")
-MALL_PUBLIC_URL = os.getenv("MALL_PUBLIC_URL", "http://localhost:3000").rstrip("/")
+MALL_PORT = int(os.getenv("MALL_PORT", 6001))
+STUDIO_PUBLIC_URL = os.getenv("STUDIO_PUBLIC_URL", "").rstrip("/")
+MALL_PUBLIC_URL = os.getenv("MALL_PUBLIC_URL", "").rstrip("/")
+
+
+def _extract_request_hostname_and_scheme():
+    """현재 브라우저가 접속한 서버의 프로토콜(http/https)과 호스트명(공인 IP 또는 도메인)을 동적으로 추출합니다."""
+    try:
+        fwd_host = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
+        raw_host = fwd_host or (request.host or "localhost")
+        if raw_host.startswith("[") and "]" in raw_host:
+            hostname = raw_host[:raw_host.index("]") + 1]
+        else:
+            hostname = raw_host.split(":")[0].strip() or "localhost"
+        scheme = (request.headers.get("X-Forwarded-Proto") or request.scheme or "http").split(",")[0].strip()
+        return scheme, hostname
+    except Exception:
+        return "http", "localhost"
+
+
+def resolve_mall_public_url() -> str:
+    """
+    접속자 브라우저가 클릭해 이동할 쇼핑몰 공개 URL을 반환합니다.
+    - 외부 도메인이 명시되어 있으면 해당 도메인 사용 (기존 :3000/:6000 포트는 :6001로 자동 보정)
+    - 미설정 또는 localhost/127.0.0.1인 경우 현재 접속한 서버 호스트(:6001)로 자동 매핑
+    """
+    mall_port = int(os.getenv("MALL_PORT", MALL_PORT))
+    raw_env_pub = os.getenv("MALL_PUBLIC_URL", MALL_PUBLIC_URL).strip().rstrip("/")
+    if raw_env_pub and not any(h in raw_env_pub for h in ("localhost", "127.0.0.1")):
+        return database._normalize_mall_port_url(raw_env_pub, mall_port)
+    try:
+        cfg = database.get_cloud_mall_config()
+        if cfg.get("is_remote") and cfg.get("mall_url"):
+            return database._normalize_mall_port_url(cfg["mall_url"], mall_port)
+    except Exception:
+        pass
+    scheme, hostname = _extract_request_hostname_and_scheme()
+    return f"{scheme}://{hostname}:{mall_port}"
+
+
+def resolve_studio_public_url() -> str:
+    """현재 접속한 서버 기준의 OBS 스튜디오/홍보홈 공개 URL(:5000)을 반환합니다."""
+    studio_port = int(os.getenv("SERVER_PORT", 5000))
+    raw_env_pub = os.getenv("STUDIO_PUBLIC_URL", STUDIO_PUBLIC_URL).strip().rstrip("/")
+    if raw_env_pub and not any(h in raw_env_pub for h in ("localhost", "127.0.0.1")):
+        return raw_env_pub
+    scheme, hostname = _extract_request_hostname_and_scheme()
+    return f"{scheme}://{hostname}:{studio_port}"
 
 
 def get_studio_cam_token() -> str:
@@ -117,12 +165,19 @@ def _has_valid_overlay_access() -> bool:
 @app.context_processor
 def _inject_studio_globals():
     u = get_current_studio_user()
+    pending_cnt = 0
+    if u and u.get("role") == "ADMIN":
+        try:
+            pending_cnt = sum(1 for item in database.list_studio_users() if item.get("status") == "PENDING")
+        except Exception:
+            pending_cnt = 0
     return {
         "current_studio_user": u,
         "studio_user": u,
+        "pending_studio_users_count": pending_cnt,
         "csrf_token": security_core.get_csrf_token(session),
-        "mall_public_url": os.getenv("MALL_PUBLIC_URL", MALL_PUBLIC_URL).rstrip("/"),
-        "studio_public_url": os.getenv("STUDIO_PUBLIC_URL", STUDIO_PUBLIC_URL).rstrip("/"),
+        "mall_public_url": resolve_mall_public_url(),
+        "studio_public_url": resolve_studio_public_url(),
         "obs_overlay_token": get_studio_overlay_token(),
         "camera_pair_token": get_studio_cam_token(),
     }
@@ -131,11 +186,12 @@ def _inject_studio_globals():
 @app.before_request
 def _studio_security_gateway():
     """
-    도메인 1 (홍보 홈페이지 + OBS 스튜디오) 중앙 보안 게이트웨이 (Deny-by-Default)
-    1) 공개 경로(/, /auth/*, /static/*, /status, OPTIONS) 허용
+    도메인 1 (홍보 홈페이지 + OBS 스튜디오 + /admin 관리자 콘솔) 중앙 보안 게이트웨이 (Deny-by-Default)
+    1) 공개 경로(/, /auth/*, /admin/login, /admin/logout, /static/*, /status, OPTIONS) 허용
     2) 특수 토큰 경로(/cam*, /overlay/obs, 웹훅) 검증
-    3) 그 외 모든 스튜디오/관제 화면 및 /api/* 제어 요청은 APPROVED 방송자 세션 필수
-    4) 상태 변경(POST/PUT/DELETE) 요청 시 CSRF 검증
+    3) /admin* 경로는 ADMIN 권한 전용으로 보호 (비로그인 시 /admin/login 으로 리다이렉트)
+    4) 그 외 모든 스튜디오/관제 화면 및 /api/* 제어 요청은 APPROVED 방송자 세션 필수
+    5) 상태 변경(POST/PUT/DELETE) 요청 시 CSRF 검증
     """
     if request.method == "OPTIONS":
         return None
@@ -146,7 +202,7 @@ def _studio_security_gateway():
     if path.startswith("/static/") or path in ("/status", "/favicon.ico"):
         return None
 
-    # 2. 홍보 홈페이지 (GET /) 및 인증 라우트 (/auth/*)
+    # 2. 홍보 홈페이지 (GET /), 일반 인증 라우트 (/auth/*), 전용 관리자 로그인/로그아웃 (/admin/login, /admin/logout)
     if path == "/" and request.method == "GET":
         return None
     if path.startswith("/auth/"):
@@ -155,6 +211,15 @@ def _studio_security_gateway():
                 "studio_auth.html",
                 mode="login" if "login" in path else "register",
                 error="보안 토큰(CSRF)이 만료되었거나 유효하지 않습니다. 다시 시도해 주세요."
+            ), 403
+        return None
+    if path in ("/admin/login", "/admin/logout"):
+        if request.method == "POST" and not security_core.verify_csrf_token(session, request):
+            if request.is_json:
+                return jsonify({"status": "error", "code": "CSRF_INVALID", "message": "CSRF 보안 토큰 검증에 실패했습니다."}), 403
+            return render_template(
+                "admin/login.html",
+                error="보안 토큰(CSRF)이 만료되었거나 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해 주세요."
             ), 403
         return None
 
@@ -194,6 +259,10 @@ def _studio_security_gateway():
     # 7. 스튜디오 정식 회원 세션 확인
     user = get_current_studio_user()
     if not user:
+        if path == "/admin" or path.startswith("/admin/"):
+            if path.startswith("/admin/api/") or request.method != "GET":
+                return jsonify({"status": "error", "code": "ADMIN_AUTH_REQUIRED", "message": "관리자 로그인이 필요합니다."}), 401
+            return redirect("/admin/login")
         if path.startswith("/api/") or request.method != "GET":
             return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "OBS 스튜디오 로그인이 필요합니다."}), 401
         next_q = request.full_path.rstrip("?") if request.query_string else path
@@ -202,16 +271,16 @@ def _studio_security_gateway():
         return redirect(url_for("studio_auth_login", next=next_q))
 
     if user.get("status") != "APPROVED":
-        if path.startswith("/api/") or request.method != "GET":
+        if path.startswith("/api/") or path.startswith("/admin/api/") or request.method != "GET":
             return jsonify({"status": "error", "code": "APPROVAL_REQUIRED", "message": "관리자 승인 완료 후 OBS 스튜디오를 이용하실 수 있습니다."}), 403
         return redirect(url_for("studio_auth_pending"))
 
-    # 8. 관리자 전용 경로 확인 (/studio/admin/*, /api/studio/admin/*)
-    if path.startswith("/studio/admin") or path.startswith("/api/studio/admin"):
+    # 8. 관리자 전용 경로 확인 (/admin, /admin/*, /studio/admin/*, /api/studio/admin/*)
+    if path == "/admin" or path.startswith("/admin/") or path.startswith("/studio/admin") or path.startswith("/api/studio/admin"):
         if user.get("role") != "ADMIN":
-            if path.startswith("/api/"):
-                return jsonify({"status": "error", "message": "스튜디오 관리자(ADMIN) 권한이 필요합니다."}), 403
-            return Response("스튜디오 관리자 전용 페이지입니다.", status=403, mimetype="text/plain; charset=utf-8")
+            if path.startswith("/api/") or path.startswith("/admin/api/") or request.method != "GET":
+                return jsonify({"status": "error", "code": "ADMIN_REQUIRED", "message": "스튜디오 관리자(ADMIN) 권한이 필요합니다."}), 403
+            return Response("🛡️ 관리자(ADMIN) 전용 페이지입니다. 일반 방송자 계정으로는 접근할 수 없습니다.", status=403, mimetype="text/plain; charset=utf-8")
 
     # 9. 상태 변경 요청(POST/PUT/DELETE/PATCH) CSRF 검증
     if request.method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -1524,7 +1593,8 @@ def studio_portal_view():
 @app.route('/auth/login', methods=['GET', 'POST'])
 def studio_auth_login():
     """OBS 스튜디오 방송자 로그인"""
-    next_url = request.args.get("next") or request.form.get("next") or "/overlay/studio"
+    explicit_next = (request.args.get("next") or request.form.get("next") or "").strip()
+    next_url = explicit_next or "/overlay/studio"
     if not security_core.is_safe_redirect_url(next_url):
         next_url = "/overlay/studio"
 
@@ -1532,9 +1602,11 @@ def studio_auth_login():
         cur_u = get_current_studio_user()
         if cur_u:
             if cur_u.get("status") == "APPROVED":
+                if cur_u.get("role") == "ADMIN" and (not explicit_next or next_url == "/overlay/studio"):
+                    return redirect("/admin")
                 return redirect(next_url)
             return redirect(url_for("studio_auth_pending"))
-        return render_template("studio_auth.html", mode="login", next_url=next_url)
+        return render_template("studio_auth.html", mode="login", next_url=explicit_next)
 
     ip_addr = str(request.remote_addr or "unknown")
     allowed, retry_sec = security_core.rate_limiter.check("studio_login", ip_addr, max_requests=10, window_sec=60.0)
@@ -1542,7 +1614,7 @@ def studio_auth_login():
         return render_template(
             "studio_auth.html",
             mode="login",
-            next_url=next_url,
+            next_url=explicit_next,
             error=f"로그인 시도가 너무 많습니다. {retry_sec}초 후 다시 시도해 주세요."
         ), 429
 
@@ -1559,7 +1631,7 @@ def studio_auth_login():
         status_code = 423 if res.get("code") == "LOCKED" else 401
         if request.is_json:
             return jsonify({"status": "error", "code": res.get("code"), "message": res.get("message")}), status_code
-        return render_template("studio_auth.html", mode="login", next_url=next_url, error=res.get("message")), status_code
+        return render_template("studio_auth.html", mode="login", next_url=explicit_next, error=res.get("message")), status_code
 
     user = res["user"]
     security_core.rotate_session(session)
@@ -1567,17 +1639,21 @@ def studio_auth_login():
     session["studio_user_id"] = user["id"]
     session["studio_role"] = user["role"]
 
+    target_after_login = next_url
+    if user.get("role") == "ADMIN" and (not explicit_next or next_url == "/overlay/studio"):
+        target_after_login = "/admin"
+
     if request.is_json:
         return jsonify({
             "status": "ok",
             "user": user,
             "csrf_token": security_core.get_csrf_token(session),
-            "redirect": next_url if user.get("status") == "APPROVED" else "/auth/pending"
+            "redirect": target_after_login if user.get("status") == "APPROVED" else "/auth/pending"
         }), 200
 
     if user.get("status") != "APPROVED":
         return redirect(url_for("studio_auth_pending"))
-    return redirect(next_url)
+    return redirect(target_after_login)
 
 
 @app.route('/auth/register', methods=['GET', 'POST'])
@@ -1657,13 +1733,8 @@ def studio_auth_logout():
 
 @app.route('/studio/admin/users', methods=['GET'])
 def studio_admin_users_view():
-    """스튜디오 관리자 전용 방송자 승인 및 초대코드 관리 화면"""
-    return render_template(
-        "studio_admin_users.html",
-        users=database.list_studio_users(),
-        invite_codes=database.list_studio_invite_codes(),
-        audit_logs=database.list_security_audit_logs(limit=60)
-    )
+    """기존 경로 호환: 전용 관리자 콘솔(/admin)로 리다이렉트"""
+    return redirect("/admin")
 
 
 @app.route('/api/studio/admin/user-status', methods=['POST'])
@@ -3363,6 +3434,7 @@ def api_agent_cloud_config():
         return jsonify({
             "status": "ok",
             "mall_url": cfg["mall_url"],
+            "public_mall_url": resolve_mall_public_url(),
             "has_secret": bool(cfg["sync_secret"]),
             "agent_only_mode": cfg["agent_only_mode"],
             "is_remote": cfg["is_remote"]
@@ -3370,7 +3442,10 @@ def api_agent_cloud_config():
 
     data = request.get_json(silent=True) or {}
     cur_cfg = database.get_cloud_mall_config()
-    new_url = str(data.get("mall_url") if "mall_url" in data else cur_cfg["mall_url"]).strip().rstrip("/")
+    new_url = database._normalize_mall_port_url(
+        str(data.get("mall_url") if "mall_url" in data else cur_cfg["mall_url"]).strip().rstrip("/"),
+        int(os.getenv("MALL_PORT", MALL_PORT))
+    )
     new_sec = str(data.get("sync_secret") if "sync_secret" in data else cur_cfg["sync_secret"]).strip()
     new_agent_only = bool(data.get("agent_only_mode", cur_cfg["agent_only_mode"]))
 
@@ -3390,6 +3465,7 @@ def api_agent_cloud_config():
     return jsonify({
         "status": "ok",
         "mall_url": new_url,
+        "public_mall_url": resolve_mall_public_url(),
         "agent_only_mode": new_agent_only,
         "synced_count": cnt,
         "message": f"클라우드 쇼핑몰({new_url}) 설정 저장 및 상품 {cnt}건 동기화가 완료되었습니다."
@@ -14390,15 +14466,16 @@ if __name__ == '__main__':
             mall_app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shopping_mall", "app.py")
             if os.path.exists(mall_app_path):
                 import socket
+                mall_port = int(os.getenv("MALL_PORT", MALL_PORT))
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s_chk:
                     s_chk.settimeout(0.4)
-                    mall_running = (s_chk.connect_ex(("127.0.0.1", 3000)) == 0)
+                    mall_running = (s_chk.connect_ex(("127.0.0.1", mall_port)) == 0)
                 if not mall_running:
                     subprocess.Popen(
                         [sys.executable, mall_app_path],
                         cwd=os.path.dirname(mall_app_path)
                     )
-                    print("🛍️ [독립 쇼핑몰 자동 기동] http://localhost:3000 (라이브커머스: http://localhost:3000/live)", flush=True)
+                    print(f"🛍️ [독립 쇼핑몰 자동 기동] http://0.0.0.0:{mall_port} (라이브커머스: /live)", flush=True)
     except Exception as mall_err:
         print(f"⚠️ [쇼핑몰 연동 초기화 경고] {mall_err}", flush=True)
 

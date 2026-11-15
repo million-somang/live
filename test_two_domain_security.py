@@ -45,15 +45,19 @@ def run_security_tests():
     # 도메인 1 (홍보 홈페이지 + 승인제 OBS 스튜디오) 검증
     # =========================================================================
     with live_commerce_server.app.test_client() as studio_client:
-        # 1. 홍보 홈페이지(GET /) 비회원 전체 공개 및 OBS 설명·3대 영역 노출 확인
-        r_promo = studio_client.get("/")
+        # 1. 홍보 홈페이지(GET /) 비회원 전체 공개, OBS 설명·3대 영역 노출 및 서버 Host 기반 :6001 동적 쇼핑몰 주소 확인
+        r_promo = studio_client.get("/", headers={"Host": "203.0.113.55:5000"})
         assert r_promo.status_code == 200
         promo_html = r_promo.get_data(as_text=True)
         assert "① 홍보 홈페이지" in promo_html
         assert "② 쇼핑몰" in promo_html or "② 독립 쇼핑몰" in promo_html
         assert "③ 웹 OBS 스튜디오" in promo_html or "③ OBS 스튜디오" in promo_html
         assert "웹 OBS 스튜디오는 어떻게 동작하나요?" in promo_html
-        print("✅ [2/10] 도메인 1 홍보 홈페이지(/) 비로그인 공개 및 3대 영역·OBS 설명 노출 확인 완료")
+        assert "http://203.0.113.55:6001" in promo_html
+        assert "localhost:6000" not in promo_html and "localhost:3000" not in promo_html
+        r_cfg = studio_client.get("/api/agent/cloud-config", headers={"Host": "203.0.113.55:5000"}).get_json()
+        assert r_cfg["public_mall_url"] == "http://203.0.113.55:6001"
+        print("✅ [2/10] 도메인 1 홍보 홈페이지(/) 비로그인 공개 및 서버 Host 기반 쇼핑몰(http://203.0.113.55:6001) 동적 연결 확인 완료")
 
         # 2. 비로그인 상태에서 OBS 스튜디오 및 내부 API 접근 차단 확인
         assert studio_client.get("/overlay/studio").status_code == 302
@@ -102,46 +106,69 @@ def run_security_tests():
         assert r_studio_pending.status_code == 302 and "/auth/pending" in r_studio_pending.headers["Location"]
         assert seller_client.post("/api/overlay/ticker", json={"text": "무단자막"}).status_code == 403
 
-        # 관리자 세션으로 승인 처리 및 초대코드 발급 검증
+        # 관리자 전용 콘솔(/admin, /admin/login)으로 승인 처리 및 초대코드 발급 검증
         with live_commerce_server.app.test_client() as admin_client:
-            admin_client.get("/auth/login")
+            # 비로그인 시 /admin 접근하면 /admin/login으로 리다이렉트
+            r_unauth_admin = admin_client.get("/admin")
+            assert r_unauth_admin.status_code == 302 and "/admin/login" in r_unauth_admin.headers["Location"]
+
+            admin_client.get("/admin/login")
             with admin_client.session_transaction() as asess:
                 a_csrf = asess["_csrf_token"]
+
+            # 일반 방송자 계정으로 /admin/login 시도 시 403 ADMIN_REQUIRED 거부 확인
+            r_seller_admin_try = admin_client.post(
+                "/admin/login",
+                headers={"X-CSRF-Token": a_csrf},
+                json={"login_id": uname, "password": "Password123!"}
+            )
+            assert r_seller_admin_try.status_code == 403
+            assert r_seller_admin_try.get_json()["code"] == "ADMIN_REQUIRED"
+
+            # 정식 관리자 계정으로 /admin/login 로그인 -> redirect == "/admin" 확인
             r_alogin = admin_client.post(
-                "/auth/login",
+                "/admin/login",
                 headers={"X-CSRF-Token": a_csrf},
                 json={"login_id": "test_studio_admin", "password": "StudioAdmin123!"}
             )
             assert r_alogin.status_code == 200
-            a_csrf = r_alogin.get_json()["csrf_token"]
+            alogin_json = r_alogin.get_json()
+            assert alogin_json["redirect"] == "/admin"
+            a_csrf = alogin_json["csrf_token"]
+
+            # /admin 대시보드 정상 렌더링 확인 (OBS 스튜디오로 넘어가지 않고 관리자 페이지 표시)
+            r_admin_dash = admin_client.get("/admin")
+            assert r_admin_dash.status_code == 200
+            assert "통합 관리자 대시보드 (/admin)" in r_admin_dash.get_data(as_text=True)
 
             # CSRF 토큰 없이 관리자 API 호출 시 403 차단 확인
-            r_no_csrf = admin_client.post("/api/studio/admin/invite-code", json={"memo": "no-csrf"})
+            r_no_csrf = admin_client.post("/admin/api/invite-codes", json={"memo": "no-csrf"})
             assert r_no_csrf.status_code == 403
 
-            # 신규 가입한 seller 승인 처리
+            # 신규 가입한 seller를 /admin/api/users/status 로 승인(APPROVED) 처리
             users = database.list_studio_users()
             target_u = next(u for u in users if u["username"] == uname)
             r_app = admin_client.post(
-                "/api/studio/admin/user-status",
+                "/admin/api/users/status",
                 headers={"X-CSRF-Token": a_csrf},
                 json={"user_id": target_u["id"], "status": "APPROVED"}
             )
             assert r_app.status_code == 200
 
-            # 초대코드 발급
+            # 초대코드 발급 (/admin/api/invite-codes)
             inv_code = f"INV-{uuid.uuid4().hex[:6].upper()}"
             r_inv = admin_client.post(
-                "/api/studio/admin/invite-code",
+                "/admin/api/invite-codes",
                 headers={"X-CSRF-Token": a_csrf},
                 json={"code": inv_code, "memo": "즉시승인테스트", "max_uses": 2}
             )
             assert r_inv.status_code == 200
 
-        # 승인 완료된 seller는 이제 /overlay/studio 정상 진입 (200 OK)
+        # 승인 완료된 seller는 이제 /overlay/studio 정상 진입하되, /admin 접근 시 403 차단 확인
         r_studio_ok = seller_client.get("/overlay/studio")
         assert r_studio_ok.status_code == 200
-        print("✅ [5/10] OBS 스튜디오 가입 신청(PENDING) ➔ 관리자 승인(APPROVED) ➔ 스튜디오 입장 및 CSRF 방어 검증 완료")
+        assert seller_client.get("/admin").status_code == 403
+        print("✅ [5/10] 전용 관리자 콘솔(/admin) 로그인·승인(PENDING➔APPROVED)·초대코드 발급·권한 분리 검증 완료")
 
     # 5. 초대 코드로 가입 시 즉시 APPROVED 검증 & 5회 실패 계정 잠금 검증
     with live_commerce_server.app.test_client() as inv_client:
@@ -301,6 +328,15 @@ def run_security_tests():
         assert mclient.get("/admin").status_code == 403
         assert mclient.post("/api/admin/apply-discount", headers={"X-CSRF-Token": m_csrf}, json={"discount_pct": 90}).status_code == 403
         print("✅ [10/10] 쇼핑몰 정식 회원 결제·본인 주문 격리 조회 및 비관리자 /admin 접근 차단(403) 검증 완료")
+
+    # 테스트용 임시 계정 정리 및 기본 관리자 복원
+    conn = database.get_connection()
+    conn.execute("DELETE FROM studio_users WHERE username LIKE 'seller_%' OR username LIKE 'fast_%' OR username = 'test_studio_admin'")
+    conn.execute("DELETE FROM studio_invite_codes WHERE code LIKE 'INV-%'")
+    conn.commit()
+    for k in ("STUDIO_ADMIN_USERNAME", "STUDIO_ADMIN_EMAIL", "STUDIO_ADMIN_PASSWORD"):
+        os.environ.pop(k, None)
+    database.ensure_default_studio_admin()
 
     print("\n🎉 ALL 2-DOMAIN ARCHITECTURE & SECURITY TESTS PASSED!")
 

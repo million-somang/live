@@ -40,7 +40,7 @@ with live_commerce_server.app.test_client() as client:
         all_passed = False
 
     # 관리자(승인된 방송자) 세션 설정 후 내부 GNB 페이지 검증
-    admin_user = live_commerce_server.database.list_studio_users()[0]
+    admin_user = next(u for u in live_commerce_server.database.list_studio_users() if u.get('status') == 'APPROVED')
     with client.session_transaction() as sess:
         sess['studio_user_id'] = admin_user['id']
         sess['studio_role'] = admin_user['role']

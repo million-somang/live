@@ -1181,7 +1181,7 @@
             <button type="button" class="btn-header btn-copy-url" onclick="copyOverlayObsUrl()">
                 <span>🔗 OBS 브라우저 소스 URL 복사</span>
             </button>
-            <a id="studioCloudMallLink" href="http://localhost:3000/live" target="_blank" class="btn-header" style="background:linear-gradient(135deg,#e11d48,#be123c); border-color:#fb7185; color:#fff;" title="OBS 선택 상품 상세화면이 실시간 연동되는 쇼핑몰 라이브 커머스 페이지 열기">
+            <a id="studioCloudMallLink" href="{{ mall_public_url }}/live" target="_blank" class="btn-header" style="background:linear-gradient(135deg,#e11d48,#be123c); border-color:#fb7185; color:#fff;" title="OBS 선택 상품 상세화면이 실시간 연동되는 쇼핑몰 라이브 커머스 페이지 열기">
                 <span>🛍️ 연동 쇼핑몰 (/live) ↗</span>
             </a>
             <button type="button" class="btn-header" onclick="openCloudMallConfigModal()" style="border-color:#38bdf8; color:#38bdf8;" title="외부 클라우드 쇼핑몰 URL 및 시크릿키 설정">
@@ -1192,6 +1192,20 @@
             </a>
             <a href="/broadcast" class="btn-header">
                 <span>📡 방송 관제탑 ➔</span>
+            </a>
+            <a href="/portal" class="btn-header" title="메인 비즈니스 관제 포털">
+                <span>🏢 메인 포털</span>
+            </a>
+            <a href="/" class="btn-header" title="공개 홍보 홈페이지">
+                <span>🌐 홍보 홈</span>
+            </a>
+            {% if current_studio_user and current_studio_user.role == 'ADMIN' %}
+            <a href="/admin" class="btn-header" style="background:linear-gradient(135deg,#10b981,#059669); border-color:#34d399; color:#fff; font-weight:900;">
+                <span>🛡️ 관리자 페이지 (/admin){% if pending_studio_users_count %} · {{ pending_studio_users_count }}명 대기{% endif %}</span>
+            </a>
+            {% endif %}
+            <a href="/auth/logout" class="btn-header" style="border-color:rgba(244,63,94,0.45); color:#fda4af;" title="현재 계정 로그아웃">
+                <span>🚪 로그아웃{% if current_studio_user %} ({{ current_studio_user.username }}){% endif %}</span>
             </a>
         </div>
     </header>
@@ -11497,14 +11511,37 @@
             setInterval(loadVdoNinjaConfig, 1500);
         });
 
+        function _resolvePublicMallBaseUrl(rawUrl) {
+            const fallback = `${window.location.protocol}//${window.location.hostname}:6001`;
+            if (!rawUrl) return fallback;
+            let u = String(rawUrl).trim().replace(/\/$/, '');
+            // legacy 포트(:3000, :6000)를 :6001로 자동 보정
+            u = u.replace(/:(3000|6000)(?=\/|$)/, ':6001');
+            // 서버 접속 환경에서 localhost 또는 127.0.0.1로 되어 있으면 현재 접속한 서버 호스트명으로 자동 치환
+            if (u.includes('localhost') || u.includes('127.0.0.1')) {
+                try {
+                    const parsed = new URL(u);
+                    const port = parsed.port || '6001';
+                    return `${window.location.protocol}//${window.location.hostname}:${port}`;
+                } catch (e) {
+                    return fallback;
+                }
+            }
+            return u;
+        }
+
         async function initCloudMallHeaderLink() {
+            const linkEl = document.getElementById('studioCloudMallLink');
+            if (linkEl) {
+                linkEl.href = _resolvePublicMallBaseUrl(linkEl.getAttribute('href')?.replace(/\/live$/, '')) + '/live';
+            }
             try {
                 const res = await fetch('/api/agent/cloud-config');
                 if (!res.ok) return;
                 const cfg = await res.json();
-                const linkEl = document.getElementById('studioCloudMallLink');
-                if (linkEl && cfg.mall_url) {
-                    linkEl.href = cfg.mall_url.replace(/\/$/, '') + '/live';
+                const targetBase = _resolvePublicMallBaseUrl(cfg.public_mall_url || cfg.mall_url);
+                if (linkEl && targetBase) {
+                    linkEl.href = targetBase + '/live';
                 }
             } catch (e) {}
         }
@@ -11515,7 +11552,7 @@
             try {
                 const res = await fetch('/api/agent/cloud-config');
                 const cfg = await res.json();
-                document.getElementById('cloudMallUrlInput').value = cfg.mall_url || 'http://127.0.0.1:3000';
+                document.getElementById('cloudMallUrlInput').value = cfg.mall_url || `${window.location.protocol}//${window.location.hostname}:6001`;
                 document.getElementById('cloudMallAgentOnlyChk').checked = Boolean(cfg.agent_only_mode);
             } catch (e) {}
             modal.style.display = 'flex';
@@ -11541,7 +11578,8 @@
                 const data = await res.json();
                 if (data.status === 'ok') {
                     const linkEl = document.getElementById('studioCloudMallLink');
-                    if (linkEl && data.mall_url) linkEl.href = data.mall_url.replace(/\/$/, '') + '/live';
+                    const targetBase = _resolvePublicMallBaseUrl(data.public_mall_url || data.mall_url);
+                    if (linkEl && targetBase) linkEl.href = targetBase + '/live';
                     alert(data.message || '클라우드 쇼핑몰 연동 설정이 저장되었습니다.');
                     closeCloudMallConfigModal();
                 } else {

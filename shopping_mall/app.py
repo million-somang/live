@@ -38,10 +38,44 @@ UPLOAD_PRODUCTS_DIR = os.path.join(BASE_DIR, "static", "uploads", "products")
 os.makedirs(UPLOAD_PRODUCTS_DIR, exist_ok=True)
 
 OBS_SERVER_URL = os.getenv("OBS_SERVER_URL", "http://127.0.0.1:5000").rstrip("/")
-STUDIO_PUBLIC_URL = os.getenv("STUDIO_PUBLIC_URL", OBS_SERVER_URL).rstrip("/")
-MALL_PUBLIC_URL = os.getenv("MALL_PUBLIC_URL", "http://localhost:3000").rstrip("/")
-MALL_PORT = int(os.getenv("MALL_PORT", os.getenv("PORT", 3000)))
+STUDIO_PUBLIC_URL = os.getenv("STUDIO_PUBLIC_URL", "").rstrip("/")
+MALL_PUBLIC_URL = os.getenv("MALL_PUBLIC_URL", "").rstrip("/")
+MALL_PORT = int(os.getenv("MALL_PORT", os.getenv("PORT", 6001)))
+STUDIO_PORT = int(os.getenv("STUDIO_PORT", os.getenv("SERVER_PORT", 5000)))
 MALL_SYNC_SECRET = os.getenv("MALL_SYNC_SECRET", "")
+
+
+def _extract_mall_request_hostname_and_scheme():
+    """현재 쇼핑몰에 접속한 브라우저의 프로토콜과 서버 호스트명(IP 또는 도메인)을 동적으로 추출합니다."""
+    try:
+        fwd_host = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
+        raw_host = fwd_host or (request.host or "localhost")
+        if raw_host.startswith("[") and "]" in raw_host:
+            hostname = raw_host[:raw_host.index("]") + 1]
+        else:
+            hostname = raw_host.split(":")[0].strip() or "localhost"
+        scheme = (request.headers.get("X-Forwarded-Proto") or request.scheme or "http").split(",")[0].strip()
+        return scheme, hostname
+    except Exception:
+        return "http", "localhost"
+
+
+def resolve_mall_public_url() -> str:
+    port = int(os.getenv("MALL_PORT", os.getenv("PORT", MALL_PORT)))
+    raw_env = os.getenv("MALL_PUBLIC_URL", MALL_PUBLIC_URL).strip().rstrip("/")
+    if raw_env and not any(h in raw_env for h in ("localhost", "127.0.0.1")):
+        return raw_env
+    scheme, hostname = _extract_mall_request_hostname_and_scheme()
+    return f"{scheme}://{hostname}:{port}"
+
+
+def resolve_studio_public_url() -> str:
+    port = int(os.getenv("STUDIO_PORT", os.getenv("SERVER_PORT", STUDIO_PORT)))
+    raw_env = os.getenv("STUDIO_PUBLIC_URL", STUDIO_PUBLIC_URL).strip().rstrip("/")
+    if raw_env and not any(h in raw_env for h in ("localhost", "127.0.0.1")):
+        return raw_env
+    scheme, hostname = _extract_mall_request_hostname_and_scheme()
+    return f"{scheme}://{hostname}:{port}"
 
 
 def _get_sync_secret():
@@ -106,8 +140,8 @@ def _inject_mall_globals():
     return {
         "current_mall_user": u,
         "csrf_token": mall_security.get_csrf_token(session),
-        "studio_public_url": os.getenv("STUDIO_PUBLIC_URL", STUDIO_PUBLIC_URL).rstrip("/"),
-        "mall_public_url": os.getenv("MALL_PUBLIC_URL", MALL_PUBLIC_URL).rstrip("/"),
+        "studio_public_url": resolve_studio_public_url(),
+        "mall_public_url": resolve_mall_public_url(),
         "live_order_token": create_live_order_token()
     }
 

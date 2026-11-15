@@ -2463,21 +2463,45 @@ def export_session_orders_to_excel(session_id, excel_path):
 
 
 # ==============================================================================
-# 🛍️ 독립 쇼핑몰(shopping_mall/shopping_mall.db & Port 3000) 실시간 동기화 브릿지
+# 🛍️ 독립 쇼핑몰(shopping_mall/shopping_mall.db & Port 6001) 실시간 동기화 브릿지
 # ==============================================================================
 _pushed_cloud_image_sig = {}
 
 
+def _normalize_mall_port_url(raw_url: str, default_port: int = 6001) -> str:
+    """이전 기본 포트(:3000, :6000)로 저장된 쇼핑몰 URL을 현재 포트(:6001)로 자동 보정합니다."""
+    u = str(raw_url or "").strip().rstrip("/")
+    if not u:
+        return f"http://127.0.0.1:{default_port}"
+    for legacy_p in (":3000", ":6000"):
+        if u.endswith(legacy_p):
+            u = u[:-len(legacy_p)] + f":{default_port}"
+        elif f"{legacy_p}/" in u:
+            u = u.replace(f"{legacy_p}/", f":{default_port}/", 1)
+    return u
+
+
 def get_cloud_mall_config():
     """클라우드/독립 쇼핑몰 연동 URL 및 시크릿 설정을 반환합니다 (DB 저장값 우선, 환경변수 폴백)."""
+    mall_port = int(os.getenv("MALL_PORT", 6001))
     saved = get_overlay_state("cloud_mall_config", None)
-    env_url = os.getenv("MALL_SERVER_URL", "http://127.0.0.1:3000").strip().rstrip("/")
+    env_url = _normalize_mall_port_url(os.getenv("MALL_SERVER_URL", f"http://127.0.0.1:{mall_port}"), mall_port)
     env_sec = os.getenv("MALL_SYNC_SECRET", "").strip()
     env_agent_only = os.getenv("AGENT_ONLY_MODE", "0").strip() in ("1", "true", "True", "yes")
     if isinstance(saved, dict):
-        url = str(saved.get("mall_url") or env_url).strip().rstrip("/")
+        raw_saved_url = str(saved.get("mall_url") or env_url).strip().rstrip("/")
+        url = _normalize_mall_port_url(raw_saved_url, mall_port)
         sec = str(saved.get("sync_secret") if saved.get("sync_secret") is not None else env_sec).strip()
         agent_only = bool(saved.get("agent_only_mode", env_agent_only))
+        if url != raw_saved_url:
+            try:
+                set_overlay_state("cloud_mall_config", {
+                    "mall_url": url,
+                    "sync_secret": sec,
+                    "agent_only_mode": agent_only
+                })
+            except Exception:
+                pass
     else:
         url, sec, agent_only = env_url, env_sec, env_agent_only
     is_remote = bool(url) and not any(h in url for h in ("127.0.0.1", "localhost"))
@@ -3014,6 +3038,90 @@ def toggle_studio_invite_code(code_id: int, is_active: bool) -> bool:
             return cur.rowcount > 0
         finally:
             conn.close()
+
+
+def change_studio_user_password(user_id: int, new_password: str, actor_id: str = "", ip_address: str = "") -> dict:
+    valid_pw, pw_msg = security_core.validate_password_policy(new_password, min_len=8)
+    if not valid_pw:
+        return {"ok": False, "message": pw_msg}
+    pw_hash = security_core.hash_password(new_password)
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE studio_users
+                SET password_hash = ?, failed_login_count = 0, locked_until = 0
+                WHERE id = ?
+            """, (pw_hash, int(user_id)))
+            ok = cur.rowcount > 0
+            conn.commit()
+        finally:
+            conn.close()
+    if ok:
+        log_security_audit("STUDIO_PASSWORD_CHANGE", actor_id=actor_id, ip_address=ip_address, detail=f"target_id={user_id}")
+        return {"ok": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
+    return {"ok": False, "message": "대상 계정을 찾을 수 없습니다."}
+
+
+def delete_studio_user(user_id: int, actor_id: str = "", ip_address: str = "") -> dict:
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, username, role FROM studio_users WHERE id = ?", (int(user_id),))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "message": "대상 회원을 찾을 수 없습니다."}
+            if row["role"] == "ADMIN":
+                cur.execute("SELECT COUNT(*) FROM studio_users WHERE role = 'ADMIN' AND status = 'APPROVED'")
+                admin_cnt = cur.fetchone()[0]
+                if admin_cnt <= 1:
+                    return {"ok": False, "message": "최소 1명의 활성 관리자(ADMIN) 계정은 유지되어야 합니다."}
+            cur.execute("DELETE FROM studio_users WHERE id = ?", (int(user_id),))
+            conn.commit()
+            deleted_uname = row["username"]
+        finally:
+            conn.close()
+    log_security_audit("STUDIO_USER_DELETE", actor_id=actor_id, ip_address=ip_address, detail=f"deleted={deleted_uname} (id={user_id})")
+    return {"ok": True, "message": f"계정({deleted_uname})이 삭제되었습니다."}
+
+
+def create_studio_user_by_admin(username: str, email: str, password: str, display_name: str, phone: str = "", role: str = "BROADCASTER", status: str = "APPROVED", actor_id: str = "admin", ip_address: str = "") -> dict:
+    uname = str(username or "").strip().lower()
+    mail = str(email or "").strip().lower()
+    dname = str(display_name or "").strip() or uname
+    ph = str(phone or "").strip()
+    r_val = "ADMIN" if str(role or "").upper() == "ADMIN" else "BROADCASTER"
+    s_val = str(status or "APPROVED").upper()
+    if s_val not in ("PENDING", "APPROVED", "REJECTED", "SUSPENDED"):
+        s_val = "APPROVED"
+
+    if len(uname) < 3 or "@" not in mail:
+        return {"ok": False, "message": "아이디(3자 이상)와 유효한 이메일을 입력해 주세요."}
+    valid_pw, pw_msg = security_core.validate_password_policy(password, min_len=8)
+    if not valid_pw:
+        return {"ok": False, "message": pw_msg}
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM studio_users WHERE username = ? OR email = ?", (uname, mail))
+            if cur.fetchone():
+                return {"ok": False, "message": "이미 등록된 아이디 또는 이메일입니다."}
+            pw_hash = security_core.hash_password(password)
+            cur.execute("""
+                INSERT INTO studio_users (username, email, password_hash, display_name, phone, role, status, approved_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (uname, mail, pw_hash, dname, ph, r_val, s_val, now_str if s_val == "APPROVED" else "", now_str))
+            uid = cur.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+    log_security_audit("STUDIO_ADMIN_CREATE_USER", actor_id=actor_id, ip_address=ip_address, detail=f"created={uname}, role={r_val}, status={s_val}")
+    return {"ok": True, "user_id": uid, "username": uname}
 
 
 # 모듈 임포트 시 DB 자동 초기화 (테이블 없으면 자동 생성) 및 기존 중복 저장된 방송 정리

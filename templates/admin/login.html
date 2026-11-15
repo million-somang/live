@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자 전용 로그인 (/admin) — Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #050811;
+            --card-bg: rgba(15, 23, 42, 0.9);
+            --border: rgba(16, 185, 129, 0.28);
+            --emerald: #10b981;
+            --emerald-dark: #059669;
+            --text-main: #f8fafc;
+            --text-sub: #cbd5e1;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+        body {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image:
+                radial-gradient(at 20% 20%, rgba(16, 185, 129, 0.16) 0px, transparent 50%),
+                radial-gradient(at 80% 80%, rgba(99, 102, 241, 0.14) 0px, transparent 50%);
+        }
+        a { color: inherit; text-decoration: none; }
+        .top-bar {
+            padding: 16px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: rgba(5, 8, 17, 0.85);
+        }
+        .brand { font-weight: 900; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
+        .top-links { display: flex; gap: 14px; font-size: 0.86rem; font-weight: 700; color: var(--text-sub); }
+        .wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px;
+        }
+        .login-card {
+            width: 100%;
+            max-width: 450px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 36px 32px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(16, 185, 129, 0.12);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.18);
+            border: 1px solid rgba(16, 185, 129, 0.45);
+            color: #6ee7b7;
+            font-size: 0.76rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+        }
+        .login-card h1 { font-size: 1.6rem; font-weight: 900; margin-bottom: 6px; }
+        .login-card p.desc { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 22px; line-height: 1.5; }
+        .alert-err {
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(244, 63, 94, 0.16);
+            border: 1px solid rgba(244, 63, 94, 0.45);
+            color: #fda4af;
+            font-size: 0.86rem;
+            font-weight: 700;
+            margin-bottom: 18px;
+        }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.84rem; font-weight: 700; color: var(--text-sub); margin-bottom: 6px; }
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background: rgba(5, 8, 17, 0.78);
+            color: #fff;
+            font-size: 0.94rem;
+            outline: none;
+        }
+        .form-input:focus { border-color: var(--emerald); }
+        .btn-submit {
+            width: 100%;
+            padding: 13px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #052e16;
+            font-size: 0.98rem;
+            font-weight: 900;
+            cursor: pointer;
+            margin-top: 6px;
+        }
+        .footer-note {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            text-align: center;
+            font-size: 0.84rem;
+            color: var(--text-muted);
+        }
+        .footer-note a { color: #6ee7b7; font-weight: 700; margin-left: 6px; }
+    </style>
+</head>
+<body>
+    <header class="top-bar">
+        <a href="/" class="brand">🛡️ Live Commerce OS — ADMIN CONSOLE</a>
+        <div class="top-links">
+            <a href="/">🌐 홍보 홈페이지</a>
+            <a href="/auth/login">🎬 일반 방송자 로그인</a>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <div class="login-card">
+            <span class="badge">🛡️ SYSTEM ADMINISTRATOR ONLY</span>
+            <h1>관리자 전용 로그인</h1>
+            <p class="desc">
+                로그인 즉시 OBS 스튜디오가 아닌 <strong>통합 관리자 페이지(/admin)</strong>로 직행하여
+                방송자 회원가입 승인, 초대 코드 발급, 보안 설정을 관리합니다.
+            </p>
+
+            {% if error %}
+            <div class="alert-err">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="/admin/login">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group">
+                    <label for="login_id">관리자 아이디 또는 이메일</label>
+                    <input type="text" id="login_id" name="login_id" class="form-input" placeholder="admin" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">관리자 비밀번호</label>
+                    <input type="password" id="password" name="password" class="form-input" placeholder="관리자 비밀번호 입력" required>
+                </div>
+                <button type="submit" class="btn-submit">🛡️ 관리자 페이지(/admin) 입장</button>
+            </form>
+
+            <div class="footer-note">
+                일반 방송자이신가요?
+                <a href="/auth/login">OBS 스튜디오 로그인 ➔</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

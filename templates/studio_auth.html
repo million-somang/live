@@ -124,6 +124,7 @@
         <div class="top-links">
             <a href="/">① 홍보 홈페이지</a>
             <a href="{{ mall_public_url }}" target="_blank" rel="noopener">② 독립 쇼핑몰 ↗</a>
+            <a href="/admin/login" style="color:#6ee7b7; font-weight:800;">🛡️ 관리자 페이지 (/admin)</a>
         </div>
     </header>
 
@@ -143,7 +144,7 @@
 
                 <form method="POST" action="/auth/login">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="next" value="{{ next_url or '/overlay/studio' }}">
+                    <input type="hidden" name="next" value="{{ next_url or '' }}">
                     <div class="form-group">
                         <label for="login_id">아이디 또는 이메일</label>
                         <input type="text" id="login_id" name="login_id" class="form-input" placeholder="아이디 또는 이메일 입력" required autofocus>
@@ -158,6 +159,8 @@
                 <div class="switch-row">
                     아직 방송자 계정이 없으신가요?
                     <a href="/auth/register">방송자 회원가입 신청</a>
+                    <span style="margin:0 6px; color:#475569;">|</span>
+                    <a href="/admin/login" style="color:#34d399;">🛡️ 관리자 승인 콘솔(/admin)</a>
                 </div>
 
             {% elif mode == 'register' %}
@@ -229,8 +232,9 @@
                         로그인 후 이용해 주세요.
                     {% endif %}
                 </p>
-                <div style="display:flex; gap:10px; margin-top:16px;">
+                <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
                     <a href="/" class="btn-submit" style="text-align:center; background:rgba(99,102,241,0.25); border:1px solid rgba(99,102,241,0.5);">홍보 홈으로 이동</a>
+                    <a href="/admin/login" class="btn-submit" style="text-align:center; background:rgba(16,185,129,0.22); border:1px solid rgba(16,185,129,0.5); color:#6ee7b7;">🛡️ 관리자 페이지 (/admin/login)</a>
                     <a href="/auth/logout" class="btn-submit" style="text-align:center; background:rgba(244,63,94,0.25); border:1px solid rgba(244,63,94,0.4);">로그아웃</a>
                 </div>
             {% endif %}

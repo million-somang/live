@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>통합 관리자 대시보드 (/admin) — Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #060a14;
+            --sidebar-bg: #0b1120;
+            --card-bg: rgba(15, 23, 42, 0.85);
+            --border: rgba(148, 163, 184, 0.14);
+            --emerald: #10b981;
+            --indigo: #6366f1;
+            --amber: #f59e0b;
+            --rose: #f43f5e;
+            --text-main: #f8fafc;
+            --text-sub: #cbd5e1;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', sans-serif; }
+        body {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        a { color: inherit; text-decoration: none; }
+
+        /* 상단 관리자 헤더 */
+        .admin-topbar {
+            height: 64px;
+            padding: 0 26px;
+            background: rgba(11, 17, 32, 0.95);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .admin-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.15rem;
+            font-weight: 900;
+        }
+        .admin-badge {
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.45);
+            color: #6ee7b7;
+            font-size: 0.74rem;
+            font-weight: 800;
+        }
+        .top-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .top-btn {
+            padding: 7px 13px;
+            border-radius: 9px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            border: 1px solid var(--border);
+            background: rgba(30, 41, 59, 0.75);
+            color: var(--text-sub);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .top-btn:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+        .top-btn.studio { border-color: rgba(99, 102, 241, 0.5); color: #a5b4fc; }
+        .top-btn.logout { border-color: rgba(244, 63, 94, 0.45); color: #fda4af; }
+
+        /* 레이아웃: 좌측 사이드바 + 우측 본문 */
+        .admin-layout {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            min-height: calc(100vh - 64px);
+        }
+        @media (max-width: 900px) {
+            .admin-layout { grid-template-columns: 1fr; }
+        }
+        .admin-sidebar {
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            padding: 22px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .side-label {
+            font-size: 0.73rem;
+            font-weight: 800;
+            color: var(--text-muted);
+            padding: 6px 10px;
+            letter-spacing: 0.5px;
+        }
+        .side-tab {
+            padding: 11px 14px;
+            border-radius: 11px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-sub);
+            cursor: pointer;
+            border: 1px solid transparent;
+            background: transparent;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.18s;
+        }
+        .side-tab:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .side-tab.active {
+            background: rgba(16, 185, 129, 0.16);
+            border-color: rgba(16, 185, 129, 0.45);
+            color: #6ee7b7;
+        }
+        .count-pill {
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 900;
+            background: var(--amber);
+            color: #0f172a;
+        }
+
+        /* 본문 영역 */
+        .admin-main {
+            padding: 28px;
+            max-width: 1320px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* KPI 카드 그리드 */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+        }
+        .kpi-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+        }
+        .kpi-card.pending-alert {
+            border-color: rgba(245, 158, 11, 0.55);
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(15, 23, 42, 0.9));
+        }
+        .kpi-title { font-size: 0.82rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
+        .kpi-num { font-size: 1.85rem; font-weight: 900; }
+
+        /* 패널 공통 */
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 24px;
+        }
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .panel-head h2 { font-size: 1.2rem; font-weight: 800; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { padding: 12px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th { color: var(--text-muted); font-weight: 700; font-size: 0.8rem; }
+        tr.pending-row { background: rgba(245, 158, 11, 0.08); }
+
+        .status-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+            font-weight: 800;
+        }
+        .status-pill.PENDING { background: rgba(245, 158, 11, 0.22); color: #fcd34d; border: 1px solid rgba(245,158,11,0.45); }
+        .status-pill.APPROVED { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); }
+        .status-pill.REJECTED, .status-pill.SUSPENDED { background: rgba(244, 63, 94, 0.2); color: #fda4af; border: 1px solid rgba(244,63,94,0.4); }
+
+        .btn-act {
+            padding: 6px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(15, 23, 42, 0.85);
+            color: #fff;
+            font-size: 0.78rem;
+            font-weight: 800;
+            cursor: pointer;
+            margin-right: 4px;
+        }
+        .btn-act.approve { background: #10b981; color: #052e16; border: none; }
+        .btn-act.reject { background: #e11d48; color: #fff; border: none; }
+        .btn-act.primary { background: #6366f1; color: #fff; border: none; }
+
+        .input-sm {
+            padding: 9px 12px;
+            border-radius: 9px;
+            border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(6, 10, 20, 0.85);
+            color: #fff;
+            font-size: 0.88rem;
+        }
+        .tab-section { display: none; flex-direction: column; gap: 22px; }
+        .tab-section.active { display: flex; }
+    </style>
+</head>
+<body>
+    <!-- 상단 관리자 바 -->
+    <header class="admin-topbar">
+        <div class="admin-brand">
+            <span>🛡️ Live Commerce OS — 통합 관리자 페이지 (/admin)</span>
+            <span class="admin-badge">ADMIN: {{ admin_user.username }}</span>
+        </div>
+        <div class="top-actions">
+            <a href="/overlay/studio" class="top-btn studio">🖥️ OBS 스튜디오 열기</a>
+            <a href="/portal" class="top-btn">🏢 비즈니스 관제 포털</a>
+            <a href="/" class="top-btn">🌐 홍보 홈페이지</a>
+            <a href="{{ mall_public_url }}" target="_blank" rel="noopener" class="top-btn">🛍️ 독립 쇼핑몰 ↗</a>
+            <a href="/admin/logout" class="top-btn logout">🚪 관리자 로그아웃</a>
+        </div>
+    </header>
+
+    <div class="admin-layout">
+        <!-- 좌측 사이드바 메뉴 -->
+        <aside class="admin-sidebar">
+            <div class="side-label">ADMIN MENU</div>
+            <button type="button" class="side-tab active" onclick="switchAdminTab('users', this)">
+                <span>👥 방송자 회원 승인 관리</span>
+                {% if pending_count > 0 %}
+                <span class="count-pill">{{ pending_count }}</span>
+                {% endif %}
+            </button>
+            <button type="button" class="side-tab" onclick="switchAdminTab('invites', this)">
+                <span>🔑 초대 코드 발급/관리</span>
+            </button>
+            <button type="button" class="side-tab" onclick="switchAdminTab('security', this)">
+                <span>🛡️ 비밀번호 변경 & 감사로그</span>
+            </button>
+        </aside>
+
+        <!-- 우측 메인 컨텐츠 -->
+        <main class="admin-main">
+            <!-- 상단 KPI 요약 -->
+            <div class="kpi-row">
+                <div class="kpi-card {% if pending_count > 0 %}pending-alert{% endif %}">
+                    <div class="kpi-title">⏳ 가입 승인 대기 (PENDING)</div>
+                    <div class="kpi-num" style="color:{% if pending_count > 0 %}#fcd34d{% else %}#f8fafc{% endif %};">
+                        {{ pending_count }}명
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">✅ 승인 완료 방송자 (APPROVED)</div>
+                    <div class="kpi-num" style="color:#6ee7b7;">{{ approved_count }}명</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">🔑 활성 초대 코드</div>
+                    <div class="kpi-num" style="color:#a5b4fc;">{{ active_invites_count }}개</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">📦 등록된 방송 상품</div>
+                    <div class="kpi-num">{{ products_count }}개</div>
+                </div>
+            </div>
+
+            <!-- 탭 1: 방송자 회원 승인 및 계정 관리 -->
+            <div id="adminTab_users" class="tab-section active">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>👥 OBS 스튜디오 방송자 가입 신청 & 회원 승인 관리</h2>
+                            <p style="font-size:0.84rem; color:var(--text-muted); margin-top:4px;">
+                                가입 신청(PENDING) 상태인 회원의 우측 <strong>[✅ 즉시 승인]</strong> 버튼을 누르면 바로 OBS 스튜디오 이용이 가능해집니다.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <select id="userStatusFilter" class="input-sm" onchange="filterUsersTable()">
+                                <option value="ALL">전체 상태 보기</option>
+                                <option value="PENDING">⏳ 승인 대기(PENDING)만 보기</option>
+                                <option value="APPROVED">✅ 승인 완료(APPROVED)만 보기</option>
+                                <option value="SUSPENDED">⛔ 정지/반려만 보기</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                        <table id="adminUsersTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>아이디</th>
+                                    <th>이메일</th>
+                                    <th>방송자명</th>
+                                    <th>연락처</th>
+                                    <th>권한</th>
+                                    <th>현재 상태</th>
+                                    <th>가입일시</th>
+                                    <th>승인 / 제어 액션</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for u in users %}
+                                <tr class="{% if u.status == 'PENDING' %}pending-row{% endif %}" data-status="{{ u.status }}">
+                                    <td>#{{ u.id }}</td>
+                                    <td><strong>{{ u.username }}</strong></td>
+                                    <td>{{ u.email }}</td>
+                                    <td>{{ u.display_name }}</td>
+                                    <td>{{ u.phone or '-' }}</td>
+                                    <td>
+                                        <span style="font-size:0.78rem; font-weight:800; color:{% if u.role == 'ADMIN' %}#a5b4fc{% else %}#cbd5e1{% endif %};">
+                                            {{ u.role }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="status-pill {{ u.status }}">
+                                            {% if u.status == 'PENDING' %}⏳ 승인대기 (PENDING)
+                                            {% elif u.status == 'APPROVED' %}✅ 승인됨 (APPROVED)
+                                            {% elif u.status == 'REJECTED' %}❌ 반려됨 (REJECTED)
+                                            {% else %}⛔ 정지됨 ({{ u.status }}){% endif %}
+                                        </span>
+                                    </td>
+                                    <td style="font-size:0.8rem; color:var(--text-muted);">{{ u.created_at }}</td>
+                                    <td>
+                                        {% if u.status != 'APPROVED' %}
+                                        <button type="button" class="btn-act approve" onclick="updateUserStatus({{ u.id }}, 'APPROVED')">✅ 즉시 승인</button>
+                                        {% endif %}
+                                        {% if u.status == 'PENDING' %}
+                                        <button type="button" class="btn-act reject" onclick="updateUserStatus({{ u.id }}, 'REJECTED')">반려</button>
+                                        {% endif %}
+                                        {% if u.status == 'APPROVED' %}
+                                        <button type="button" class="btn-act reject" onclick="updateUserStatus({{ u.id }}, 'SUSPENDED')">정지</button>
+                                        {% endif %}
+                                        {% if u.status != 'PENDING' %}
+                                        <button type="button" class="btn-act" onclick="updateUserStatus({{ u.id }}, 'PENDING')">대기전환</button>
+                                        {% endif %}
+                                        <button type="button" class="btn-act" onclick="resetUserPasswordPrompt({{ u.id }}, '{{ u.username }}')">🔑 비번변경</button>
+                                        <button type="button" class="btn-act" style="color:#fda4af;" onclick="deleteUserAccount({{ u.id }}, '{{ u.username }}')">🗑️</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- 관리자가 직접 방송자/관리자 추가 -->
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>➕ 신규 방송자 / 관리자 계정 직접 등록 (즉시 승인)</h2>
+                    </div>
+                    <form onsubmit="createUserDirectly(event)" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <input type="text" id="newUsername" class="input-sm" placeholder="아이디 (3자 이상)" required>
+                        <input type="email" id="newEmail" class="input-sm" placeholder="이메일 주소" required>
+                        <input type="text" id="newDisplayName" class="input-sm" placeholder="방송자명/브랜드명" required>
+                        <input type="password" id="newPassword" class="input-sm" placeholder="초기 비밀번호 (문자+숫자 8자+)" required>
+                        <select id="newRole" class="input-sm">
+                            <option value="BROADCASTER">일반 방송자 (BROADCASTER)</option>
+                            <option value="ADMIN">관리자 (ADMIN)</option>
+                        </select>
+                        <button type="submit" class="btn-act primary" style="padding:10px 18px;">+ 즉시 승인 계정 생성</button>
+                    </form>
+                </section>
+            </div>
+
+            <!-- 탭 2: 초대 코드 관리 -->
+            <div id="adminTab_invites" class="tab-section">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>🔑 즉시 승인용 초대 코드(Invite Code) 발급 관리</h2>
+                            <p style="font-size:0.84rem; color:var(--text-muted); margin-top:4px;">
+                                방송자가 회원가입할 때 아래 초대 코드를 입력하면 관리자 수동 승인 없이 즉시 스튜디오 이용이 가능한 상태로 가입됩니다.
+                            </p>
+                        </div>
+                    </div>
+                    <form onsubmit="createInviteCode(event)" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;">
+                        <input type="text" id="invCode" class="input-sm" placeholder="코드 직접 입력 (비워두면 자동생성)">
+                        <input type="text" id="invMemo" class="input-sm" placeholder="용도 메모 (예: VIP 파트너 셀러용)" style="min-width:240px;">
+                        <input type="number" id="invMaxUses" class="input-sm" value="10" min="1" max="9999" style="width:120px;">
+                        <button type="submit" class="btn-act approve" style="padding:9px 18px;">+ 초대 코드 발급</button>
+                    </form>
+                    <div style="overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>초대 코드</th>
+                                    <th>메모</th>
+                                    <th>사용 횟수 / 한도</th>
+                                    <th>상태</th>
+                                    <th>발급일</th>
+                                    <th>제어</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in invite_codes %}
+                                <tr>
+                                    <td><code style="color:#6ee7b7; font-weight:900; font-size:0.95rem;">{{ c.code }}</code></td>
+                                    <td>{{ c.memo or '-' }}</td>
+                                    <td>{{ c.used_count }} / {{ c.max_uses }}회</td>
+                                    <td>{{ '🟢 활성' if c.is_active else '⚪ 비활성' }}</td>
+                                    <td>{{ c.created_at }}</td>
+                                    <td>
+                                        <button type="button" class="btn-act" onclick="toggleInvite({{ c.id }}, {{ 'false' if c.is_active else 'true' }})">
+                                            {{ '비활성화' if c.is_active else '다시 활성화' }}
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="6" style="color:var(--text-muted);">발급된 초대 코드가 없습니다.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 탭 3: 관리자 비밀번호 변경 & 보안 감사 로그 -->
+            <div id="adminTab_security" class="tab-section">
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>🔑 현재 관리자({{ admin_user.username }}) 비밀번호 변경</h2>
+                    </div>
+                    <form onsubmit="changeOwnAdminPassword(event)" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <input type="password" id="ownNewPassword" class="input-sm" placeholder="새 비밀번호 (8자 이상, 문자+숫자 포함)" style="width:280px;" required>
+                        <button type="submit" class="btn-act approve" style="padding:10px 18px;">비밀번호 변경 저장</button>
+                    </form>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-head">
+                        <h2>🛡️ 최근 보안 감사 로그 (Security Audit Logs)</h2>
+                    </div>
+                    <div style="overflow-x:auto; max-height:420px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>발생 시각</th>
+                                    <th>보안 이벤트</th>
+                                    <th>계정</th>
+                                    <th>IP 주소</th>
+                                    <th>상세 내역</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in audit_logs %}
+                                <tr>
+                                    <td>{{ log.event_time }}</td>
+                                    <td><strong>{{ log.action }}</strong></td>
+                                    <td>{{ log.actor_id or '-' }}</td>
+                                    <td>{{ log.ip_address or '-' }}</td>
+                                    <td style="color:var(--text-muted);">{{ log.detail }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function switchAdminTab(tabName, btnEl) {
+            document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.side-tab').forEach(el => el.classList.remove('active'));
+            const target = document.getElementById('adminTab_' + tabName);
+            if (target) target.classList.add('active');
+            if (btnEl) btnEl.classList.add('active');
+        }
+
+        function filterUsersTable() {
+            const val = document.getElementById('userStatusFilter').value;
+            document.querySelectorAll('#adminUsersTable tbody tr').forEach(tr => {
+                const st = tr.getAttribute('data-status');
+                if (val === 'ALL' || st === val || (val === 'SUSPENDED' && (st === 'SUSPENDED' || st === 'REJECTED'))) {
+                    tr.style.display = '';
+                } else {
+                    tr.style.display = 'none';
+                }
+            });
+        }
+
+        async function updateUserStatus(userId, status) {
+            const res = await fetch('/admin/api/users/status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, status: status})
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                location.reload();
+            } else {
+                alert(data.message || '상태 변경 실패');
+            }
+        }
+
+        async function createUserDirectly(e) {
+            e.preventDefault();
+            const res = await fetch('/admin/api/users/create', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    username: document.getElementById('newUsername').value.trim(),
+                    email: document.getElementById('newEmail').value.trim(),
+                    display_name: document.getElementById('newDisplayName').value.trim(),
+                    password: document.getElementById('newPassword').value,
+                    role: document.getElementById('newRole').value,
+                    status: 'APPROVED'
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                location.reload();
+            } else {
+                alert(data.message || '계정 생성 실패');
+            }
+        }
+
+        async function resetUserPasswordPrompt(userId, username) {
+            const npw = prompt(`[${username}] 계정의 새 비밀번호를 입력하세요 (8자 이상, 문자+숫자 포함):`);
+            if (!npw) return;
+            const res = await fetch('/admin/api/users/reset-password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, new_password: npw})
+            });
+            const data = await res.json();
+            alert(data.message || (res.ok ? '변경 완료' : '변경 실패'));
+        }
+
+        async function deleteUserAccount(userId, username) {
+            if (!confirm(`정말 [${username}] 계정을 삭제하시겠습니까?`)) return;
+            const res = await fetch('/admin/api/users/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId})
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                location.reload();
+            } else {
+                alert(data.message || '삭제 실패');
+            }
+        }
+
+        async function createInviteCode(e) {
+            e.preventDefault();
+            const res = await fetch('/admin/api/invite-codes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    code: document.getElementById('invCode').value.trim(),
+                    memo: document.getElementById('invMemo').value.trim(),
+                    max_uses: Number(document.getElementById('invMaxUses').value || 10)
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                location.reload();
+            } else {
+                alert(data.message || '초대 코드 생성 실패');
+            }
+        }
+
+        async function toggleInvite(codeId, active) {
+            const res = await fetch('/admin/api/invite-codes/toggle', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({code_id: codeId, is_active: active})
+            });
+            if (res.ok) location.reload();
+        }
+
+        async function changeOwnAdminPassword(e) {
+            e.preventDefault();
+            const npw = document.getElementById('ownNewPassword').value;
+            const res = await fetch('/admin/api/change-password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({new_password: npw})
+            });
+            const data = await res.json();
+            alert(data.message || (res.ok ? '비밀번호 변경 완료' : '변경 실패'));
+            if (res.ok) document.getElementById('ownNewPassword').value = '';
+        }
+    </script>
+</body>
+</html>
