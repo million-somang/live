@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🌐 원격 네트워크 스마트폰 카메라 (CAM {{ cam_id }}) | Live Commerce OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        body {
+            background: #0f172a;
+            color: #ffffff;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        #remoteCamVideo {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: #0f172a;
+        }
+        #remoteCamVideo.mirrored {
+            transform: scaleX(-1);
+        }
+        #remoteCaptureCanvas {
+            display: none;
+        }
+        /* 상단 상태 오버레이 바 */
+        .top-bar {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            right: 14px;
+            z-index: 20;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.94);
+            color: #0f172a;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 10px 14px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+        }
+        .cam-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #2563eb;
+            color: #ffffff;
+            font-size: 0.78rem;
+            font-weight: 900;
+            padding: 4px 10px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        .cam-badge.cam2 {
+            background: #0284c7;
+        }
+        .status-text {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #94a3b8;
+            display: inline-block;
+        }
+        .dot.live {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+        .fps-pill {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            font-size: 0.74rem;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        /* 중앙 시작 안내 카드 */
+        .center-start-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(6px);
+        }
+        .start-card {
+            width: 100%;
+            max-width: 400px;
+            background: #ffffff;
+            color: #0f172a;
+            border-radius: 22px;
+            padding: 24px 22px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .btn-start-main {
+            width: 100%;
+            border: none;
+            border-radius: 14px;
+            padding: 15px 18px;
+            font-size: 1rem;
+            font-weight: 900;
+            color: #ffffff;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+            cursor: pointer;
+        }
+        /* 하단 컨트롤 독 */
+        .bottom-controls {
+            position: absolute;
+            bottom: 18px;
+            left: 14px;
+            right: 14px;
+            z-index: 20;
+            background: rgba(255, 255, 255, 0.94);
+            color: #0f172a;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 18px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+        }
+        .ctrl-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+        .ctrl-btn {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            color: #1e293b;
+            font-size: 0.76rem;
+            font-weight: 800;
+            padding: 9px 6px;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .ctrl-btn.active {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #ffffff;
+        }
+        .ctrl-btn.danger {
+            background: #fef2f2;
+            border-color: #fca5a5;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="remoteCamVideo" autoplay playsinline muted></video>
+    <canvas id="remoteCaptureCanvas"></canvas>
+
+    <!-- 상단 상태 바 -->
+    <div class="top-bar">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span class="cam-badge {% if cam_id == 2 %}cam2{% endif %}" id="topCamSlotBadge">
+                🌐 원격 CAM {{ cam_id }}
+            </span>
+            <div class="status-text">
+                <span class="dot" id="topLiveDot"></span>
+                <span id="topStatusLabel">카메라 대기 중</span>
+            </div>
+        </div>
+        <span class="fps-pill" id="topFpsPill">0 FPS · P2P/원격</span>
+    </div>
+
+    <!-- 중앙 시작 안내 오버레이 -->
+    <div class="center-start-overlay" id="startOverlay">
+        <div class="start-card">
+            <div style="font-size:2.4rem;">📱🌐</div>
+            <h2 style="font-size:1.2rem; font-weight:900; color:#0f172a;">
+                다른 네트워크 원격 카메라 (CAM {{ cam_id }})
+            </h2>
+            <p style="font-size:0.84rem; color:#475569; line-height:1.5;">
+                동일 Wi-Fi가 아닌 <strong>LTE/5G 또는 외부 네트워크</strong>에서<br>
+                OBS 스튜디오로 카메라 영상을 실시간 전송합니다.
+            </p>
+
+            <div id="httpsNoticeBox" style="display:none; background:#fff1f2; border:1.5px solid #f43f5e; border-radius:12px; padding:12px; font-size:0.8rem; color:#be123c; line-height:1.5;">
+                🔒 스마트폰 브라우저는 <strong>HTTPS 보안 연결</strong>에서만 카메라 권한이 허용됩니다.<br>
+                아래 버튼을 누른 뒤 <strong>[고급] ➔ [안전하지 않음으로 이동(웹사이트 방문)]</strong>을 1회 눌러주세요.
+                <a id="httpsRedirectBtn" href="{{ https_remote_url }}" style="display:block; margin-top:8px; background:#e11d48; color:#fff; text-decoration:none; font-weight:900; padding:10px; border-radius:8px;">
+                    🔒 HTTPS 보안 카메라 페이지로 이동 ➔
+                </a>
+            </div>
+
+            <button type="button" class="btn-start-main" id="btnStartRemoteCam" onclick="startRemoteCameraStreaming()">
+                📹 카메라 켜고 스튜디오로 영상 보내기
+            </button>
+        </div>
+    </div>
+
+    <!-- 하단 컨트롤 바 -->
+    <div class="bottom-controls">
+        <div class="ctrl-row">
+            <button type="button" class="ctrl-btn" onclick="switchFacingMode()">🔄 전/후면 전환</button>
+            <button type="button" class="ctrl-btn" id="btnMirrorToggle" onclick="toggleRemoteMirror()">🪞 좌우반전</button>
+            <button type="button" class="ctrl-btn active" id="btnQualityToggle" onclick="toggleRemoteQuality()">📐 화질: 720p</button>
+            <button type="button" class="ctrl-btn" id="btnSlotToggle" onclick="switchRemoteCamSlot()">🎥 채널: CAM {{ cam_id }}</button>
+        </div>
+    </div>
+
+    <script>
+        const CAM_TOKEN = {{ (cam_token or '') | tojson }};
+        const HTTPS_REMOTE_URL = {{ (https_remote_url or '') | tojson }};
+        let currentCamSlot = Number({{ cam_id or 1 }});
+        let currentFacingMode = 'environment';
+        let isMirrored = false;
+        let isHighQuality = true; // true: 720p, false: 480p
+        let mediaStream = null;
+        let isStreaming = false;
+        let frameSeq = 0;
+        let sentFramesInSec = 0;
+        let peerConnection = null;
+
+        const videoEl = document.getElementById('remoteCamVideo');
+        const canvasEl = document.getElementById('remoteCaptureCanvas');
+        const ctx = canvasEl.getContext('2d', { alpha: false });
+
+        // HTTP 접속 시 카메라 API(navigator.mediaDevices)가 차단된 경우 즉시 HTTPS 보안 포트로 안내
+        if (window.location.protocol !== 'https:' && !navigator.mediaDevices && HTTPS_REMOTE_URL) {
+            document.getElementById('httpsNoticeBox').style.display = 'block';
+            document.getElementById('btnStartRemoteCam').style.display = 'none';
+        }
+
+        function buildApiUrl(path) {
+            const sep = path.includes('?') ? '&' : '?';
+            return `${path}${sep}cam=${currentCamSlot}&cam_token=${encodeURIComponent(CAM_TOKEN)}`;
+        }
+
+        async function reportClientState(state, message) {
+            try {
+                await fetch(buildApiUrl('/api/camera/client-log'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cam: currentCamSlot,
+                        state: state,
+                        message: message,
+                        protocol: 'remote_network'
+                    })
+                });
+            } catch (e) {}
+        }
+
+        async function startRemoteCameraStreaming() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                if (HTTPS_REMOTE_URL && window.location.protocol !== 'https:') {
+                    window.location.href = HTTPS_REMOTE_URL;
+                    return;
+                }
+                alert('이 브라우저에서 카메라 권한을 사용할 수 없습니다. HTTPS 보안 주소로 접속해 주세요.');
+                return;
+            }
+
+            try {
+                await reportClientState('requesting_camera', '원격 카메라 권한 요청 중');
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(t => t.stop());
+                }
+
+                const targetW = isHighQuality ? 1280 : 854;
+                const targetH = isHighQuality ? 720 : 480;
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: currentFacingMode },
+                        width: { ideal: targetW },
+                        height: { ideal: targetH },
+                        frameRate: { ideal: 24, max: 30 }
+                    },
+                    audio: false
+                });
+
+                videoEl.srcObject = mediaStream;
+                await videoEl.play();
+
+                document.getElementById('startOverlay').style.display = 'none';
+                document.getElementById('topLiveDot').classList.add('live');
+                document.getElementById('topStatusLabel').innerText = '스튜디오로 실시간 전송 중';
+
+                isStreaming = true;
+                await reportClientState('streaming_started', '원격 네트워크 카메라 실시간 송출 시작');
+                startFrameUploadLoop();
+                startWebRtcOfferPolling();
+            } catch (err) {
+                await reportClientState('permission_denied', err.message || '카메라 권한 거부');
+                alert('카메라 시작 실패: ' + (err.message || err));
+            }
+        }
+
+        // 1) 원격 프레임 전송 루프 (모든 NAT/방화벽 100% 통과 보장)
+        async function startFrameUploadLoop() {
+            let busy = false;
+            setInterval(() => {
+                if (!isStreaming || busy || !videoEl.videoWidth || !videoEl.videoHeight) return;
+                busy = true;
+
+                const vw = videoEl.videoWidth;
+                const vh = videoEl.videoHeight;
+                const maxDim = isHighQuality ? 960 : 640;
+                const scale = Math.min(maxDim / Math.max(vw, vh), 1);
+                const cw = Math.round(vw * scale);
+                const ch = Math.round(vh * scale);
+
+                if (canvasEl.width !== cw || canvasEl.height !== ch) {
+                    canvasEl.width = cw;
+                    canvasEl.height = ch;
+                }
+
+                if (isMirrored) {
+                    ctx.save();
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(videoEl, -cw, 0, cw, ch);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(videoEl, 0, 0, cw, ch);
+                }
+
+                const quality = isHighQuality ? 0.72 : 0.62;
+                canvasEl.toBlob(async (blob) => {
+                    if (!blob) {
+                        busy = false;
+                        return;
+                    }
+                    const seq = ++frameSeq;
+                    try {
+                        await fetch(buildApiUrl(`/api/remote-cam/frame?seq=${seq}&src=remote_cam_${currentCamSlot}`), {
+                            method: 'POST',
+                            body: blob,
+                            headers: { 'Content-Type': 'image/jpeg' },
+                            keepalive: true
+                        });
+                        sentFramesInSec++;
+                    } catch (e) {
+                    } finally {
+                        busy = false;
+                    }
+                }, 'image/jpeg', quality);
+            }, 45);
+        }
+
+        // 2) WebRTC P2P Offer 폴링 & Answer 응답 (P2P 직접 연결 지원 시 초저지연 스트리밍)
+        function startWebRtcOfferPolling() {
+            setInterval(async () => {
+                if (!isStreaming || !mediaStream || !window.RTCPeerConnection) return;
+                try {
+                    const res = await fetch(buildApiUrl('/api/remote-cam/signal'));
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const offers = data.offers || [];
+                    if (!offers.length) return;
+
+                    for (const item of offers) {
+                        await answerViewerOffer(item.peer_id, item.offer);
+                    }
+                } catch (e) {}
+            }, 1500);
+        }
+
+        async function answerViewerOffer(peerId, offer) {
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+                mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+                await new Promise((resolve) => {
+                    if (pc.iceGatheringState === 'complete') return resolve();
+                    const t = setTimeout(resolve, 1200);
+                    pc.onicegatheringstatechange = () => {
+                        if (pc.iceGatheringState === 'complete') {
+                            clearTimeout(t);
+                            resolve();
+                        }
+                    };
+                });
+
+                await fetch(buildApiUrl('/api/remote-cam/signal'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'answer',
+                        peer_id: peerId,
+                        cam: currentCamSlot,
+                        answer: {
+                            type: pc.localDescription.type,
+                            sdp: pc.localDescription.sdp
+                        }
+                    })
+                });
+            } catch (e) {}
+        }
+
+        setInterval(() => {
+            const pill = document.getElementById('topFpsPill');
+            if (pill) {
+                pill.innerText = `${sentFramesInSec} FPS · ${isHighQuality ? '720p' : '480p'}`;
+            }
+            sentFramesInSec = 0;
+        }, 1000);
+
+        function switchFacingMode() {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            if (isStreaming) startRemoteCameraStreaming();
+        }
+
+        function toggleRemoteMirror() {
+            isMirrored = !isMirrored;
+            videoEl.classList.toggle('mirrored', isMirrored);
+            document.getElementById('btnMirrorToggle').classList.toggle('active', isMirrored);
+        }
+
+        function toggleRemoteQuality() {
+            isHighQuality = !isHighQuality;
+            const btn = document.getElementById('btnQualityToggle');
+            btn.innerText = isHighQuality ? '📐 화질: 720p' : '📐 화질: 480p';
+            btn.classList.toggle('active', isHighQuality);
+            if (isStreaming) startRemoteCameraStreaming();
+        }
+
+        function switchRemoteCamSlot() {
+            currentCamSlot = currentCamSlot === 1 ? 2 : 1;
+            const badge = document.getElementById('topCamSlotBadge');
+            const btn = document.getElementById('btnSlotToggle');
+            badge.innerText = `🌐 원격 CAM ${currentCamSlot}`;
+            badge.classList.toggle('cam2', currentCamSlot === 2);
+            btn.innerText = `🎥 채널: CAM ${currentCamSlot}`;
+        }
+
+        reportClientState('page_loaded', '원격 카메라 페이지(/remote-cam) 열림');
+    </script>
+</body>
+</html>

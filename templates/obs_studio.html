@@ -3315,10 +3315,10 @@
         </aside>
     </main>
 
-    <!-- 📱 스마트폰 QR 팝업 모달 (CAM 1 / CAM 2 2대 카메라 지원) -->
+    <!-- 📱 스마트폰 QR 팝업 모달 (2가지 접속 방식: ① 같은 네트워크 Wi-Fi 직결 / ② 다른 네트워크 원격 카메라 페이지) -->
     <div class="qr-modal" id="qrModal">
-        <div class="qr-card" style="max-width:420px;">
-            <h3 style="font-size:1.12rem; font-weight:900; color:var(--cyan);">📱 스마트폰 무선 카메라 연결 (2대 지원)</h3>
+        <div class="qr-card" style="max-width:460px;">
+            <h3 style="font-size:1.12rem; font-weight:900; color:var(--cyan);">📱 스마트폰 무선 카메라 연결 (2가지 방식 지원)</h3>
             <!-- CAM 1 / CAM 2 채널 선택 탭 -->
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; width:100%;">
                 <button type="button" class="btn-action active" id="btnQrTabCam1" onclick="selectQrModalCam(1)" style="font-size:0.8rem; font-weight:900; padding:8px; border-color:#ef4444; background:rgba(239,68,68,0.22); color:#fff;">
@@ -3328,34 +3328,42 @@
                     🔎 CAM 2 (서브/디테일)
                 </button>
             </div>
-            <p style="font-size:0.78rem; color:#94a3b8; line-height:1.4;" id="qrGuideText">
-                스마트폰 기본 카메라로 아래 QR 코드를 스캔하세요.<br>
-                <span style="color:#34d399; font-weight:700;">✨ 1번 폰은 CAM 1, 2번 폰은 CAM 2 탭을 선택해 스캔하면 2대가 동시 연결됩니다!</span>
-            </p>
-            <div style="display:flex; gap:5px; width:100%; flex-wrap:wrap;">
-                <button type="button" class="btn-action active" id="btnQrModePublic" onclick="switchQrUrlMode('public')" style="flex:1; font-size:0.72rem; padding:6px 6px;">
-                    🌍 공인 HTTPS (인증서 경고 없음)
+
+            <!-- 2가지 네트워크 접속 방식 선택 탭 (방식 1: 같은 네트워크 vs 방식 2: 다른 네트워크 원격 카메라 페이지) -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; width:100%; background:#f1f5f9; padding:5px; border-radius:10px; border:1px solid #cbd5e1;">
+                <button type="button" class="btn-action" id="btnQrModeLocal" onclick="switchQrUrlMode('local')" style="font-size:0.76rem; font-weight:900; padding:9px 8px;">
+                    🏠 방식 1: 같은 네트워크 (Wi-Fi)
                 </button>
-                <button type="button" class="btn-action" id="btnQrModeLocal" onclick="switchQrUrlMode('local')" style="flex:1; font-size:0.72rem; padding:6px 6px;">
-                    🏠 공유기 Wi-Fi 직결
-                </button>
-                <button type="button" class="btn-action" id="btnQrModePcDirect" onclick="switchQrUrlMode('pc_direct')" style="font-size:0.72rem; padding:6px 7px;" title="하위 공유기/PC 대역(192.168.1.x) 직접 연결">
-                    🔌 PC 직결
-                </button>
-                <button type="button" class="btn-action" id="btnRenewQrUrl" onclick="renewCameraUrl()" style="font-size:0.72rem; padding:6px 8px; background:rgba(16,185,129,0.2); border-color:#10b981; color:#6ee7b7;" title="새로운 스마트폰 카메라 접속 주소 발급">
-                    🔄 새 주소 발급
+                <button type="button" class="btn-action active" id="btnQrModeRemoteNet" onclick="switchQrUrlMode('remote_network')" style="font-size:0.76rem; font-weight:900; padding:9px 8px;">
+                    🌐 방식 2: 다른 네트워크 (원격페이지)
                 </button>
             </div>
-            <div style="background:#fff; padding:12px; border-radius:16px; position:relative;">
+
+            <p style="font-size:0.78rem; color:#475569; line-height:1.45;" id="qrGuideText">
+                스마트폰 기본 카메라로 아래 QR 코드를 스캔하세요.<br>
+                <span style="color:#059669; font-weight:800;">✨ 같은 Wi-Fi일 때는 [방식 1], LTE/5G나 다른 네트워크일 때는 [방식 2]를 선택하세요!</span>
+            </p>
+            <div style="display:flex; gap:5px; width:100%; flex-wrap:wrap;">
+                <button type="button" class="btn-action" id="btnQrModePcDirect" onclick="switchQrUrlMode('pc_direct')" style="flex:1; font-size:0.72rem; padding:6px 7px;" title="하위 공유기/PC 대역(192.168.1.x) 직접 연결">
+                    🔌 PC 내부망 직결
+                </button>
+                <button type="button" class="btn-action" id="btnRenewQrUrl" onclick="renewCameraUrl()" style="flex:1; font-size:0.72rem; padding:6px 8px;" title="새로운 스마트폰 카메라 접속 주소 발급">
+                    🔄 새 주소 발급
+                </button>
+                <button type="button" class="btn-action" onclick="copyCurrentQrCameraUrl()" style="flex:1; font-size:0.72rem; padding:6px 8px;">
+                    📋 카메라 주소 복사
+                </button>
+            </div>
+            <div style="background:#fff; padding:12px; border-radius:16px; border:1px solid #cbd5e1; position:relative;">
                 <img id="qrImg" src="" alt="QR Code" style="width:180px; height:180px; display:block;" />
                 <div id="qrCamChannelTag" style="margin-top:6px; text-align:center; font-size:0.75rem; font-weight:900; color:#0f172a; background:#fde047; border-radius:6px; padding:2px 8px;">
                     🎥 CAM 1 연결용 QR
                 </div>
             </div>
-            <div style="font-size:0.76rem; color:#cbd5e1; word-break:break-all; font-weight:700;" id="qrUrl">
+            <div style="font-size:0.75rem; color:#1e293b; word-break:break-all; font-weight:800; background:#f8fafc; border:1px solid #e2e8f0; padding:6px 10px; border-radius:8px; width:100%;" id="qrUrl">
                 https://...
             </div>
-            <div id="qrCamStatusBadge" style="font-size:0.76rem; padding:6px 12px; border-radius:20px; background:rgba(255,255,255,0.08); color:#94a3b8; width:100%; text-align:center;">
+            <div id="qrCamStatusBadge" style="font-size:0.76rem; padding:6px 12px; border-radius:20px; background:#f1f5f9; color:#475569; font-weight:800; width:100%; text-align:center;">
                 ⏳ 스마트폰 카메라 연결 대기 중...
             </div>
             <button type="button" class="btn-action btn-cyan" onclick="closeQrModal()" style="width:100%;">
@@ -5855,10 +5863,12 @@
 
         function applyQrModalUrl() {
             if (!lastHostInfoData) return;
-            const hasPublic = !!(lastHostInfoData.public_cam_url && lastHostInfoData.public_tunnel_active);
             let baseUrl = '';
-            if (currentQrMode === 'public' && hasPublic) {
-                baseUrl = lastHostInfoData.public_cam_url;
+            if (currentQrMode === 'remote_network' || currentQrMode === 'public') {
+                baseUrl = (currentQrCamId === 2 ? lastHostInfoData.remote_cam2_url : lastHostInfoData.remote_cam1_url)
+                    || lastHostInfoData.remote_cam_url
+                    || lastHostInfoData.public_cam_url
+                    || '';
             } else if (currentQrMode === 'pc_direct' && lastHostInfoData.pc_direct_https_url) {
                 baseUrl = lastHostInfoData.pc_direct_https_url;
             } else {
@@ -5872,33 +5882,46 @@
             document.getElementById('qrUrl').innerText = targetUrl;
             document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(targetUrl)}`;
 
-            const btnPub = document.getElementById('btnQrModePublic');
+            const btnRem = document.getElementById('btnQrModeRemoteNet');
             const btnLoc = document.getElementById('btnQrModeLocal');
             const btnPc = document.getElementById('btnQrModePcDirect');
             const guideEl = document.getElementById('qrGuideText');
 
-            if (btnPub) btnPub.classList.toggle('active', currentQrMode === 'public' && hasPublic);
-            if (btnLoc) btnLoc.classList.toggle('active', currentQrMode === 'local' || (currentQrMode === 'public' && !hasPublic));
+            if (btnRem) btnRem.classList.toggle('active', currentQrMode === 'remote_network' || currentQrMode === 'public');
+            if (btnLoc) btnLoc.classList.toggle('active', currentQrMode === 'local');
             if (btnPc) btnPc.classList.toggle('active', currentQrMode === 'pc_direct');
 
-            if (currentQrMode === 'public' && hasPublic) {
+            if (currentQrMode === 'remote_network' || currentQrMode === 'public') {
                 if (guideEl) {
-                    guideEl.innerHTML = `스마트폰 기본 카메라로 아래 <strong>CAM ${currentQrCamId}</strong> QR 코드를 스캔하세요.<br><span style="color:#34d399; font-weight:700;">✨ 공인 보안(HTTPS) 주소로 인증서 경고 없이 Wi-Fi / LTE 어디서나 즉시 연결됩니다!</span>`;
+                    guideEl.innerHTML = `<strong>[방식 2: 🌐 다른 네트워크]</strong> LTE/5G 또는 다른 장소 Wi-Fi에서 아래 QR을 스캔하면 <strong>별도 원격 카메라 페이지(/remote-cam)</strong>가 열리고 스튜디오로 영상을 즉시 가져옵니다!<br><span style="color:#0284c7; font-weight:800;">※ 최초 접속 시 [고급] ➔ [안전하지 않음으로 이동(웹사이트 방문)]을 1회 눌러주세요.</span>`;
                 }
             } else if (currentQrMode === 'pc_direct') {
                 if (guideEl) {
-                    guideEl.innerHTML = `PC와 동일한 하위 공유기 대역(${lastHostInfoData.pc_ip || '192.168.1.x'}) Wi-Fi에서 스캔하세요.<br><span style="color:#38bdf8; font-weight:700;">※ 최초 접속 시 [고급] ➔ [안전하지 않음으로 이동(웹사이트 방문)]을 1회 눌러주세요.</span>`;
+                    guideEl.innerHTML = `PC와 동일한 하위 공유기 대역(${lastHostInfoData.pc_ip || '192.168.1.x'}) Wi-Fi에서 스캔하세요.<br><span style="color:#0284c7; font-weight:800;">※ 최초 접속 시 [고급] ➔ [안전하지 않음으로 이동(웹사이트 방문)]을 1회 눌러주세요.</span>`;
                 }
             } else {
                 if (guideEl) {
-                    guideEl.innerHTML = `동일 공유기 Wi-Fi(${lastHostInfoData.local_ip || '192.168.0.x'})에서 아래 <strong>CAM ${currentQrCamId}</strong> QR을 스캔하세요.<br><span style="color:#38bdf8; font-weight:700;">※ 인증서 경고 시 [고급] ➔ [이동]을 누르거나 상단 [🌍 공인 HTTPS] 탭을 선택하세요!</span>`;
+                    guideEl.innerHTML = `<strong>[방식 1: 🏠 같은 네트워크]</strong> 방송 PC와 동일한 공유기 Wi-Fi(${lastHostInfoData.local_ip || '192.168.0.x'})에서 아래 <strong>CAM ${currentQrCamId}</strong> QR을 스캔하세요!<br><span style="color:#059669; font-weight:800;">※ LTE/5G나 외부 네트워크일 때는 우측 [🌐 방식 2: 다른 네트워크] 탭을 선택하세요!</span>`;
                 }
             }
         }
 
         function switchQrUrlMode(mode) {
             currentQrMode = mode;
+            if (typeof window.applyCameraNetworkModeRouting === 'function') {
+                window.applyCameraNetworkModeRouting(mode === 'remote_network' || mode === 'public' ? 'remote_network' : 'local');
+            }
             applyQrModalUrl();
+        }
+
+        function copyCurrentQrCameraUrl() {
+            const urlText = (document.getElementById('qrUrl') && document.getElementById('qrUrl').innerText) || '';
+            if (!urlText) return;
+            navigator.clipboard.writeText(urlText).then(() => {
+                showToast('📋 스마트폰 카메라 접속 주소가 복사되었습니다!');
+            }).catch(() => {
+                prompt('스마트폰 브라우저에서 아래 주소로 접속하세요:', urlText);
+            });
         }
 
         async function renewCameraUrl() {
@@ -5909,12 +5932,12 @@
                     btn.innerText = '⏳ 발급 중...';
                     btn.disabled = true;
                 }
-                if (urlEl) urlEl.innerText = '새로운 공인 HTTPS 주소를 발급받는 중입니다...';
+                if (urlEl) urlEl.innerText = '새로운 카메라 접속 주소를 발급받는 중입니다...';
                 const res = await fetch('/api/camera/renew-url', { method: 'POST' });
                 const data = await res.json();
                 if (data.status === 'ok') {
                     lastHostInfoData = Object.assign({}, lastHostInfoData || {}, data);
-                    if (!currentQrMode) currentQrMode = 'local';
+                    if (!currentQrMode) currentQrMode = 'remote_network';
                     applyQrModalUrl();
                     showToast('✅ 새로운 스마트폰 카메라 접속 주소가 발급되었습니다!');
                 }
@@ -5937,7 +5960,11 @@
                 const data = await res.json();
                 lastHostInfoData = data;
                 if (!currentQrMode) {
-                    currentQrMode = 'local';
+                    const isRemoteHost = window.__ZERO_TRAFFIC_AGENT_BRIDGE__ && window.__ZERO_TRAFFIC_AGENT_BRIDGE__.isRemoteCloudHost;
+                    currentQrMode = isRemoteHost ? 'remote_network' : 'local';
+                    if (typeof window.applyCameraNetworkModeRouting === 'function') {
+                        window.applyCameraNetworkModeRouting(currentQrMode);
+                    }
                 }
                 selectQrModalCam(currentQrCamId);
                 document.getElementById('qrModal').style.display = 'flex';

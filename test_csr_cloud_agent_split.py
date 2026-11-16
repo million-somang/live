@@ -182,9 +182,41 @@ def run_tests():
             }
         )
         assert r_bridge_cam.status_code == 200
-        assert r_bridge_cam.get_json()["status"] == "ok"
+        host_info_json = r_bridge_cam.get_json()
+        assert host_info_json["status"] == "ok"
+        assert "remote_cam1_url" in host_info_json and "/remote-cam" in host_info_json["remote_cam1_url"]
+        assert "local_https_url" in host_info_json and "/cam" in host_info_json["local_https_url"]
 
-    print("ALL CSR + LOCAL AGENT SPLIT TESTS PASSED!")
+        # 8. 방식 2: 다른 네트워크 원격 카메라 페이지(/remote-cam) 인증 보호 및 프레임/시그널링 연동 검증
+        cam_token = health_json["cam_token"]
+        r_rem_unauth = live_commerce_server.app.test_client().get("/remote-cam?cam=1")
+        assert r_rem_unauth.status_code == 403
+
+        r_rem_ok = agent_client.get(f"/remote-cam?cam=1&cam_token={cam_token}")
+        assert r_rem_ok.status_code == 200
+        assert "다른 네트워크 원격 카메라" in r_rem_ok.get_data(as_text=True)
+
+        sample_jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+        r_up = agent_client.post(
+            f"/api/remote-cam/frame?cam=1&seq=1&src=remote_cam_1&cam_token={cam_token}",
+            data=sample_jpeg,
+            content_type="image/jpeg",
+        )
+        assert r_up.status_code == 200
+
+        r_pull = agent_client.get(f"/api/remote-cam/latest-frame?cam=1&cam_token={cam_token}")
+        assert r_pull.status_code == 200
+        assert r_pull.get_data() == sample_jpeg
+
+        r_sig_offer = agent_client.post(
+            f"/api/remote-cam/signal?cam=1&cam_token={cam_token}",
+            json={"action": "offer", "peer_id": "test_peer_1", "cam": 1, "offer": {"type": "offer", "sdp": "v=0"}},
+        )
+        assert r_sig_offer.status_code == 200
+        r_sig_list = agent_client.get(f"/api/remote-cam/signal?cam=1&cam_token={cam_token}").get_json()
+        assert any(o["peer_id"] == "test_peer_1" for o in r_sig_list.get("offers", []))
+
+    print("ALL CSR + LOCAL AGENT SPLIT & DUAL-MODE CAMERA TESTS PASSED!")
 
 
 if __name__ == "__main__":

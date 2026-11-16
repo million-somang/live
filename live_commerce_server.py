@@ -266,8 +266,15 @@ def _studio_security_gateway():
         if _has_valid_overlay_access():
             return None
 
-    # 6. 무선 스마트폰 카메라 경로 (/cam, /cam/<id>, /api/camera/*)
-    if path == "/cam" or path.startswith("/cam/") or path.startswith("/api/camera/"):
+    # 6. 무선 스마트폰 카메라 경로 (방식 1: 동일망 /cam, /api/camera/* & 방식 2: 다른 네트워크 /remote-cam, /api/remote-cam/*)
+    if (
+        path == "/cam"
+        or path.startswith("/cam/")
+        or path.startswith("/api/camera/")
+        or path == "/remote-cam"
+        or path.startswith("/remote-cam/")
+        or path.startswith("/api/remote-cam/")
+    ):
         # host-info, renew-url, switcher POST는 스튜디오 운영자 전용
         if path in ("/api/camera/host-info", "/api/camera/renew-url") or (path == "/api/camera/switcher" and request.method == "POST"):
             pass  # 아래 스튜디오 인증으로 진행
@@ -3954,6 +3961,127 @@ def mobile_cam_view(cam_id=None):
     )
 
 
+@app.route('/remote-cam', methods=['GET'])
+@app.route('/remote-cam/<int:cam_id>', methods=['GET'])
+def remote_network_cam_view(cam_id=None):
+    """방식 2: 다른 네트워크(LTE/5G · 외부 Wi-Fi) 전용 스마트폰 원격 카메라 송출 웹페이지 (/remote-cam)"""
+    slot = _parse_cam_slot(cam_id if cam_id is not None else request.args.get('cam', 1), 1)
+    https_port = int(os.getenv("HTTPS_PORT", 5443))
+    http_port = int(os.getenv("SERVER_PORT", 5000))
+    _, req_host = _extract_request_hostname_and_scheme()
+    cam_tok = (request.args.get("cam_token") or get_studio_cam_token()).strip()
+    https_remote_url = f"https://{req_host}:{https_port}/remote-cam?cam={slot}&cam_token={cam_tok}"
+    with latest_camera_lock:
+        camera_channels[slot]["client_state"] = "page_loaded"
+        camera_channels[slot]["client_message"] = f"원격 카메라({request.remote_addr}) 접속됨 — 송출 시작 대기"
+        camera_channels[slot]["client_ip"] = str(request.remote_addr or "")
+        camera_channels[slot]["client_updated_at"] = time.time()
+    return render_template(
+        'remote_cam.html',
+        cam_id=slot,
+        cam_token=cam_tok,
+        server_host=req_host,
+        https_port=https_port,
+        http_port=http_port,
+        https_remote_url=https_remote_url,
+    )
+
+
+@app.route('/api/remote-cam/frame', methods=['POST'])
+def api_remote_cam_upload_frame():
+    """방식 2: 다른 네트워크 원격 카메라 페이지(/remote-cam)에서 올라온 비디오 프레임(JPEG)을 스튜디오 CAM 1/2 버퍼로 수신"""
+    return api_camera_upload_frame()
+
+
+@app.route('/api/remote-cam/latest-frame', methods=['GET'])
+def api_remote_cam_latest_frame():
+    """방식 2: 스튜디오 또는 로컬 에이전트가 원격 카메라 페이지(/remote-cam)의 최신 프레임을 가져오는(Pull) 엔드포인트"""
+    slot = _parse_cam_slot(request.args.get('cam', 1), 1)
+    with latest_camera_lock:
+        ch = camera_channels.get(slot, {})
+        frame = ch.get("frame")
+    if not frame:
+        frame = get_waiting_camera_frame(slot) or b""
+    resp = Response(frame, mimetype='image/jpeg')
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
+
+
+@app.route('/api/remote-cam/signal', methods=['GET', 'POST'])
+def api_remote_cam_webrtc_signal():
+    """방식 2: 다른 네트워크 원격 카메라(/remote-cam) ↔ 스튜디오 간 WebRTC P2P Offer/Answer 시그널링 중계"""
+    global latest_webrtc_heartbeat
+    now = time.time()
+    if request.method == 'GET':
+        cam_slot = _parse_cam_slot(request.args.get("cam", 1), 1)
+        peer_id = (request.args.get("peer_id") or "").strip()
+        if peer_id:
+            with webrtc_lock:
+                sess = webrtc_sessions.get(peer_id)
+                if sess and sess.get("answered") and sess.get("answer"):
+                    ans = sess["answer"]
+                    return jsonify({
+                        "status": "answered",
+                        "answered": True,
+                        "answer": ans,
+                        "sdp": ans.get("sdp") if isinstance(ans, dict) else None,
+                        "type": ans.get("type", "answer") if isinstance(ans, dict) else "answer"
+                    }), 200
+            return jsonify({"status": "pending", "answered": False}), 200
+
+        with latest_camera_lock:
+            latest_webrtc_heartbeat = now
+            camera_channels[cam_slot]["webrtc_heartbeat"] = now
+        pending = []
+        with webrtc_lock:
+            for pid, sess in list(webrtc_sessions.items()):
+                if now - sess["created_at"] > 60.0:
+                    del webrtc_sessions[pid]
+                    continue
+                if not sess["answered"] and int(sess.get("cam", 1)) == cam_slot:
+                    pending.append({
+                        "peer_id": pid,
+                        "cam": cam_slot,
+                        "offer": sess["offer"]
+                    })
+        return jsonify({"status": "ok", "cam": cam_slot, "offers": pending}), 200
+
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action") or "offer").strip().lower()
+    cam_slot = _parse_cam_slot(data.get("cam") or request.args.get("cam", 1), 1)
+    peer_id = str(data.get("peer_id") or uuid.uuid4().hex[:12])
+
+    if action == "answer":
+        answer = data.get("answer")
+        if not answer:
+            return jsonify({"status": "error", "message": "answer missing"}), 400
+        with latest_camera_lock:
+            latest_webrtc_heartbeat = now
+            camera_channels[cam_slot]["webrtc_heartbeat"] = now
+        with webrtc_lock:
+            if peer_id in webrtc_sessions:
+                webrtc_sessions[peer_id]["answer"] = answer
+                webrtc_sessions[peer_id]["answered"] = True
+                return jsonify({"status": "ok", "peer_id": peer_id}), 200
+        return jsonify({"status": "error", "message": "session not found"}), 404
+
+    offer = data.get("offer")
+    if not offer and data.get("sdp"):
+        offer = {"type": data.get("type", "offer"), "sdp": data.get("sdp")}
+    if not offer:
+        return jsonify({"status": "error", "message": "offer missing"}), 400
+    with webrtc_lock:
+        webrtc_sessions[peer_id] = {
+            "peer_id": peer_id,
+            "cam": cam_slot,
+            "offer": offer,
+            "answer": None,
+            "created_at": now,
+            "answered": False
+        }
+    return jsonify({"status": "ok", "peer_id": peer_id, "cam": cam_slot}), 200
+
+
 @app.route('/api/camera/client-log', methods=['POST'])
 def api_camera_client_log():
     """스마트폰 브라우저의 카메라 권한/연결 상태 및 오류를 서버로 보고하여 스튜디오에 실시간 표시"""
@@ -3976,7 +4104,7 @@ def api_camera_client_log():
 
 @app.route('/api/camera/host-info', methods=['GET'])
 def api_camera_host_info():
-    """스마트폰 접속용 로컬 IP(및 상위 Wi-Fi 브릿지 IP), 공인 HTTPS 터널, CAM 1 / CAM 2 QR URL 및 듀얼 카메라 실시간 상태 반환"""
+    """스마트폰 접속용 [방식 1: 동일 네트워크 Wi-Fi 직결] 및 [방식 2: 다른 네트워크 별도 카메라 페이지(/remote-cam)] 주소와 듀얼 카메라 상태 반환"""
     import time
     req_cam = _parse_cam_slot(request.args.get('cam', 1), 1)
     ip = get_local_ip()
@@ -3984,12 +4112,23 @@ def api_camera_host_info():
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     cam_tok = get_studio_cam_token()
+    _, req_host = _extract_request_hostname_and_scheme()
+    ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else wifi_ip
+
+    # 방식 1: 같은 네트워크 (동일 공유기 Wi-Fi)
     local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
     cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=1&cam_token={cam_tok}"
     cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=2&cam_token={cam_tok}"
     pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}"
     http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}"
-    pub_base = public_tunnel_url or f"https://{wifi_ip}:{https_port}/cam"
+
+    # 방식 2: 다른 네트워크 (LTE/5G · 외부 Wi-Fi 전용 원격 카메라 페이지 /remote-cam)
+    remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam=1&cam_token={cam_tok}"
+    remote_cam2_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam=2&cam_token={cam_tok}"
+    remote_cam_https_url = remote_cam2_https_url if req_cam == 2 else remote_cam1_https_url
+    remote_cam_http_url = f"http://{ext_host}:{port}/remote-cam?cam={req_cam}&cam_token={cam_tok}"
+
+    pub_base = public_tunnel_url or f"https://{ext_host}:{https_port}/remote-cam"
     pub_url = f"{pub_base}{'&' if '?' in pub_base else '?'}cam_token={cam_tok}"
     primary_url = cam2_https_url if req_cam == 2 else cam1_https_url
 
@@ -4011,14 +4150,19 @@ def api_camera_host_info():
         "status": "ok",
         "local_ip": wifi_ip,
         "pc_ip": ip,
+        "server_host": ext_host,
         "bridged_wifi_ip": wifi_ip,
         "port": port,
         "https_port": https_port,
         "cam_url": primary_url,
         "cam1_url": cam1_https_url,
         "cam2_url": cam2_https_url,
+        "remote_cam_url": remote_cam_https_url,
+        "remote_cam1_url": remote_cam1_https_url,
+        "remote_cam2_url": remote_cam2_https_url,
+        "remote_cam_http_url": remote_cam_http_url,
         "public_cam_url": pub_url,
-        "public_tunnel_active": bool(public_tunnel_url),
+        "public_tunnel_active": True,
         "local_https_url": local_https_url,
         "pc_direct_https_url": pc_direct_https_url,
         "http_cam_url": http_cam_url,

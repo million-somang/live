@@ -34,17 +34,22 @@
     window.__ZERO_TRAFFIC_AGENT_BRIDGE__ = bridgeState;
 
     // 1. 로컬 에이전트로 직결 라우팅할 미디어/하드웨어/RTMP 전용 경로 판별
+    //    (단, [방식 2: 다른 네트워크 원격 카메라(/remote-cam)] 사용 시 카메라 조회/프레임은 원격 서버 경로 유지)
     function isLocalAgentExclusivePath(pathStr) {
         if (!pathStr) return false;
-        return (
+        const isRemoteCamMode = (window.__CAMERA_NETWORK_MODE__ === 'remote_network');
+        if (!isRemoteCamMode && (
             pathStr.startsWith('/api/camera/frame') ||
             pathStr.startsWith('/api/camera/audio') ||
             pathStr.startsWith('/api/camera/stream') ||
             pathStr.startsWith('/api/camera/latest-frame') ||
-            pathStr.startsWith('/api/camera/host-info') ||
             pathStr.startsWith('/api/camera/renew-url') ||
             pathStr.startsWith('/api/camera/webrtc') ||
-            pathStr.startsWith('/api/camera/diag') ||
+            pathStr.startsWith('/api/camera/diag')
+        )) {
+            return true;
+        }
+        return (
             pathStr.startsWith('/api/audio/') ||
             pathStr.startsWith('/api/youtube/rtmp/') ||
             pathStr.startsWith('/api/tiktok/rtmp/') ||
@@ -136,14 +141,22 @@
         return nativeFetch(input, init);
     };
 
-    // 4. 카메라 프리뷰 <img> 태그 src를 로컬 에이전트(127.0.0.1:5000)로 자동 리라이트
+    // 4. 카메라 프리뷰 <img> 태그 src를 로컬 에이전트(127.0.0.1:5000) 또는 원격 카메라 서버로 자동 리라이트
     function rewriteCameraPreviewImageSources() {
-        if (!isRemoteCloudHost || !bridgeState.connected) return;
+        if (!isRemoteCloudHost) return;
         const imgIds = ['cam1MultiviewImg', 'cam2MultiviewImg', 'monitorStreamImg', 'subMonitorStreamImg'];
+        const isRemoteCamMode = (window.__CAMERA_NETWORK_MODE__ === 'remote_network');
         imgIds.forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             const rawSrc = el.getAttribute('src') || '';
+            if (isRemoteCamMode || !bridgeState.connected) {
+                if (rawSrc.startsWith(bridgeState.agentBaseUrl + '/api/camera/')) {
+                    const rel = rawSrc.substring(bridgeState.agentBaseUrl.length).replace(/([?&])agent_bridge=1(&|$)/, '$1').replace(/[?&]$/, '');
+                    el.setAttribute('src', rel);
+                }
+                return;
+            }
             if (rawSrc.startsWith('/api/camera/')) {
                 el.setAttribute('src', buildLocalAgentUrl(rawSrc));
             } else if (rawSrc.startsWith(window.location.origin + '/api/camera/')) {
@@ -153,11 +166,16 @@
         });
     }
 
+    window.applyCameraNetworkModeRouting = function (mode) {
+        window.__CAMERA_NETWORK_MODE__ = mode;
+        rewriteCameraPreviewImageSources();
+    };
+
     // MutationObserver로 동적 src 변경(`cam1MultiviewImg.src = '/api/camera/latest-frame...'`) 즉시 로컬 에이전트로 전환
     function installImageSrcObserver() {
         if (!isRemoteCloudHost || typeof MutationObserver === 'undefined') return;
         const observer = new MutationObserver((mutations) => {
-            if (!bridgeState.connected) return;
+            if (!bridgeState.connected || window.__CAMERA_NETWORK_MODE__ === 'remote_network') return;
             for (const m of mutations) {
                 if (m.type === 'attributes' && m.attributeName === 'src' && m.target && m.target.tagName === 'IMG') {
                     const val = m.target.getAttribute('src') || '';
