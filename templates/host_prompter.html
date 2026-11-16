@@ -124,50 +124,54 @@
         }
 
         .clock-display {
-            font-size: 0.88rem;
-            font-weight: 800;
-            color: #e2e8f0;
+            font-size: 0.9rem;
+            font-weight: 900;
+            color: #1e3a8a;
             font-variant-numeric: tabular-nums;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            padding: 4px 10px;
-            border-radius: 8px;
+            background: #eff6ff;
+            border: 1.5px solid #60a5fa;
+            padding: 5px 12px;
+            border-radius: 9px;
             white-space: nowrap;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.10);
         }
 
         .clock-display span {
-            color: #fbbf24;
+            color: #1d4ed8;
+            font-size: 0.98rem;
             font-weight: 900;
-            margin-left: 4px;
+            margin-left: 5px;
         }
 
         .broadcast-time-display {
-            font-size: 0.88rem;
-            font-weight: 800;
-            color: #e2e8f0;
+            font-size: 0.9rem;
+            font-weight: 900;
+            color: #065f46;
             font-variant-numeric: tabular-nums;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            padding: 4px 10px;
-            border-radius: 8px;
+            background: #ecfdf5;
+            border: 1.5px solid #10b981;
+            padding: 5px 12px;
+            border-radius: 9px;
             white-space: nowrap;
+            box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12);
         }
 
         .broadcast-time-display span {
-            color: #34d399;
+            color: #047857;
+            font-size: 0.98rem;
             font-weight: 900;
-            margin-left: 4px;
+            margin-left: 5px;
         }
 
         /* 툴바 컨트롤 버튼군 */
         .btn-ctrl {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #cbd5e1;
-            padding: 5px 10px;
+            background: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            color: #1e293b;
+            padding: 5px 11px;
             border-radius: 8px;
-            font-size: 0.76rem;
-            font-weight: 700;
+            font-size: 0.8rem;
+            font-weight: 800;
             cursor: pointer;
             transition: all 0.15s;
             display: inline-flex;
@@ -176,12 +180,13 @@
             white-space: nowrap;
         }
         .btn-ctrl:hover {
-            background: rgba(255, 255, 255, 0.18);
-            color: #fff;
+            background: #f1f5f9;
+            color: #0f172a;
+            border-color: #94a3b8;
         }
         .btn-ctrl.active {
             background: #2563eb;
-            border-color: #60a5fa;
+            border-color: #1d4ed8;
             color: #fff;
         }
 
@@ -555,17 +560,17 @@
             flex-shrink: 0;
         }
 
-        /* 유튜브 실시간 접속 회원 상단 배지 & 우측 아이디 칩 바 & 모달 */
+        /* 유튜브 실시간 접속 회원 상단 배지 & 우측 아이디 칩 바 & 모달 (고대비 라이트 테마) */
         .yt-viewer-top-badge {
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            background: rgba(239, 68, 68, 0.16);
-            border: 1.5px solid rgba(239, 68, 68, 0.55);
-            color: #fecaca;
-            padding: 4px 10px;
+            gap: 6px;
+            background: #fff1f2 !important;
+            border: 1.5px solid #f43f5e !important;
+            color: #0f172a !important;
+            padding: 5px 12px;
             border-radius: 999px;
-            font-size: 0.78rem;
+            font-size: 0.84rem;
             font-weight: 800;
             cursor: pointer;
             transition: all 0.15s ease;
@@ -573,22 +578,23 @@
             min-width: 0;
             flex-shrink: 1;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(225, 29, 72, 0.10);
         }
         .yt-viewer-top-badge:hover {
-            background: rgba(239, 68, 68, 0.28);
-            border-color: #f87171;
+            background: #ffe4e6 !important;
+            border-color: #e11d48 !important;
             transform: translateY(-1px);
         }
         .yt-top-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #22c55e;
-            box-shadow: 0 0 8px #22c55e;
+            background: #16a34a;
+            box-shadow: 0 0 8px rgba(22, 163, 74, 0.55);
         }
         .yt-Members-bar {
-            background: rgba(15, 23, 42, 0.92);
-            border: 1px solid rgba(239, 68, 68, 0.35);
+            background: #ffffff;
+            border: 1px solid #fecdd3;
             border-radius: 12px;
             padding: 8px 12px;
             display: flex;
@@ -609,7 +615,7 @@
             gap: 6px;
             font-size: 0.84rem;
             font-weight: 900;
-            color: #fca5a5;
+            color: #be123c;
         }
         .yt-members-chips-wrap {
             display: flex;
@@ -623,9 +629,9 @@
             display: inline-flex;
             align-items: center;
             gap: 5px;
-            background: rgba(30, 41, 59, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            color: #f8fafc;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            color: #0f172a;
             font-size: 0.8rem;
             font-weight: 800;
             padding: 3px 9px;
@@ -635,13 +641,13 @@
             transition: all 0.15s;
         }
         .yt-member-chip:hover {
-            border-color: #f87171;
-            background: rgba(127, 29, 29, 0.35);
+            border-color: #f43f5e;
+            background: #fff1f2;
         }
         .yt-member-chip.active-user-filter {
-            border-color: #38bdf8;
-            background: rgba(14, 165, 233, 0.28);
-            color: #bae6fd;
+            border-color: #0284c7;
+            background: #e0f2fe;
+            color: #0369a1;
         }
         .yt-member-chip .dot-online {
             width: 7px;
@@ -1084,16 +1090,16 @@
                 <span class="live-dot"></span>
                 <span>쇼호스트 프롬프트</span>
             </div>
-            <!-- ▶️🎵📸 유튜브·틱톡·인스타 실시간 접속 회원 수 & 동시 시청자 배지 -->
+            <!-- ▶️🎵📸 유튜브·틱톡·인스타 실시간 접속 회원 수 & 동시 시청자 배지 (고대비 시인성) -->
             <button type="button" class="yt-viewer-top-badge" id="ytTopViewerBadge" onclick="toggleHostYoutubeMembersModal()" title="클릭하여 현재 유튜브·틱톡·인스타 접속 회원 아이디 명단 확인">
                 <span class="yt-top-dot" id="ytTopDot"></span>
-                <span>▶️ 유튜브 <strong id="ytTopMemberCount" style="color:#fff; font-size:0.95rem;">0명</strong></span>
-                <span style="color:rgba(255,255,255,0.3);">|</span>
-                <span style="color:#67e8f9;">🎵 틱톡 <strong id="ttTopMemberCount" style="color:#fff; font-size:0.95rem;">0명</strong></span>
-                <span style="color:rgba(255,255,255,0.3);">|</span>
-                <span style="color:#f9a8d4;">📸 인스타 <strong id="igTopMemberCount" style="color:#fff; font-size:0.95rem;">0명</strong></span>
-                <span id="ytTopConcurrentSub" style="color:#fca5a5; font-size:0.78rem;">(실시간 시청 0명)</span>
-                <span style="background:rgba(239,68,68,0.32); color:#fff; padding:1px 7px; border-radius:999px; font-size:0.72rem;">아이디 확인 ▾</span>
+                <span style="color:#be123c; font-weight:900;">▶️ 유튜브 <strong id="ytTopMemberCount" style="color:#0f172a; font-size:0.98rem; font-weight:900;">0명</strong></span>
+                <span style="color:#cbd5e1; font-weight:800;">|</span>
+                <span style="color:#0e7490; font-weight:900;">🎵 틱톡 <strong id="ttTopMemberCount" style="color:#0f172a; font-size:0.98rem; font-weight:900;">0명</strong></span>
+                <span style="color:#cbd5e1; font-weight:800;">|</span>
+                <span style="color:#be185d; font-weight:900;">📸 인스타 <strong id="igTopMemberCount" style="color:#0f172a; font-size:0.98rem; font-weight:900;">0명</strong></span>
+                <span id="ytTopConcurrentSub" style="color:#dc2626; font-size:0.84rem; font-weight:900;">(실시간 시청 0명)</span>
+                <span style="background:#e11d48; color:#ffffff; padding:2px 9px; border-radius:999px; font-size:0.75rem; font-weight:900;">아이디 확인 ▾</span>
             </button>
             <!-- 세그먼트 카운트다운 타이머 -->
             <div class="timer-badge" id="hostTimerBadge">
@@ -1102,7 +1108,7 @@
         </div>
 
         <div class="status-right">
-            <button type="button" class="btn-ctrl" id="hostActiveCamBadgeBtn" onclick="toggleHostMainCameraSwitch()" style="background:rgba(239,68,68,0.22); border-color:#ef4444; color:#fca5a5; font-weight:900;" title="클릭하면 메인 송출 카메라(CAM 1 ↔ CAM 2)를 즉시 전환합니다">
+            <button type="button" class="btn-ctrl" id="hostActiveCamBadgeBtn" onclick="toggleHostMainCameraSwitch()" style="background:#fef2f2; border:1.5px solid #ef4444; color:#b91c1c; font-weight:900;" title="클릭하면 메인 송출 카메라(CAM 1 ↔ CAM 2)를 즉시 전환합니다">
                 🔴 ON AIR: CAM 1 ⇄
             </button>
             <div class="clock-display">현재 시간 <span id="clockText">00:00:00</span></div>
@@ -1214,23 +1220,23 @@
             <section class="metrics-grid" id="hostMetricsGrid">
                 <div class="metric-card">
                     <span class="metric-label">🛒 총 주문</span>
-                    <span class="metric-value" id="valOrders" style="color:#fbbf24;">0건</span>
+                    <span class="metric-value" id="valOrders" style="color:#d97706;">0건</span>
                 </div>
                 <div class="metric-card">
                     <span class="metric-label">💰 누적 매출</span>
-                    <span class="metric-value" id="valSales" style="color:#34d399;">0원</span>
+                    <span class="metric-value" id="valSales" style="color:#059669;">0원</span>
                 </div>
                 <div class="metric-card">
                     <span class="metric-label">💬 실시간 채팅</span>
-                    <span class="metric-value" id="valChats" style="color:#38bdf8;">0건</span>
+                    <span class="metric-value" id="valChats" style="color:#2563eb;">0건</span>
                 </div>
             </section>
 
             <!-- 🗂️ 전체 등록 상품 라인업 (클릭 시 즉시 소개 상품 전환) -->
             <section class="product-lineup-section" id="hostProductLineupSection">
                 <div class="lineup-header">
-                    <span class="lineup-title">📦 전체 방송 제품 라인업 <span id="allProdsCount" style="color:#94a3b8; font-size:0.8rem;">(0개)</span></span>
-                    <span style="font-size:0.75rem; color:#94a3b8;">상품 클릭 시 즉시 방송 핀 전환</span>
+                    <span class="lineup-title">📦 전체 방송 제품 라인업 <span id="allProdsCount" style="color:#64748b; font-size:0.8rem;">(0개)</span></span>
+                    <span style="font-size:0.75rem; color:#64748b;">상품 클릭 시 즉시 방송 핀 전환</span>
                 </div>
                 <div class="lineup-list" id="hostAllProductsList">
                     <div style="color:#64748b; font-size:0.85rem; text-align:center; padding:12px;">
@@ -1247,9 +1253,9 @@
                 <div class="qa-header">
                     <span class="qa-title">
                         <span>💬 실시간 전체 채팅</span>
-                        <span id="chatStreamCount" style="font-size:0.8rem; background:rgba(56,189,248,0.18); color:#7dd3fc; padding:2px 8px; border-radius:12px;">0건</span>
-                        <span id="hostChatIntegrityBadge" style="font-size:0.75rem; background:rgba(16,185,129,0.16); border:1px solid rgba(16,185,129,0.45); color:#6ee7b7; padding:2px 8px; border-radius:12px; font-weight:800;">🟢 누락 0건</span>
-                        <span id="hostSelectedUserFilterBadge" style="display:none; background:rgba(14,165,233,0.25); color:#7dd3fc; padding:1px 8px; border-radius:999px; font-size:0.75rem; cursor:pointer;" onclick="filterHostChatByUser(null)">✕ 필터 해제</span>
+                        <span id="chatStreamCount" style="font-size:0.8rem; background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; padding:2px 8px; border-radius:12px; font-weight:800;">0건</span>
+                        <span id="hostChatIntegrityBadge" style="font-size:0.75rem; background:#ecfdf5; border:1px solid #6ee7b7; color:#047857; padding:2px 8px; border-radius:12px; font-weight:800;">🟢 누락 0건</span>
+                        <span id="hostSelectedUserFilterBadge" style="display:none; background:#eff6ff; border:1px solid #60a5fa; color:#1d4ed8; padding:1px 8px; border-radius:999px; font-size:0.75rem; font-weight:800; cursor:pointer;" onclick="filterHostChatByUser(null)">✕ 필터 해제</span>
                     </span>
                     <div class="chat-filter-tabs">
                         <button type="button" class="chat-filter-btn active" data-filter="ALL" onclick="setHostChatFilter('ALL', this)">전체 채팅</button>
@@ -2654,9 +2660,9 @@
             const layoutLabel = layout === 'single' ? '' : ` (${layout.toUpperCase()})`;
             if (btn) {
                 btn.innerText = `🔴 ON AIR: CAM ${activeCam}${layoutLabel} ⇄`;
-                btn.style.borderColor = activeCam === 1 ? '#ef4444' : '#38bdf8';
-                btn.style.color = activeCam === 1 ? '#fca5a5' : '#7dd3fc';
-                btn.style.background = activeCam === 1 ? 'rgba(239,68,68,0.22)' : 'rgba(14,165,233,0.22)';
+                btn.style.borderColor = activeCam === 1 ? '#ef4444' : '#0284c7';
+                btn.style.color = activeCam === 1 ? '#b91c1c' : '#0369a1';
+                btn.style.background = activeCam === 1 ? '#fef2f2' : '#f0f9ff';
             }
             if (pipTitle) {
                 pipTitle.innerText = `ON AIR · CAM ${activeCam}`;

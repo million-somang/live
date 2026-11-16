@@ -160,12 +160,39 @@ h1, h2, h3, h4, h5, h6 {
 .bc-yt-chip,
 .yt-member-chip,
 .quick-chip-item,
-.clock-display,
 .yt-tel-pill,
 .yt-tel-metric {
     background: #f8fafc !important;
     border: 1px solid #e2e8f0 !important;
     color: #0f172a !important;
+}
+
+/* 쇼호스트 프롬프터 상단 현재시간 · 방송시간 · SNS 접속자 배지 고대비 강조 */
+.clock-display {
+    background: #eff6ff !important;
+    border: 1.5px solid #60a5fa !important;
+    color: #1e3a8a !important;
+    font-weight: 900 !important;
+}
+.clock-display span {
+    color: #1d4ed8 !important;
+    font-weight: 900 !important;
+}
+.broadcast-time-display {
+    background: #ecfdf5 !important;
+    border: 1.5px solid #10b981 !important;
+    color: #065f46 !important;
+    font-weight: 900 !important;
+}
+.broadcast-time-display span {
+    color: #047857 !important;
+    font-weight: 900 !important;
+}
+.yt-viewer-top-badge {
+    background: #fff1f2 !important;
+    border: 1.5px solid #f43f5e !important;
+    color: #0f172a !important;
+    box-shadow: 0 2px 8px rgba(225, 29, 72, 0.10) !important;
 }
 
 .stage-node-head,
