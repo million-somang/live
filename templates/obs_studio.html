@@ -259,7 +259,7 @@
             border-radius: 4px;
         }
 
-        /* 중앙 워크스페이스 행: [왼쪽 끝: 2대 카메라 위·아래 세로 독] + [중앙 분리: 실제 송출 모니터] */
+        /* 중앙 워크스페이스 행: [왼쪽 끝: 2대 카메라 위·아래 세로 독 (바닥까지 100% 확장)] + [우측 열: 실제 송출 모니터 + 하단 상태표시창] */
         .monitor-workspace-row {
             width: 100%;
             max-width: 100%;
@@ -269,13 +269,26 @@
             flex-direction: row;
             align-items: stretch;
             justify-content: flex-start;
-            gap: 28px;
+            gap: 20px;
+        }
+
+        .monitor-right-column {
+            flex: 1;
+            min-width: 0;
+            height: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
         }
 
         .monitor-viewport-wrapper {
             flex: 1;
+            width: 100%;
             min-width: 0;
-            height: 100%;
+            min-height: 0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1263,11 +1276,11 @@
                 </div>
             </div>
 
-            <!-- 중앙 워크스페이스 행: [왼쪽 끝] 2대 카메라 위·아래 세로 멀티뷰 독 (Height 100%) + [중앙 분리] 실제 송출 모니터 -->
+            <!-- 중앙 워크스페이스 행: [왼쪽 끝] 2대 카메라 위·아래 세로 멀티뷰 독 (바닥까지 Height 100% 확장) + [우측 열] 실제 송출 모니터 & 하단 상태표시창 -->
             <div class="monitor-workspace-row" id="monitorWorkspaceRow">
 
                 <!-- 🎥 [왼쪽 끝 세로 꽉 찬 배치] 2대의 카메라 실시간 영상 보기 (위: CAM 1 / 아래: CAM 2) & 메인 카메라 스위처 독 -->
-                <div id="dualCamMultiviewDock" style="width:296px; flex-shrink:0; height:100%; max-height:calc(100vh - 170px); background:rgba(15,23,42,0.95); border:1px solid rgba(56,189,248,0.38); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; box-shadow:0 8px 24px rgba(0,0,0,0.45);">
+                <div id="dualCamMultiviewDock" style="width:296px; flex-shrink:0; height:100%; max-height:100%; background:rgba(15,23,42,0.95); border:1px solid rgba(56,189,248,0.38); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; box-shadow:0 8px 24px rgba(0,0,0,0.45);">
                     <!-- 상단 타이틀 & 접기 버튼 -->
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:4px; flex-shrink:0;">
                         <span style="font-size:0.76rem; font-weight:900; color:#e2e8f0; display:flex; align-items:center; gap:4px;">
@@ -1302,7 +1315,7 @@
                     <!-- 2대의 카메라 실시간 프리뷰 세로 스택 (위: CAM 1 / 아래: CAM 2 · Height 100% 확장) -->
                     <div id="dualCamPreviewGrid" style="flex:1; min-height:0; display:flex; flex-direction:column; gap:10px;">
                         <!-- [위: CAM 1 프리뷰 카드 (flex: 1 세로 확장)] -->
-                        <div id="multiviewCardCam1" onclick="switchMainCamera(1)" style="flex:1; min-height:210px; display:flex; flex-direction:column; position:relative; border:2px solid #ef4444; border-radius:10px; background:#020617; overflow:hidden; cursor:pointer; transition:all 0.15s; box-shadow:0 0 14px rgba(239,68,68,0.28);" title="클릭하면 CAM 1을 메인 카메라로 즉시 전환합니다">
+                        <div id="multiviewCardCam1" onclick="switchMainCamera(1)" style="flex:1; min-height:0; display:flex; flex-direction:column; position:relative; border:2px solid #ef4444; border-radius:10px; background:#020617; overflow:hidden; cursor:pointer; transition:all 0.15s; box-shadow:0 0 14px rgba(239,68,68,0.28);" title="클릭하면 CAM 1을 메인 카메라로 즉시 전환합니다">
                             <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; background:rgba(15,23,42,0.95); border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0;">
                                 <div style="display:flex; align-items:center; gap:5px;">
                                     <span id="cam1TallyBadge" style="font-size:0.64rem; font-weight:900; padding:1px 6px; border-radius:4px; background:#ef4444; color:#fff;">🔴 ON AIR</span>
@@ -1328,7 +1341,7 @@
                         </div>
 
                         <!-- [아래: CAM 2 프리뷰 카드 (flex: 1 세로 확장)] -->
-                        <div id="multiviewCardCam2" onclick="switchMainCamera(2)" style="flex:1; min-height:210px; display:flex; flex-direction:column; position:relative; border:2px solid rgba(16,185,129,0.55); border-radius:10px; background:#020617; overflow:hidden; cursor:pointer; transition:all 0.15s;" title="클릭하면 CAM 2를 메인 카메라로 즉시 전환합니다">
+                        <div id="multiviewCardCam2" onclick="switchMainCamera(2)" style="flex:1; min-height:0; display:flex; flex-direction:column; position:relative; border:2px solid rgba(16,185,129,0.55); border-radius:10px; background:#020617; overflow:hidden; cursor:pointer; transition:all 0.15s;" title="클릭하면 CAM 2를 메인 카메라로 즉시 전환합니다">
                             <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; background:rgba(15,23,42,0.95); border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0;">
                                 <div style="display:flex; align-items:center; gap:5px;">
                                     <span id="cam2TallyBadge" style="font-size:0.64rem; font-weight:900; padding:1px 6px; border-radius:4px; background:rgba(16,185,129,0.25); border:1px solid #10b981; color:#6ee7b7;">🟢 STANDBY</span>
@@ -1355,91 +1368,94 @@
                     </div>
                 </div>
 
-                <!-- 16:9 / 9:16 뷰포트 래퍼 (남은 중앙 영역에 메인 송출 모니터를 여유 있게 배치) -->
-                <div class="monitor-viewport-wrapper">
-                    <div class="monitor-viewport-box" id="viewportBox">
-                        <!-- 투명 배경 격자무늬 -->
-                        <div class="checkerboard-pattern" id="checkerPattern"></div>
+                <!-- 📺 [우측 열] 메인 송출 모니터 + 하단 상태표시창(오른쪽 정렬 배치) -->
+                <div class="monitor-right-column">
+                    <!-- 16:9 / 9:16 뷰포트 래퍼 (남은 중앙 영역에 메인 송출 모니터를 여유 있게 배치) -->
+                    <div class="monitor-viewport-wrapper">
+                        <div class="monitor-viewport-box" id="viewportBox">
+                            <!-- 투명 배경 격자무늬 -->
+                            <div class="checkerboard-pattern" id="checkerPattern"></div>
 
-                        <!-- 실제 비디오 레이어 (화면 캡처 / 웹캠 / VDO.Ninja 캡처) -->
-                        <video id="monitorVideo" class="preview-video-layer" autoplay playsinline muted></video>
+                            <!-- 실제 비디오 레이어 (화면 캡처 / 웹캠 / VDO.Ninja 캡처) -->
+                            <video id="monitorVideo" class="preview-video-layer" autoplay playsinline muted></video>
 
-                        <!-- 스마트폰 무선 카메라 MJPEG 레이어 -->
-                        <img id="monitorStreamImg" class="preview-video-layer" />
+                            <!-- 스마트폰 무선 카메라 MJPEG 레이어 -->
+                            <img id="monitorStreamImg" class="preview-video-layer" />
 
-                        <!-- 2대 카메라 동시 송출용 서브/분할 레이어 (PIP / 상하 2분할 / 좌우 2분할) -->
-                        <div id="subCamLayerWrap" style="display:none; position:absolute; z-index:2; overflow:hidden; pointer-events:none; background:#020617; box-sizing:border-box;">
-                            <video id="subMonitorVideo" style="width:100%; height:100%; object-fit:cover; display:none;" autoplay playsinline muted></video>
-                            <img id="subMonitorStreamImg" style="width:100%; height:100%; object-fit:cover; display:block;" />
-                            <div id="subCamBadgeOverlay" style="position:absolute; top:6px; left:6px; background:rgba(15,23,42,0.85); color:#38bdf8; border:1px solid rgba(56,189,248,0.55); font-size:0.65rem; font-weight:900; padding:2px 6px; border-radius:5px; letter-spacing:0.3px;">SUB · CAM 2</div>
+                            <!-- 2대 카메라 동시 송출용 서브/분할 레이어 (PIP / 상하 2분할 / 좌우 2분할) -->
+                            <div id="subCamLayerWrap" style="display:none; position:absolute; z-index:2; overflow:hidden; pointer-events:none; background:#020617; box-sizing:border-box;">
+                                <video id="subMonitorVideo" style="width:100%; height:100%; object-fit:cover; display:none;" autoplay playsinline muted></video>
+                                <img id="subMonitorStreamImg" style="width:100%; height:100%; object-fit:cover; display:block;" />
+                                <div id="subCamBadgeOverlay" style="position:absolute; top:6px; left:6px; background:rgba(15,23,42,0.85); color:#38bdf8; border:1px solid rgba(56,189,248,0.55); font-size:0.65rem; font-weight:900; padding:2px 6px; border-radius:5px; letter-spacing:0.3px;">SUB · CAM 2</div>
+                            </div>
+
+                            <!-- VDO.Ninja 클린 뷰어 직접 임베드 레이어 (OBS 브라우저 소스 연동용) -->
+                            <iframe id="monitorVdoIframe" class="preview-video-layer" style="display:none; border:none; pointer-events:none;" allow="autoplay; camera; microphone; fullscreen; picture-in-picture"></iframe>
+
+                            <!-- 실제 송출 화면 렌더링 iframe (/overlay/obs?mode=monitor) -->
+                            <iframe id="overlayIframe" src="/overlay/obs?mode=monitor" class="monitor-iframe"></iframe>
+                        </div>
+                    </div>
+
+                    <!-- 📊 실시간 유튜브 전송 프레임(FPS/누적 프레임) & 마이크 음량(LED VU 미터 + 이퀄라이저) HUD 바 -->
+                    <div class="yt-monitor-telemetry-bar" id="ytMonitorTelemetryBar">
+                        <div class="yt-tel-group">
+                            <span class="yt-tel-pill" id="ytTelStatePill">
+                                <span id="ytTelStateDot" style="width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
+                                <span id="ytTelStateText">YT 대기 중</span>
+                            </span>
+                            <span class="yt-tel-pill" id="ttTelStatePill">
+                                <span id="ttTelStateDot" style="width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
+                                <span id="ttTelStateText">TT 대기 중</span>
+                            </span>
+                            <span class="yt-tel-pill" id="igTelStatePill">
+                                <span id="igTelStateDot" style="width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
+                                <span id="igTelStateText">IG 대기 중</span>
+                            </span>
+                            <span class="yt-tel-metric" title="유튜브/틱톡/인스타그램 RTMP 서버로 실시간 전송되는 초당 프레임 수(FPS)">
+                                <span>🎞️ 속도:</span>
+                                <strong id="ytTelFpsValue" style="color:#94a3b8;">0.0 FPS</strong>
+                            </span>
+                            <span class="yt-tel-metric" title="라이브 시작 후 누적 전송된 총 비디오 프레임 수">
+                                <span>📦 누적 전송:</span>
+                                <strong id="ytTelFramesValue" style="color:#38bdf8;">0 Frames</strong>
+                            </span>
+                            <span class="yt-tel-metric" id="ytTelElapsedWrap" style="display:none;">
+                                <span>⏱️</span>
+                                <strong id="ytTelElapsedValue" style="color:#fde047;">00:00</strong>
+                            </span>
                         </div>
 
-                        <!-- VDO.Ninja 클린 뷰어 직접 임베드 레이어 (OBS 브라우저 소스 연동용) -->
-                        <iframe id="monitorVdoIframe" class="preview-video-layer" style="display:none; border:none; pointer-events:none;" allow="autoplay; camera; microphone; fullscreen; picture-in-picture"></iframe>
+                        <div class="yt-tel-group">
+                            <span class="yt-tel-pill" id="ytTelMicSourceBadge" style="color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(14,165,233,0.12);">
+                                🔇 마이크 대기
+                            </span>
+                            <div class="yt-eq-bars" id="ytTelEqBars" title="실시간 오디오 입력 파형">
+                                <span class="yt-eq-bar"></span>
+                                <span class="yt-eq-bar"></span>
+                                <span class="yt-eq-bar"></span>
+                                <span class="yt-eq-bar"></span>
+                                <span class="yt-eq-bar"></span>
+                            </div>
+                            <div class="yt-vu-meter-wrap" id="ytTelVuTrack" title="실시간 마이크 입력 음량 LED VU 미터 (초록: 정상 / 노랑: 주의 / 빨강: 피크)"></div>
+                            <span class="yt-tel-metric" style="min-width:96px; justify-content:center;" title="실시간 오디오 데시벨(dBFS) 및 음량 퍼센트">
+                                <strong id="ytTelDbValue" style="color:#94a3b8;">-60.0 dB (0%)</strong>
+                            </span>
+                            <button type="button" class="yt-tel-pill" id="btnQuickPhoneAudioMonitor" onclick="togglePhoneAudioMonitor()" style="cursor:pointer; color:#94a3b8; border-color:rgba(255,255,255,0.16); background:rgba(255,255,255,0.06); font-weight:800;" title="스마트폰에서 들어오는 마이크 음성을 PC 스피커/이어폰으로 실시간 청취(모니터링)합니다. (같은 공간에서 스피커 사용 시 하울링 방지를 위해 기본 OFF)">
+                                🔇 폰 음성 듣기 OFF
+                            </button>
+                            <button type="button" class="yt-tel-pill" onclick="openMonitoringTab('all')" style="cursor:pointer; color:#38bdf8; border-color:rgba(56,189,248,0.55); background:rgba(14,165,233,0.18); font-weight:800;" title="우측 [📊 모니터링] 전용 탭을 열어 영상 5단계 딜레이와 음성 5단계 품질을 실시간 진단합니다">
+                                📊 모니터링 탭 열기
+                            </button>
+                        </div>
+                    </div>
 
-                        <!-- 실제 송출 화면 렌더링 iframe (/overlay/obs?mode=monitor) -->
-                        <iframe id="overlayIframe" src="/overlay/obs?mode=monitor" class="monitor-iframe"></iframe>
+                    <div class="monitor-bottom-info">
+                        <span>* 현재 모니터 화면에 보이는 그래픽과 실제 화면이 OBS Studio 브라우저 소스로 동일하게 출력됩니다.</span>
+                        <span id="currentBgModeLabel" style="font-weight:700; color:var(--cyan);">배경 모드: 투명(Transparent)</span>
                     </div>
                 </div>
 
-            </div>
-
-            <!-- 📊 실시간 유튜브 전송 프레임(FPS/누적 프레임) & 마이크 음량(LED VU 미터 + 이퀄라이저) HUD 바 -->
-            <div class="yt-monitor-telemetry-bar" id="ytMonitorTelemetryBar">
-                <div class="yt-tel-group">
-                    <span class="yt-tel-pill" id="ytTelStatePill">
-                        <span id="ytTelStateDot" style="width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
-                        <span id="ytTelStateText">YT 대기 중</span>
-                    </span>
-                    <span class="yt-tel-pill" id="ttTelStatePill">
-                        <span id="ttTelStateDot" style="width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
-                        <span id="ttTelStateText">TT 대기 중</span>
-                    </span>
-                    <span class="yt-tel-pill" id="igTelStatePill">
-                        <span id="igTelStateDot" style="width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
-                        <span id="igTelStateText">IG 대기 중</span>
-                    </span>
-                    <span class="yt-tel-metric" title="유튜브/틱톡/인스타그램 RTMP 서버로 실시간 전송되는 초당 프레임 수(FPS)">
-                        <span>🎞️ 속도:</span>
-                        <strong id="ytTelFpsValue" style="color:#94a3b8;">0.0 FPS</strong>
-                    </span>
-                    <span class="yt-tel-metric" title="라이브 시작 후 누적 전송된 총 비디오 프레임 수">
-                        <span>📦 누적 전송:</span>
-                        <strong id="ytTelFramesValue" style="color:#38bdf8;">0 Frames</strong>
-                    </span>
-                    <span class="yt-tel-metric" id="ytTelElapsedWrap" style="display:none;">
-                        <span>⏱️</span>
-                        <strong id="ytTelElapsedValue" style="color:#fde047;">00:00</strong>
-                    </span>
-                </div>
-
-                <div class="yt-tel-group">
-                    <span class="yt-tel-pill" id="ytTelMicSourceBadge" style="color:#38bdf8; border-color:rgba(56,189,248,0.35); background:rgba(14,165,233,0.12);">
-                        🔇 마이크 대기
-                    </span>
-                    <div class="yt-eq-bars" id="ytTelEqBars" title="실시간 오디오 입력 파형">
-                        <span class="yt-eq-bar"></span>
-                        <span class="yt-eq-bar"></span>
-                        <span class="yt-eq-bar"></span>
-                        <span class="yt-eq-bar"></span>
-                        <span class="yt-eq-bar"></span>
-                    </div>
-                    <div class="yt-vu-meter-wrap" id="ytTelVuTrack" title="실시간 마이크 입력 음량 LED VU 미터 (초록: 정상 / 노랑: 주의 / 빨강: 피크)"></div>
-                    <span class="yt-tel-metric" style="min-width:96px; justify-content:center;" title="실시간 오디오 데시벨(dBFS) 및 음량 퍼센트">
-                        <strong id="ytTelDbValue" style="color:#94a3b8;">-60.0 dB (0%)</strong>
-                    </span>
-                    <button type="button" class="yt-tel-pill" id="btnQuickPhoneAudioMonitor" onclick="togglePhoneAudioMonitor()" style="cursor:pointer; color:#94a3b8; border-color:rgba(255,255,255,0.16); background:rgba(255,255,255,0.06); font-weight:800;" title="스마트폰에서 들어오는 마이크 음성을 PC 스피커/이어폰으로 실시간 청취(모니터링)합니다. (같은 공간에서 스피커 사용 시 하울링 방지를 위해 기본 OFF)">
-                        🔇 폰 음성 듣기 OFF
-                    </button>
-                    <button type="button" class="yt-tel-pill" onclick="openMonitoringTab('all')" style="cursor:pointer; color:#38bdf8; border-color:rgba(56,189,248,0.55); background:rgba(14,165,233,0.18); font-weight:800;" title="우측 [📊 모니터링] 전용 탭을 열어 영상 5단계 딜레이와 음성 5단계 품질을 실시간 진단합니다">
-                        📊 모니터링 탭 열기
-                    </button>
-                </div>
-            </div>
-
-            <div class="monitor-bottom-info">
-                <span>* 현재 모니터 화면에 보이는 그래픽과 실제 화면이 OBS Studio 브라우저 소스로 동일하게 출력됩니다.</span>
-                <span id="currentBgModeLabel" style="font-weight:700; color:var(--cyan);">배경 모드: 투명(Transparent)</span>
             </div>
         </section>
 
