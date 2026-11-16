@@ -251,6 +251,7 @@ def _studio_security_gateway():
     if request.method == "OPTIONS":
         return None
 
+    request._traffic_start_ts = time.perf_counter()
     path = request.path or "/"
 
     # 0. 이전 QR 정규식 치환으로 인해 물음표('?')가 유실된 카메라 경로(/remote-cam&... 또는 /cam&...) 자동 복구 (404 원천 방지)
@@ -408,6 +409,34 @@ def _add_private_network_cors_headers(response):
     allow_frame = request.path.startswith("/overlay/") or request.path.startswith("/cam")
     security_core.apply_security_headers(response, allow_framing=allow_frame)
     security_core.inject_csrf_into_html_response(response, security_core.get_csrf_token(session))
+
+    try:
+        start_t = getattr(request, "_traffic_start_ts", None)
+        elapsed_ms = (time.perf_counter() - start_t) * 1000.0 if start_t is not None else 0.0
+        rx_b = int(request.content_length or 0) + len(request.full_path or "") + 180
+        tx_len = response.calculate_content_length()
+        if tx_len is None:
+            try:
+                tx_len = int(response.headers.get("Content-Length") or 0)
+            except Exception:
+                tx_len = 0
+        tx_b = int(tx_len or 0) + 160
+        fwd_ip = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        c_ip = fwd_ip or str(request.remote_addr or "unknown")
+        ua = request.headers.get("User-Agent") or ""
+        security_core.traffic_monitor.record_request(
+            method=request.method,
+            path=request.path,
+            status_code=response.status_code,
+            rx_bytes=rx_b,
+            tx_bytes=tx_b,
+            latency_ms=elapsed_ms,
+            client_ip=c_ip,
+            user_agent=ua,
+        )
+    except Exception:
+        pass
+
     return response
 
 # 1. 파일 경로 설정

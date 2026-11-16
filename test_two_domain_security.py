@@ -164,6 +164,32 @@ def run_security_tests():
             )
             assert r_inv.status_code == 200
 
+            # 관리자 트래픽 관리 페이지(/admin/traffic) 및 실시간 트래픽 스냅샷 API(/admin/api/traffic) 검증
+            r_tf_page = admin_client.get("/admin/traffic")
+            assert r_tf_page.status_code == 200
+            tf_html = r_tf_page.get_data(as_text=True)
+            assert "트래픽 관리" in tf_html
+            assert "adminTab_traffic" in tf_html
+
+            r_tf_api = admin_client.get("/admin/api/traffic")
+            assert r_tf_api.status_code == 200
+            tf_json = r_tf_api.get_json()
+            assert tf_json["status"] == "ok"
+            tf_snap = tf_json.get("traffic", tf_json)
+            assert tf_snap["total_requests"] >= 1
+            assert isinstance(tf_snap["categories"], list) and len(tf_snap["categories"]) == 7
+            assert isinstance(tf_snap["timeline_60s"], list) and len(tf_snap["timeline_60s"]) == 60
+            assert isinstance(tf_snap["top_endpoints"], list)
+            assert isinstance(tf_snap["top_clients"], list)
+
+            r_tf_reset = admin_client.post(
+                "/admin/api/traffic/reset",
+                headers={"X-CSRF-Token": a_csrf},
+                json={}
+            )
+            assert r_tf_reset.status_code == 200
+            assert r_tf_reset.get_json()["status"] == "ok"
+
         # 승인 완료된 seller는 이제 /auth/login 로그인 시 /portal 로 리다이렉트되며, /portal 및 /overlay/studio 정상 진입하되 /admin 접근 시 403 차단 확인
         r_slogin = seller_client.post(
             "/auth/login",
@@ -176,7 +202,9 @@ def run_security_tests():
         r_studio_ok = seller_client.get("/overlay/studio")
         assert r_studio_ok.status_code == 200
         assert seller_client.get("/admin").status_code == 403
-        print("✅ [5/10] 전용 관리자 콘솔(/admin) 승인 및 방송자 로그인 시 /portal 이동·권한 분리 검증 완료")
+        assert seller_client.get("/admin/traffic").status_code == 403
+        assert seller_client.get("/admin/api/traffic").status_code == 403
+        print("✅ [5/10] 전용 관리자 콘솔(/admin) 승인, 트래픽 관리(/admin/traffic) 및 방송자 로그인 시 /portal 이동·권한 분리 검증 완료")
 
     # 5. 초대 코드로 가입 시 즉시 APPROVED 검증 & 5회 실패 계정 잠금 검증
     with live_commerce_server.app.test_client() as inv_client:

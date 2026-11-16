@@ -25,8 +25,9 @@ def _get_current_admin_user():
 
 @admin_bp.route("", methods=["GET"])
 @admin_bp.route("/", methods=["GET"])
+@admin_bp.route("/traffic", methods=["GET"])
 def admin_dashboard():
-    """통합 관리자 대시보드 메인 (/admin)"""
+    """통합 관리자 대시보드 메인 (/admin 및 /admin/traffic)"""
     admin_user = _get_current_admin_user()
     if not admin_user:
         return redirect(url_for("admin_bp.admin_login"))
@@ -38,6 +39,8 @@ def admin_dashboard():
     audit_logs = database.list_security_audit_logs(limit=80)
     cloud_cfg = database.get_cloud_mall_config()
     products = database.get_all_products()
+    initial_tab = "traffic" if request.path.endswith("/traffic") else (request.args.get("tab") or "users")
+    traffic_snapshot = security_core.traffic_monitor.get_snapshot()
 
     return render_template(
         "admin/dashboard.html",
@@ -49,7 +52,9 @@ def admin_dashboard():
         active_invites_count=sum(1 for c in invite_codes if c.get("is_active")),
         audit_logs=audit_logs,
         cloud_cfg=cloud_cfg,
-        products_count=len(products)
+        products_count=len(products),
+        initial_tab=initial_tab,
+        traffic_snapshot=traffic_snapshot,
     )
 
 
@@ -243,3 +248,28 @@ def admin_api_change_own_password():
         ip_address=str(request.remote_addr or "")
     )
     return jsonify({"status": "ok" if res.get("ok") else "error", **res}), (200 if res.get("ok") else 400)
+
+
+@admin_bp.route("/api/traffic", methods=["GET"])
+def admin_api_traffic_snapshot():
+    """관리자 전용: 실시간 서버 인입/송출 트래픽 관제 스냅샷 조회"""
+    admin_user = _get_current_admin_user()
+    if not admin_user:
+        return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
+    return jsonify(security_core.traffic_monitor.get_snapshot()), 200
+
+
+@admin_bp.route("/api/traffic/reset", methods=["POST"])
+def admin_api_traffic_reset():
+    """관리자 전용: 실시간 서버 트래픽 누적 카운터 초기화"""
+    admin_user = _get_current_admin_user()
+    if not admin_user:
+        return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
+    security_core.traffic_monitor.reset()
+    database.log_security_audit(
+        "ADMIN_TRAFFIC_RESET",
+        actor_id=admin_user.get("username", "admin"),
+        ip_address=str(request.remote_addr or ""),
+        detail="관리자가 서버 트래픽 통계 카운터를 초기화함",
+    )
+    return jsonify(security_core.traffic_monitor.get_snapshot()), 200

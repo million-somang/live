@@ -360,3 +360,336 @@ def apply_security_headers(response, allow_framing: bool = False):
     if not allow_framing:
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     return response
+
+
+class ServerTrafficMonitor:
+    """
+    서버로 들어오는 모든 HTTP/HTTPS 요청의 수신(Inbound)·송신(Outbound) 바이트,
+    초당 요청 수(RPS), 60초 시계열 추이, 기능 카테고리별·엔드포인트별·접속 IP별 트래픽을 실시간 계측합니다.
+    """
+
+    CATEGORY_META = {
+        "CAMERA": {"label": "📹 카메라 / 영상 (Camera & Video)", "color": "#0ea5e9"},
+        "AUDIO": {"label": "🎤 오디오 / 음성 (Audio Stream)", "color": "#8b5cf6"},
+        "RTMP": {"label": "📡 방송 송출 / RTMP (YouTube·TikTok·IG)", "color": "#ef4444"},
+        "MALL_SYNC": {"label": "🛍️ 쇼핑몰 / 주문·상품 동기화", "color": "#10b981"},
+        "STUDIO": {"label": "🖥️ 스튜디오 / 오버레이 관제", "color": "#2563eb"},
+        "CHAT": {"label": "💬 실시간 채팅 / AI 분석", "color": "#f59e0b"},
+        "ADMIN_AUTH": {"label": "🛡️ 관리자 / 인증 / 정적 리소스", "color": "#64748b"},
+    }
+
+    def __init__(self):
+        from collections import deque
+        self._lock = RLock()
+        self._deque_cls = deque
+        self.reset()
+
+    def reset(self):
+        with self._lock:
+            self.started_at = time.time()
+            self.total_requests = 0
+            self.total_rx_bytes = 0
+            self.total_tx_bytes = 0
+            self.peak_rx_bps = 0.0
+            self.peak_tx_bps = 0.0
+            self.peak_rps = 0.0
+            self.status_counts = {"2xx": 0, "304": 0, "4xx": 0, "5xx": 0}
+            self.categories = {
+                k: {
+                    "key": k,
+                    "label": meta["label"],
+                    "color": meta["color"],
+                    "requests": 0,
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                }
+                for k, meta in self.CATEGORY_META.items()
+            }
+            self.sec_buckets = {}  # int_sec -> dict
+            self.endpoints = {}    # path -> dict
+            self.clients = {}      # ip -> dict
+            self.recent_requests = self._deque_cls(maxlen=40)
+
+    @staticmethod
+    def classify_path(path: str) -> str:
+        p = str(path or "/")
+        if p.startswith("/api/camera/audio") or p.startswith("/api/audio/"):
+            return "AUDIO"
+        if (
+            p == "/cam"
+            or p.startswith("/cam/")
+            or p == "/remote-cam"
+            or p.startswith("/remote-cam/")
+            or p.startswith("/api/camera/")
+            or p.startswith("/api/remote-cam/")
+        ):
+            return "CAMERA"
+        if p.startswith("/api/youtube/") or p.startswith("/api/tiktok/") or p.startswith("/api/instagram/"):
+            return "RTMP"
+        if (
+            p.startswith("/api/sync/")
+            or p.startswith("/api/mall/")
+            or p.startswith("/api/products")
+            or p.startswith("/api/orders")
+            or p.startswith("/api/inventory")
+        ):
+            return "MALL_SYNC"
+        if (
+            p.startswith("/overlay/")
+            or p.startswith("/api/overlay/")
+            or p.startswith("/api/host/")
+            or p in ("/portal", "/broadcast", "/host")
+        ):
+            return "STUDIO"
+        if p in ("/chat", "/webhook") or p.startswith("/api/chat") or p.startswith("/api/dashboard-summary"):
+            return "CHAT"
+        return "ADMIN_AUTH"
+
+    def record_request(
+        self,
+        method: str,
+        path: str,
+        status_code: int,
+        rx_bytes: int,
+        tx_bytes: int,
+        latency_ms: float,
+        client_ip: str,
+        user_agent: str = "",
+    ):
+        now = time.time()
+        sec_key = int(now)
+        norm_path = str(path or "/").split("?")[0] or "/"
+        # 트래픽 관제 폴링 자체(/admin/api/traffic)는 관제 왜곡 방지를 위해 최근 로그에서 제외
+        is_self_poll = norm_path.startswith("/admin/api/traffic")
+        cat = self.classify_path(norm_path)
+        rx = max(0, int(rx_bytes or 0))
+        tx = max(0, int(tx_bytes or 0))
+        code = int(status_code or 200)
+
+        with self._lock:
+            self.total_requests += 1
+            self.total_rx_bytes += rx
+            self.total_tx_bytes += tx
+
+            if code == 304:
+                self.status_counts["304"] += 1
+            elif 200 <= code < 400:
+                self.status_counts["2xx"] += 1
+            elif 400 <= code < 500:
+                self.status_counts["4xx"] += 1
+            else:
+                self.status_counts["5xx"] += 1
+
+            cat_entry = self.categories.get(cat) or self.categories["ADMIN_AUTH"]
+            cat_entry["requests"] += 1
+            cat_entry["rx_bytes"] += rx
+            cat_entry["tx_bytes"] += tx
+
+            b = self.sec_buckets.get(sec_key)
+            if b is None:
+                b = {"rx": 0, "tx": 0, "reqs": 0, "cam_bytes": 0, "cats": {}}
+                self.sec_buckets[sec_key] = b
+                if len(self.sec_buckets) > 120:
+                    cutoff = sec_key - 90
+                    for old_k in [k for k in self.sec_buckets if k < cutoff]:
+                        self.sec_buckets.pop(old_k, None)
+            b["rx"] += rx
+            b["tx"] += tx
+            b["reqs"] += 1
+            if cat == "CAMERA":
+                b["cam_bytes"] += (rx + tx)
+            b["cats"][cat] = b["cats"].get(cat, 0) + rx + tx
+
+            ep_key = f"{method.upper()} {norm_path}"
+            ep = self.endpoints.get(ep_key)
+            if ep is None:
+                if len(self.endpoints) > 200:
+                    oldest_ep = min(self.endpoints.items(), key=lambda x: x[1]["last_seen"])[0]
+                    self.endpoints.pop(oldest_ep, None)
+                ep = {
+                    "key": ep_key,
+                    "method": method.upper(),
+                    "path": norm_path,
+                    "category": cat,
+                    "requests": 0,
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                    "total_ms": 0.0,
+                    "last_status": code,
+                    "last_seen": now,
+                }
+                self.endpoints[ep_key] = ep
+            ep["requests"] += 1
+            ep["rx_bytes"] += rx
+            ep["tx_bytes"] += tx
+            ep["total_ms"] += float(latency_ms or 0.0)
+            ep["last_status"] = code
+            ep["last_seen"] = now
+
+            ip_str = str(client_ip or "unknown").strip() or "unknown"
+            cl = self.clients.get(ip_str)
+            if cl is None:
+                if len(self.clients) > 200:
+                    oldest_ip = min(self.clients.items(), key=lambda x: x[1]["last_seen"])[0]
+                    self.clients.pop(oldest_ip, None)
+                cl = {
+                    "ip": ip_str,
+                    "requests": 0,
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                    "last_path": norm_path,
+                    "last_seen": now,
+                    "user_agent": str(user_agent or "")[:80],
+                }
+                self.clients[ip_str] = cl
+            cl["requests"] += 1
+            cl["rx_bytes"] += rx
+            cl["tx_bytes"] += tx
+            cl["last_path"] = norm_path
+            cl["last_seen"] = now
+            if user_agent:
+                cl["user_agent"] = str(user_agent)[:80]
+
+            if not is_self_poll:
+                self.recent_requests.appendleft({
+                    "time": time.strftime("%H:%M:%S", time.localtime(now)),
+                    "method": method.upper(),
+                    "path": norm_path,
+                    "category": cat,
+                    "status": code,
+                    "rx_bytes": rx,
+                    "tx_bytes": tx,
+                    "total_bytes": rx + tx,
+                    "latency_ms": round(float(latency_ms or 0.0), 1),
+                    "ip": ip_str,
+                })
+
+    def get_snapshot(self) -> dict:
+        now = time.time()
+        cur_sec = int(now)
+        with self._lock:
+            uptime_sec = max(1.0, now - self.started_at)
+            # 최근 5초 평균 실시간 속도 (현재 진행 중인 초 버킷을 제외한 직전 5초 또는 포함 5초)
+            window_secs = [cur_sec - i for i in range(5)]
+            win_rx = sum(self.sec_buckets.get(s, {}).get("rx", 0) for s in window_secs)
+            win_tx = sum(self.sec_buckets.get(s, {}).get("tx", 0) for s in window_secs)
+            win_reqs = sum(self.sec_buckets.get(s, {}).get("reqs", 0) for s in window_secs)
+            win_cam = sum(self.sec_buckets.get(s, {}).get("cam_bytes", 0) for s in window_secs)
+
+            cur_rx_bps = round(win_rx / 5.0, 1)
+            cur_tx_bps = round(win_tx / 5.0, 1)
+            cur_rps = round(win_reqs / 5.0, 2)
+            cur_cam_bps = round(win_cam / 5.0, 1)
+
+            if cur_rx_bps > self.peak_rx_bps:
+                self.peak_rx_bps = cur_rx_bps
+            if cur_tx_bps > self.peak_tx_bps:
+                self.peak_tx_bps = cur_tx_bps
+            if cur_rps > self.peak_rps:
+                self.peak_rps = cur_rps
+
+            timeline_60s = []
+            for s in range(cur_sec - 59, cur_sec + 1):
+                b = self.sec_buckets.get(s, {})
+                rx_v = int(b.get("rx", 0))
+                tx_v = int(b.get("tx", 0))
+                rq_v = int(b.get("reqs", 0))
+                timeline_60s.append({
+                    "sec": s,
+                    "label": time.strftime("%H:%M:%S", time.localtime(s)),
+                    "rx_bytes": rx_v,
+                    "tx_bytes": tx_v,
+                    "total_bytes": rx_v + tx_v,
+                    "reqs": rq_v,
+                })
+
+            total_bytes_all = max(1, self.total_rx_bytes + self.total_tx_bytes)
+            categories_list = []
+            for k in self.CATEGORY_META:
+                c = self.categories[k]
+                c_tot = c["rx_bytes"] + c["tx_bytes"]
+                c_win = sum(self.sec_buckets.get(s, {}).get("cats", {}).get(k, 0) for s in window_secs)
+                categories_list.append({
+                    "key": k,
+                    "label": c["label"],
+                    "color": c["color"],
+                    "requests": c["requests"],
+                    "rx_bytes": c["rx_bytes"],
+                    "tx_bytes": c["tx_bytes"],
+                    "total_bytes": c_tot,
+                    "current_bps": round(c_win / 5.0, 1),
+                    "share_pct": round((c_tot / total_bytes_all) * 100.0, 1) if (self.total_rx_bytes + self.total_tx_bytes) > 0 else 0.0,
+                })
+
+            top_endpoints = sorted(
+                [
+                    {
+                        "method": ep["method"],
+                        "path": ep["path"],
+                        "category": ep["category"],
+                        "requests": ep["requests"],
+                        "rx_bytes": ep["rx_bytes"],
+                        "tx_bytes": ep["tx_bytes"],
+                        "total_bytes": ep["rx_bytes"] + ep["tx_bytes"],
+                        "avg_ms": round(ep["total_ms"] / max(1, ep["requests"]), 1),
+                        "last_status": ep["last_status"],
+                        "last_seen_ago": max(0, int(now - ep["last_seen"])),
+                    }
+                    for ep in self.endpoints.values()
+                ],
+                key=lambda x: (x["total_bytes"], x["requests"]),
+                reverse=True,
+            )[:12]
+
+            active_ip_count_5m = sum(1 for c in self.clients.values() if (now - c["last_seen"]) <= 300.0)
+            top_clients = sorted(
+                [
+                    {
+                        "ip": cl["ip"],
+                        "requests": cl["requests"],
+                        "rx_bytes": cl["rx_bytes"],
+                        "tx_bytes": cl["tx_bytes"],
+                        "total_bytes": cl["rx_bytes"] + cl["tx_bytes"],
+                        "last_path": cl["last_path"],
+                        "last_seen_ago": max(0, int(now - cl["last_seen"])),
+                        "is_active": (now - cl["last_seen"]) <= 60.0,
+                        "user_agent": cl["user_agent"],
+                    }
+                    for cl in self.clients.values()
+                ],
+                key=lambda x: (x["total_bytes"], x["requests"]),
+                reverse=True,
+            )[:12]
+
+            cam_cat = self.categories["CAMERA"]
+            cam_total_bytes = cam_cat["rx_bytes"] + cam_cat["tx_bytes"]
+
+            return {
+                "status": "ok",
+                "server_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+                "uptime_sec": int(uptime_sec),
+                "total_requests": self.total_requests,
+                "total_rx_bytes": self.total_rx_bytes,
+                "total_tx_bytes": self.total_tx_bytes,
+                "total_bytes": self.total_rx_bytes + self.total_tx_bytes,
+                "current_rx_bps": cur_rx_bps,
+                "current_tx_bps": cur_tx_bps,
+                "current_total_bps": round(cur_rx_bps + cur_tx_bps, 1),
+                "current_rps": cur_rps,
+                "current_cam_bps": cur_cam_bps,
+                "cam_total_bytes": cam_total_bytes,
+                "peak_rx_bps": self.peak_rx_bps,
+                "peak_tx_bps": self.peak_tx_bps,
+                "peak_rps": self.peak_rps,
+                "status_counts": dict(self.status_counts),
+                "active_ip_count_5m": active_ip_count_5m,
+                "total_unique_ips": len(self.clients),
+                "categories": categories_list,
+                "timeline_60s": timeline_60s,
+                "top_endpoints": top_endpoints,
+                "top_clients": top_clients,
+                "recent_requests": list(self.recent_requests),
+            }
+
+
+traffic_monitor = ServerTrafficMonitor()

@@ -251,16 +251,20 @@
         <!-- 좌측 사이드바 메뉴 -->
         <aside class="admin-sidebar">
             <div class="side-label">ADMIN MENU</div>
-            <button type="button" class="side-tab active" onclick="switchAdminTab('users', this)">
+            <button type="button" id="sideBtn_users" class="side-tab {% if initial_tab != 'traffic' %}active{% endif %}" onclick="switchAdminTab('users', this)">
                 <span>👥 방송자 회원 승인 관리</span>
                 {% if pending_count > 0 %}
                 <span class="count-pill">{{ pending_count }}</span>
                 {% endif %}
             </button>
-            <button type="button" class="side-tab" onclick="switchAdminTab('invites', this)">
+            <button type="button" id="sideBtn_traffic" class="side-tab {% if initial_tab == 'traffic' %}active{% endif %}" onclick="switchAdminTab('traffic', this)">
+                <span>📊 트래픽 관리</span>
+                <span class="count-pill" id="sideTrafficLiveBadge" style="background:#0ea5e9;">LIVE</span>
+            </button>
+            <button type="button" id="sideBtn_invites" class="side-tab" onclick="switchAdminTab('invites', this)">
                 <span>🔑 초대 코드 발급/관리</span>
             </button>
-            <button type="button" class="side-tab" onclick="switchAdminTab('security', this)">
+            <button type="button" id="sideBtn_security" class="side-tab" onclick="switchAdminTab('security', this)">
                 <span>🛡️ 비밀번호 변경 & 감사로그</span>
             </button>
         </aside>
@@ -271,17 +275,17 @@
             <div class="kpi-row">
                 <div class="kpi-card {% if pending_count > 0 %}pending-alert{% endif %}">
                     <div class="kpi-title">⏳ 가입 승인 대기 (PENDING)</div>
-                    <div class="kpi-num" style="color:{% if pending_count > 0 %}#fcd34d{% else %}#f8fafc{% endif %};">
+                    <div class="kpi-num" style="color:{% if pending_count > 0 %}#d97706{% else %}#0f172a{% endif %};">
                         {{ pending_count }}명
                     </div>
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">✅ 승인 완료 방송자 (APPROVED)</div>
-                    <div class="kpi-num" style="color:#6ee7b7;">{{ approved_count }}명</div>
+                    <div class="kpi-num" style="color:#059669;">{{ approved_count }}명</div>
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">🔑 활성 초대 코드</div>
-                    <div class="kpi-num" style="color:#a5b4fc;">{{ active_invites_count }}개</div>
+                    <div class="kpi-num" style="color:#2563eb;">{{ active_invites_count }}개</div>
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">📦 등록된 방송 상품</div>
@@ -290,7 +294,7 @@
             </div>
 
             <!-- 탭 1: 방송자 회원 승인 및 계정 관리 -->
-            <div id="adminTab_users" class="tab-section active">
+            <div id="adminTab_users" class="tab-section {% if initial_tab != 'traffic' %}active{% endif %}">
                 <section class="panel">
                     <div class="panel-head">
                         <div>
@@ -482,16 +486,225 @@
                     </div>
                 </section>
             </div>
+
+            <!-- 탭 4: 📊 실시간 서버 트래픽 관리 (Traffic Management) -->
+            <div id="adminTab_traffic" class="tab-section {% if initial_tab == 'traffic' %}active{% endif %}">
+                <!-- 상단 제어 헤더 패널 -->
+                <section class="panel" style="padding:18px 22px;">
+                    <div class="panel-head" style="margin-bottom:0;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <h2>📊 실시간 서버 인입·송출 트래픽 관제 (Traffic Monitor)</h2>
+                                <span id="tfLiveStatusPill" class="status-pill APPROVED">🟢 2초 실시간 갱신 중</span>
+                                <span id="tfUptimeBadge" style="font-size:0.78rem; font-weight:700; color:#475569; background:#f1f5f9; padding:4px 10px; border-radius:999px;">가동시간: 0분</span>
+                            </div>
+                            <p style="font-size:0.83rem; color:var(--text-muted); margin-top:4px;">
+                                서버로 유입되는 모든 HTTP/HTTPS 요청의 수신(Inbound)·송신(Outbound) 대역폭, 초당 요청 수(RPS), 카메라/쇼핑몰/스튜디오 카테고리별 점유율 및 접속 IP를 실시간으로 모니터링합니다.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" id="btnToggleTrafficPoll" class="btn-act primary" onclick="toggleTrafficAutoPoll()">⏸️ 일시정지</button>
+                            <button type="button" class="btn-act" onclick="fetchTrafficSnapshot()">🔄 즉시 갱신</button>
+                            <button type="button" class="btn-act reject" onclick="resetTrafficStats()">🗑️ 누적 트래픽 초기화</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 6대 실시간 트래픽 KPI 카드 -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(195px, 1fr)); gap:14px;">
+                    <div class="kpi-card" style="border-left:4px solid #0ea5e9;">
+                        <div class="kpi-title">📥 현재 수신 속도 (Inbound)</div>
+                        <div class="kpi-num" id="tfCurRxBps" style="font-size:1.55rem; color:#0284c7;">0 B/s</div>
+                        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:4px;">
+                            누적 수신: <strong id="tfTotRxBytes" style="color:#0f172a;">0 B</strong> · 피크: <span id="tfPeakRxBps">0 B/s</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" style="border-left:4px solid #2563eb;">
+                        <div class="kpi-title">📤 현재 송신 속도 (Outbound)</div>
+                        <div class="kpi-num" id="tfCurTxBps" style="font-size:1.55rem; color:#1d4ed8;">0 B/s</div>
+                        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:4px;">
+                            누적 송신: <strong id="tfTotTxBytes" style="color:#0f172a;">0 B</strong> · 피크: <span id="tfPeakTxBps">0 B/s</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" style="border-left:4px solid #10b981;">
+                        <div class="kpi-title">⚡ 초당 요청 수 (RPS)</div>
+                        <div class="kpi-num" id="tfCurRps" style="font-size:1.55rem; color:#059669;">0 req/s</div>
+                        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:4px;">
+                            총 요청 수: <strong id="tfTotReqs" style="color:#0f172a;">0건</strong> · 피크: <span id="tfPeakRps">0/s</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" style="border-left:4px solid #8b5cf6;">
+                        <div class="kpi-title">📹 카메라 / 영상 트래픽</div>
+                        <div class="kpi-num" id="tfCamBps" style="font-size:1.55rem; color:#6d28d9;">0 B/s</div>
+                        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:4px;">
+                            누적 영상: <strong id="tfCamTotBytes" style="color:#0f172a;">0 B</strong>
+                        </div>
+                    </div>
+                    <div class="kpi-card" style="border-left:4px solid #f59e0b;">
+                        <div class="kpi-title">💾 응답 상태 & 304 캐시 절감</div>
+                        <div class="kpi-num" id="tfStatus304Cnt" style="font-size:1.55rem; color:#d97706;">304: 0건</div>
+                        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:4px;" id="tfStatusSummaryText">
+                            2xx: 0 · 4xx: 0 · 5xx: 0
+                        </div>
+                    </div>
+                    <div class="kpi-card" style="border-left:4px solid #0f172a;">
+                        <div class="kpi-title">🌐 활성 접속 클라이언트 IP</div>
+                        <div class="kpi-num" id="tfActiveIps" style="font-size:1.55rem; color:#0f172a;">0개</div>
+                        <div style="font-size:0.76rem; color:var(--text-muted); margin-top:4px;">
+                            누적 고유 IP: <strong id="tfUniqueIps" style="color:#0f172a;">0개</strong> (최근 5분 기준)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 최근 60초 실시간 대역폭(Inbound / Outbound) 차트 -->
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>📈 최근 60초 실시간 네트워크 대역폭 추이 (Inbound vs Outbound)</h2>
+                            <p style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+                                하늘색(수신 Inbound) · 파란색(송신 Outbound) 초당 트래픽 변화 그래프입니다.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:14px; font-size:0.8rem; font-weight:800;">
+                            <span style="color:#0ea5e9;">● 수신 (Inbound)</span>
+                            <span style="color:#2563eb;">● 송신 (Outbound)</span>
+                            <span style="color:#059669;" id="tfChartMaxLabel">최대: 0 KB/s</span>
+                        </div>
+                    </div>
+                    <div style="width:100%; height:210px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:10px; position:relative;">
+                        <canvas id="trafficTimelineCanvas" style="width:100%; height:100%; display:block;"></canvas>
+                    </div>
+                </section>
+
+                <!-- 기능 카테고리별 트래픽 분포 -->
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>🗂️ 기능 카테고리별 서버 트래픽 분석</h2>
+                            <p style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+                                카메라 영상, 오디오, RTMP 방송, 쇼핑몰 연동, 스튜디오 관제, 실시간 채팅 등 영역별 트래픽 점유율입니다.
+                            </p>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>트래픽 카테고리</th>
+                                    <th>현재 속도</th>
+                                    <th>누적 요청 수</th>
+                                    <th>수신 (Inbound)</th>
+                                    <th>송신 (Outbound)</th>
+                                    <th>총 누적 트래픽</th>
+                                    <th style="min-width:180px;">점유율 (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tfCategoryTableBody">
+                                <tr><td colspan="7" style="color:var(--text-muted);">트래픽 데이터를 불러오는 중...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- 2열 그리드: 접속 IP별 트래픽 & 상위 엔드포인트 Top 12 -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(460px, 1fr)); gap:18px;">
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <h2>🌐 접속 클라이언트 IP별 트래픽 현황 (Top 12)</h2>
+                            </div>
+                        </div>
+                        <div style="overflow-x:auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>접속 IP</th>
+                                        <th>상태</th>
+                                        <th>요청 수</th>
+                                        <th>수신 / 송신</th>
+                                        <th>총 트래픽</th>
+                                        <th>최근 경로</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tfClientIpTableBody">
+                                    <tr><td colspan="6" style="color:var(--text-muted);">데이터 없음</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <h2>🔥 트래픽 상위 API / 페이지 엔드포인트 (Top 12)</h2>
+                            </div>
+                        </div>
+                        <div style="overflow-x:auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>요청 경로 (Endpoint)</th>
+                                        <th>호출 수</th>
+                                        <th>총 트래픽</th>
+                                        <th>평균 응답속도</th>
+                                        <th>최근 상태</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tfEndpointTableBody">
+                                    <tr><td colspan="5" style="color:var(--text-muted);">데이터 없음</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- 실시간 인입 요청 로그 -->
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>⚡ 실시간 서버 인입 요청 스트림 (최근 40건)</h2>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto; max-height:360px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>시각</th>
+                                    <th>Method</th>
+                                    <th>요청 경로 (Path)</th>
+                                    <th>카테고리</th>
+                                    <th>상태코드</th>
+                                    <th>수신 (RX)</th>
+                                    <th>송신 (TX)</th>
+                                    <th>응답속도</th>
+                                    <th>클라이언트 IP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tfRecentReqTableBody">
+                                <tr><td colspan="9" style="color:var(--text-muted);">최근 요청 로그가 없습니다.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
         </main>
     </div>
 
     <script>
+        let trafficPollTimer = null;
+        let isTrafficAutoPoll = true;
+        let lastTrafficSnapshot = {{ (traffic_snapshot or {}) | tojson }};
+
         function switchAdminTab(tabName, btnEl) {
             document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.side-tab').forEach(el => el.classList.remove('active'));
             const target = document.getElementById('adminTab_' + tabName);
             if (target) target.classList.add('active');
-            if (btnEl) btnEl.classList.add('active');
+            const sideBtn = btnEl || document.getElementById('sideBtn_' + tabName);
+            if (sideBtn) sideBtn.classList.add('active');
+            if (tabName === 'traffic') {
+                fetchTrafficSnapshot();
+            }
         }
 
         function filterUsersTable() {
@@ -609,6 +822,315 @@
             alert(data.message || (res.ok ? '비밀번호 변경 완료' : '변경 실패'));
             if (res.ok) document.getElementById('ownNewPassword').value = '';
         }
+
+        function formatBytes(bytes) {
+            const b = Number(bytes) || 0;
+            if (b < 1024) return b + ' B';
+            if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+            if (b < 1024 * 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + ' MB';
+            return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        function formatBps(bps) {
+            const b = Number(bps) || 0;
+            if (b < 1024) return Math.round(b) + ' B/s';
+            if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB/s';
+            return (b / (1024 * 1024)).toFixed(2) + ' MB/s';
+        }
+
+        function formatUptime(sec) {
+            const s = Math.max(0, Math.floor(Number(sec) || 0));
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const r = s % 60;
+            if (h > 0) return `${h}시간 ${m}분 ${r}초`;
+            if (m > 0) return `${m}분 ${r}초`;
+            return `${r}초`;
+        }
+
+        function escapeHtmlText(str) {
+            return String(str == null ? '' : str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function renderTrafficDashboard(snap) {
+            if (!snap || typeof snap !== 'object') return;
+            lastTrafficSnapshot = snap;
+
+            const setTxt = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+
+            setTxt('tfUptimeLabel', formatUptime(snap.uptime_sec));
+            setTxt('tfActiveIpLabel', (snap.active_ip_count_5m || 0) + '개 IP');
+            const nowStr = new Date().toLocaleTimeString('ko-KR', {hour12: false});
+            setTxt('tfLastUpdatedLabel', nowStr);
+
+            setTxt('tfCurrentRps', (Number(snap.current_rps) || 0).toFixed(1));
+            setTxt('tfPeakRps', (Number(snap.peak_rps) || 0).toFixed(1));
+            setTxt('tfCurrentRxBps', formatBps(snap.current_rx_bps));
+            setTxt('tfPeakRxBps', formatBps(snap.peak_rx_bps));
+            setTxt('tfCurrentTxBps', formatBps(snap.current_tx_bps));
+            setTxt('tfPeakTxBps', formatBps(snap.peak_tx_bps));
+            setTxt('tfCurrentCamBps', formatBps(snap.current_cam_bps));
+            setTxt('tfTotalRequests', Number(snap.total_requests || 0).toLocaleString());
+            setTxt('tfTotalTraffic', formatBytes(snap.total_bytes));
+            setTxt('tfTotalRxBytes', formatBytes(snap.total_rx_bytes));
+            setTxt('tfTotalTxBytes', formatBytes(snap.total_tx_bytes));
+
+            const st = snap.status_counts || {};
+            setTxt('tfStatus2xx', Number(st['2xx'] || 0).toLocaleString());
+            setTxt('tfStatus304', Number(st['304'] || 0).toLocaleString());
+            setTxt('tfStatus4xx', Number(st['4xx'] || 0).toLocaleString());
+            setTxt('tfStatus5xx', Number(st['5xx'] || 0).toLocaleString());
+
+            // 1. Category Table
+            const catBody = document.getElementById('tfCategoryTableBody');
+            if (catBody && Array.isArray(snap.categories)) {
+                catBody.innerHTML = snap.categories.map(c => {
+                    const pct = Math.min(100, Math.max(0, Number(c.share_pct) || 0));
+                    return `<tr>
+                        <td><span class="cat-pill"><span class="cat-dot" style="background:${escapeHtmlText(c.color || '#2563eb')};"></span>${escapeHtmlText(c.label)}</span></td>
+                        <td style="font-weight:700;">${Number(c.requests || 0).toLocaleString()}</td>
+                        <td>${formatBytes(c.rx_bytes)}</td>
+                        <td>${formatBytes(c.tx_bytes)}</td>
+                        <td style="font-weight:700;color:var(--accent-blue);">${formatBps(c.current_bps)}</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <div class="traffic-bar-wrap"><div class="traffic-bar-fill" style="width:${pct}%;background:${escapeHtmlText(c.color || '#2563eb')};"></div></div>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-secondary);min-width:36px;">${pct.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+
+            // 2. Client IP Table
+            const ipBody = document.getElementById('tfClientIpTableBody');
+            if (ipBody && Array.isArray(snap.top_clients)) {
+                if (snap.top_clients.length === 0) {
+                    ipBody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);">집계된 클라이언트 IP가 없습니다.</td></tr>';
+                } else {
+                    ipBody.innerHTML = snap.top_clients.map(ip => {
+                        const ago = Number(ip.last_seen_ago_sec || 0);
+                        const agoTxt = ago < 2 ? '방금 전' : `${ago.toFixed(0)}초 전`;
+                        return `<tr>
+                            <td class="mono" style="font-weight:800;color:var(--text-primary);">${escapeHtmlText(ip.ip)}</td>
+                            <td>${Number(ip.requests || 0).toLocaleString()}</td>
+                            <td>${formatBytes(ip.rx_bytes)}</td>
+                            <td>${formatBytes(ip.tx_bytes)}</td>
+                            <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlText(ip.last_path)}</td>
+                            <td style="color:${ago < 10 ? '#059669' : 'var(--text-muted)'};font-weight:700;">${agoTxt}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            }
+
+            // 3. Top Endpoints Table
+            const epBody = document.getElementById('tfEndpointTableBody');
+            if (epBody && Array.isArray(snap.top_endpoints)) {
+                if (snap.top_endpoints.length === 0) {
+                    epBody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted);">집계된 엔드포인트가 없습니다.</td></tr>';
+                } else {
+                    epBody.innerHTML = snap.top_endpoints.map(ep => {
+                        const methodClass = 'method-' + String(ep.method || 'GET').toUpperCase();
+                        const stCode = Number(ep.last_status || 200);
+                        const stClass = stCode === 304 ? 'http-304' : (stCode >= 500 ? 'http-5xx' : (stCode >= 400 ? 'http-4xx' : 'http-2xx'));
+                        return `<tr>
+                            <td><span class="method-badge ${methodClass}">${escapeHtmlText(ep.method)}</span></td>
+                            <td class="mono" style="font-weight:700;">${escapeHtmlText(ep.path)}</td>
+                            <td><span class="cat-pill">${escapeHtmlText(ep.category_label || ep.category)}</span></td>
+                            <td style="font-weight:800;">${Number(ep.requests || 0).toLocaleString()}</td>
+                            <td>${formatBytes(ep.rx_bytes)}</td>
+                            <td>${formatBytes(ep.tx_bytes)}</td>
+                            <td class="mono">${Number(ep.avg_latency_ms || 0).toFixed(1)} ms</td>
+                            <td><span class="${stClass}">${stCode}</span></td>
+                            <td style="color:${Number(ep.errors || 0) > 0 ? 'var(--accent-red)' : 'var(--text-muted)'};font-weight:700;">${Number(ep.errors || 0)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            }
+
+            // 4. Recent Requests Table
+            const recBody = document.getElementById('tfRecentReqTableBody');
+            if (recBody && Array.isArray(snap.recent_requests)) {
+                if (snap.recent_requests.length === 0) {
+                    recBody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted);">최근 요청 로그가 없습니다.</td></tr>';
+                } else {
+                    recBody.innerHTML = snap.recent_requests.map(r => {
+                        const methodClass = 'method-' + String(r.method || 'GET').toUpperCase();
+                        const stCode = Number(r.status || 200);
+                        const stClass = stCode === 304 ? 'http-304' : (stCode >= 500 ? 'http-5xx' : (stCode >= 400 ? 'http-4xx' : 'http-2xx'));
+                        return `<tr>
+                            <td class="mono" style="color:var(--text-secondary);">${escapeHtmlText(r.time)}</td>
+                            <td><span class="method-badge ${methodClass}">${escapeHtmlText(r.method)}</span></td>
+                            <td class="mono" style="font-weight:700;">${escapeHtmlText(r.path)}</td>
+                            <td><span class="cat-pill">${escapeHtmlText(r.category_label || r.category)}</span></td>
+                            <td><span class="${stClass}">${stCode}</span></td>
+                            <td class="mono">${formatBytes(r.rx_bytes)}</td>
+                            <td class="mono">${formatBytes(r.tx_bytes)}</td>
+                            <td class="mono">${Number(r.latency_ms || 0).toFixed(1)} ms</td>
+                            <td class="mono" style="color:var(--text-secondary);">${escapeHtmlText(r.ip)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+            }
+
+            drawTrafficTimelineChart(snap.timeline_60s || []);
+        }
+
+        function drawTrafficTimelineChart(timeline) {
+            const canvas = document.getElementById('trafficTimelineCanvas');
+            if (!canvas || !canvas.getContext) return;
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            const width = Math.max(320, rect.width || 800);
+            const height = Math.max(150, rect.height || 190);
+            if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+                canvas.width = Math.floor(width * dpr);
+                canvas.height = Math.floor(height * dpr);
+            }
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, width, height);
+
+            const padL = 56, padR = 44, padT = 16, padB = 26;
+            const plotW = Math.max(10, width - padL - padR);
+            const plotH = Math.max(10, height - padT - padB);
+
+            const n = timeline.length;
+            let maxBytes = 1024;
+            let maxReqs = 5;
+            for (let i = 0; i < n; i++) {
+                const b = Math.max(Number(timeline[i].rx_bytes || 0), Number(timeline[i].tx_bytes || 0));
+                const r = Number(timeline[i].requests || 0);
+                if (b > maxBytes) maxBytes = b;
+                if (r > maxReqs) maxReqs = r;
+            }
+            maxBytes = maxBytes * 1.15;
+            maxReqs = Math.ceil(maxReqs * 1.2);
+
+            // Grid lines
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = '#64748b';
+            ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+            const steps = 4;
+            for (let s = 0; s <= steps; s++) {
+                const y = padT + (plotH * s / steps);
+                ctx.beginPath();
+                ctx.moveTo(padL, y);
+                ctx.lineTo(padL + plotW, y);
+                ctx.stroke();
+
+                const valBytes = maxBytes * (1 - s / steps);
+                ctx.textAlign = 'right';
+                ctx.fillText(formatBps(valBytes), padL - 6, y + 3);
+
+                const valReq = Math.round(maxReqs * (1 - s / steps));
+                ctx.textAlign = 'left';
+                ctx.fillText(valReq + ' req', padL + plotW + 6, y + 3);
+            }
+
+            // X-axis time labels
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#64748b';
+            ctx.fillText('-60초', padL, height - 6);
+            ctx.fillText('-30초', padL + plotW * 0.5, height - 6);
+            ctx.fillText('현재 (0초)', padL + plotW, height - 6);
+
+            if (n > 1) {
+                const drawSeries = (key, maxVal, strokeColor, fillColor) => {
+                    ctx.beginPath();
+                    for (let i = 0; i < n; i++) {
+                        const x = padL + (plotW * i / (n - 1));
+                        const v = Math.min(maxVal, Math.max(0, Number(timeline[i][key] || 0)));
+                        const y = padT + plotH - (plotH * (v / maxVal));
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.strokeStyle = strokeColor;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    if (fillColor) {
+                        ctx.lineTo(padL + plotW, padT + plotH);
+                        ctx.lineTo(padL, padT + plotH);
+                        ctx.closePath();
+                        ctx.fillStyle = fillColor;
+                        ctx.fill();
+                    }
+                };
+
+                drawSeries('tx_bytes', maxBytes, '#059669', 'rgba(5, 150, 105, 0.10)');
+                drawSeries('rx_bytes', maxBytes, '#2563eb', 'rgba(37, 99, 235, 0.14)');
+                drawSeries('requests', maxReqs, '#d97706', null);
+            }
+            ctx.restore();
+        }
+
+        async function fetchTrafficSnapshot() {
+            try {
+                const res = await fetch('/admin/api/traffic', {cache: 'no-store'});
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data && data.status === 'ok') {
+                    renderTrafficDashboard(data.traffic || data);
+                }
+            } catch (e) {
+                console.warn('Traffic poll failed:', e);
+            }
+        }
+
+        function toggleTrafficAutoPoll() {
+            isTrafficAutoPoll = !isTrafficAutoPoll;
+            const btn = document.getElementById('tfAutoPollBtn');
+            const dot = document.getElementById('tfLiveDot');
+            if (btn) {
+                btn.textContent = isTrafficAutoPoll ? '⏸ 실시간 갱신 일시정지' : '▶ 실시간 갱신 재개';
+            }
+            if (dot) {
+                dot.style.background = isTrafficAutoPoll ? '#059669' : '#94a3b8';
+            }
+        }
+
+        async function resetTrafficStats() {
+            if (!confirm('누적 트래픽 통계를 초기화하시겠습니까?')) return;
+            const res = await fetch('/admin/api/traffic/reset', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                renderTrafficDashboard(data.traffic || data);
+            } else {
+                alert(data.message || '트래픽 통계 초기화 실패');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (lastTrafficSnapshot && Object.keys(lastTrafficSnapshot).length > 0) {
+                renderTrafficDashboard(lastTrafficSnapshot);
+            }
+            trafficPollTimer = setInterval(() => {
+                if (!isTrafficAutoPoll) return;
+                const tfTab = document.getElementById('adminTab_traffic');
+                if (tfTab && tfTab.classList.contains('active')) {
+                    fetchTrafficSnapshot();
+                }
+            }, 2000);
+            window.addEventListener('resize', () => {
+                if (lastTrafficSnapshot && lastTrafficSnapshot.timeline_60s) {
+                    drawTrafficTimelineChart(lastTrafficSnapshot.timeline_60s);
+                }
+            });
+        });
     </script>
 </body>
 </html>
