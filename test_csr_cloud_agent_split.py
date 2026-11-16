@@ -239,6 +239,29 @@ def run_tests():
         assert r_cloud_host["cam1_url"].startswith("https://192.168.")
         assert r_cloud_host["remote_cam1_url"].startswith("https://49.50.132.140:5443/remote-cam?")
 
+        # 로컬 PC가 /api/agent/bridge-sync로 실제 댁내 공유기 Wi-Fi IP(192.168.0.69)를 등록하면 클라우드 자체 IP(192.168.0.6) 대신 192.168.0.69가 반환되는지 검증
+        r_bsync = agent_client.post(
+            "/api/agent/bridge-sync?agent_bridge=1",
+            headers={"X-Local-Agent-Bridge": "1", "X-Test-Bridge-Sync": "1"},
+            json={
+                "local_ip": "192.168.0.69",
+                "pc_ip": "192.168.1.103",
+                "https_port": 5443,
+                "http_port": 5000,
+                "cameras": {"1": {"client_state": "page_loaded", "client_ip": "192.168.0.15", "client_message": "폰 접속됨"}},
+            },
+        )
+        assert r_bsync.status_code == 200
+        r_cloud_bridged = agent_client.get(
+            "/api/camera/host-info?agent_bridge=1",
+            headers={"Host": "49.50.132.140:5000", "X-Local-Agent-Bridge": "1"},
+        ).get_json()
+        assert r_cloud_bridged["local_ip"] == "192.168.0.69"
+        assert r_cloud_bridged["pc_ip"] == "192.168.1.103"
+        assert r_cloud_bridged["local_bridge_connected"] is True
+        assert r_cloud_bridged["local_https_url"].startswith("https://192.168.0.69:5443/cam?")
+        assert r_cloud_bridged["pc_direct_https_url"].startswith("https://192.168.1.103:5443/cam?")
+
         r_up = agent_client.post(
             f"/api/remote-cam/frame?cam=1&seq=1&src=remote_cam_1&cam_token={cam_token}",
             data=sample_jpeg,

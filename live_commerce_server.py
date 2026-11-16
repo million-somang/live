@@ -285,11 +285,14 @@ def _studio_security_gateway():
             ), 403
         return None
 
-    # 3. 로컬 에이전트 PNA 설정 및 헬스체크 조회 (GET /api/agent/cloud-config, /api/agent/health)
+    # 3. 로컬 에이전트 PNA 설정·헬스체크·클라우드 브릿지 동기화 조회/보고 (/api/agent/cloud-config, /api/agent/health, /api/agent/bridge-sync)
     if path in ("/api/agent/cloud-config", "/api/agent/health") and request.method == "GET":
         if _is_direct_loopback_request() or request.headers.get("Access-Control-Request-Private-Network") == "true" or request.headers.get("Origin"):
             return None
         if path == "/api/agent/health":
+            return None
+    if path == "/api/agent/bridge-sync" and request.method == "POST":
+        if request.headers.get("X-Local-Agent-Bridge") == "1" or request.args.get("agent_bridge") == "1":
             return None
 
     # 3-2. 클라우드 CSR 스튜디오 ↔ 로컬 PC 에이전트(127.0.0.1) 직결 브릿지 요청 허용 (서버 영상 트래픽 0바이트 모드)
@@ -4170,25 +4173,86 @@ def api_camera_client_log():
     return jsonify({"status": "ok", "cam": slot}), 200
 
 
+remote_bridged_local_host_info = {
+    "local_ip": "",
+    "pc_ip": "",
+    "https_port": 5443,
+    "http_port": 5000,
+    "updated_at": 0.0,
+    "cameras": {},
+}
+
+
+@app.route('/api/agent/bridge-sync', methods=['POST'])
+def api_agent_bridge_sync():
+    """방송자 로컬 PC 서버(192.168.0.69 등)가 클라우드 서버(49.50.132.140)로 실제 로컬 공유기 Wi-Fi IP 및 카메라 상태를 등록/동기화"""
+    data = request.get_json(silent=True) or {}
+    rep_local_ip = str(data.get("local_ip") or "").strip()
+    rep_pc_ip = str(data.get("pc_ip") or rep_local_ip).strip()
+    self_ip = get_local_ip()
+    is_test_sync = (request.headers.get("X-Test-Bridge-Sync") == "1")
+
+    # 클라우드 서버 자신이 자기 내부 IP(예: 192.168.0.6)를 덮어쓰지 않도록 방어
+    if not is_test_sync and rep_local_ip == self_ip and rep_pc_ip == self_ip:
+        return jsonify({"status": "ignored", "reason": "self_ip"}), 200
+
+    now_t = time.time()
+    if rep_local_ip:
+        remote_bridged_local_host_info["local_ip"] = rep_local_ip
+        remote_bridged_local_host_info["pc_ip"] = rep_pc_ip or rep_local_ip
+        remote_bridged_local_host_info["https_port"] = int(data.get("https_port") or 5443)
+        remote_bridged_local_host_info["http_port"] = int(data.get("http_port") or 5000)
+        remote_bridged_local_host_info["updated_at"] = now_t
+        cams_data = data.get("cameras")
+        if isinstance(cams_data, dict):
+            remote_bridged_local_host_info["cameras"] = cams_data
+            with latest_camera_lock:
+                for slot_num in (1, 2):
+                    c_info = cams_data.get(str(slot_num)) or cams_data.get(slot_num)
+                    if isinstance(c_info, dict):
+                        c_state = str(c_info.get("client_state") or "idle")
+                        if c_state in ("page_loaded", "requesting_camera", "streaming", "permission_denied", "no_mediadevices"):
+                            camera_channels[slot_num]["client_state"] = c_state
+                            camera_channels[slot_num]["client_message"] = str(c_info.get("client_message") or "")[:180]
+                            camera_channels[slot_num]["client_ip"] = str(c_info.get("client_ip") or "")
+                            camera_channels[slot_num]["client_updated_at"] = now_t
+
+    return jsonify({
+        "status": "ok",
+        "cam_token": get_studio_cam_token(),
+        "bridged_local_ip": remote_bridged_local_host_info["local_ip"],
+    }), 200
+
+
 @app.route('/api/camera/host-info', methods=['GET'])
 def api_camera_host_info():
     """스마트폰 접속용 [방식 1: 동일 네트워크 Wi-Fi 직결(192.168.x.x)] 및 [방식 2: 다른 네트워크 별도 카메라 페이지(/remote-cam)] 주소와 듀얼 카메라 상태 반환"""
     import time
+    now = time.time()
     req_cam = _parse_cam_slot(request.args.get('cam', 1), 1)
     ip = get_local_ip()
     wifi_ip = bridged_wifi_ip or setup_upnp_cross_subnet_bridge(ip) or ip
+
+    # 로컬 PC 에이전트가 원격 브릿지로 등록한 실제 공유기 Wi-Fi IP(예: 192.168.0.69)가 있으면 클라우드 자체 VPC IP(192.168.0.6) 대신 최우선 사용
+    bridge_fresh = (
+        bool(remote_bridged_local_host_info.get("local_ip"))
+        and (now - float(remote_bridged_local_host_info.get("updated_at") or 0.0)) < 30.0
+    )
+    eff_wifi_ip = remote_bridged_local_host_info["local_ip"] if bridge_fresh else wifi_ip
+    eff_pc_ip = remote_bridged_local_host_info["pc_ip"] if bridge_fresh else ip
+
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     cam_tok = get_studio_cam_token()
     _, req_host = _extract_request_hostname_and_scheme()
-    ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else wifi_ip
+    ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else eff_wifi_ip
 
     # 방식 1: 같은 네트워크 (동일 공유기 Wi-Fi 192.168.x.x)
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
-    cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=1"
-    cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=2"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    local_https_url = f"https://{eff_wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    cam1_https_url = f"https://{eff_wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=1"
+    cam2_https_url = f"https://{eff_wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=2"
+    pc_direct_https_url = f"https://{eff_pc_ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    http_cam_url = f"http://{eff_wifi_ip}:{port}/cam?cam_token={cam_tok}&cam={req_cam}"
 
     # 방식 2: 다른 네트워크 (LTE/5G · 외부 Wi-Fi 전용 원격 카메라 페이지 /remote-cam)
     remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=1"
@@ -4200,7 +4264,6 @@ def api_camera_host_info():
     pub_url = f"{pub_base}{'&' if '?' in pub_base else '?'}cam_token={cam_tok}"
     primary_url = cam2_https_url if req_cam == 2 else cam1_https_url
 
-    now = time.time()
     cameras_info = get_camera_channels_summary(now)
     switcher_info = get_camera_switcher_state()
     main_slot = switcher_info.get("active_main_cam", 1)
@@ -4216,10 +4279,11 @@ def api_camera_host_info():
     is_active = bool((has_frame and ts > 0 and (now - ts) < 5.0) or cam1_active or cam2_active or vdo_conn)
     return jsonify({
         "status": "ok",
-        "local_ip": wifi_ip,
-        "pc_ip": ip,
+        "local_ip": eff_wifi_ip,
+        "pc_ip": eff_pc_ip,
         "server_host": ext_host,
-        "bridged_wifi_ip": wifi_ip,
+        "bridged_wifi_ip": eff_wifi_ip,
+        "local_bridge_connected": bridge_fresh,
         "port": port,
         "https_port": https_port,
         "cam_url": primary_url,
@@ -4319,16 +4383,23 @@ def api_camera_switcher():
 def api_camera_renew_url():
     """상위 Wi-Fi 대역(192.168.0.x) 포트포워딩 브릿지 및 공인 HTTPS 보안 터널 주소를 즉시 재설정/발급합니다."""
     global _public_tunnel_thread_started, public_tunnel_proc, public_tunnel_url
+    now = time.time()
     ip = get_local_ip()
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     wifi_ip = setup_upnp_cross_subnet_bridge(ip, ports=(https_port, port), force=True) or ip
+    bridge_fresh = (
+        bool(remote_bridged_local_host_info.get("local_ip"))
+        and (now - float(remote_bridged_local_host_info.get("updated_at") or 0.0)) < 30.0
+    )
+    eff_wifi_ip = remote_bridged_local_host_info["local_ip"] if bridge_fresh else wifi_ip
+    eff_pc_ip = remote_bridged_local_host_info["pc_ip"] if bridge_fresh else ip
     _, req_host = _extract_request_hostname_and_scheme()
-    ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else wifi_ip
+    ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else eff_wifi_ip
     cam_tok = get_studio_cam_token(force_new=True)
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}"
+    local_https_url = f"https://{eff_wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
+    pc_direct_https_url = f"https://{eff_pc_ip}:{https_port}/cam?cam_token={cam_tok}"
+    http_cam_url = f"http://{eff_wifi_ip}:{port}/cam?cam_token={cam_tok}"
     remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=1"
     remote_cam2_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=2"
 
@@ -4354,8 +4425,8 @@ def api_camera_renew_url():
 
     return jsonify({
         "status": "ok",
-        "local_ip": wifi_ip,
-        "pc_ip": ip,
+        "local_ip": eff_wifi_ip,
+        "pc_ip": eff_pc_ip,
         "cam_url": local_https_url,
         "cam1_url": f"{local_https_url}&cam=1",
         "cam2_url": f"{local_https_url}&cam=2",
@@ -14702,6 +14773,131 @@ def run_public_https_tunnel(http_port):
         time.sleep(5)
 
 
+def run_local_to_cloud_camera_bridge():
+    """
+    방송자 로컬 PC(예: 192.168.0.69 / 192.168.1.103)에서 실행 중일 때,
+    클라우드 스튜디오 서버(기본 http://49.50.132.140:5000)로:
+      1) 실제 댁내 공유기 Wi-Fi IP(192.168.0.69)와 PC IP(192.168.1.103)를 주기적으로 등록하여
+         클라우드 스튜디오 QR 코드가 클라우드 내부 IP(192.168.0.6) 대신 실제 PC IP(192.168.0.69)를 가리키도록 동기화하고,
+      2) 스마트폰이 로컬 PC(https://192.168.0.69:5443/cam)로 영상을 송출하면 Keep-Alive 소켓으로
+         클라우드 스튜디오에 프레임을 즉시 전달하여 크롬 PNA 차단 없이 화면이 바로 표시되도록 합니다.
+    """
+    import http.client
+    from urllib.parse import urlparse
+
+    cloud_url = (os.getenv("CLOUD_STUDIO_URL") or "http://49.50.132.140:5000").strip().rstrip("/")
+    if not cloud_url or os.getenv("DISABLE_CLOUD_BRIDGE") == "1":
+        return
+
+    parsed = urlparse(cloud_url)
+    cloud_host = parsed.hostname or "49.50.132.140"
+    cloud_port = parsed.port or (443 if parsed.scheme == "https" else 5000)
+    use_https = (parsed.scheme == "https")
+
+    last_sync_ts = 0.0
+    last_forwarded_seq = {1: 0, 2: 0}
+    cloud_cam_tok = ""
+    conn = None
+
+    def get_conn():
+        nonlocal conn
+        if conn is None:
+            if use_https:
+                import ssl
+                ctx = ssl._create_unverified_context()
+                conn = http.client.HTTPSConnection(cloud_host, cloud_port, timeout=2.5, context=ctx)
+            else:
+                conn = http.client.HTTPConnection(cloud_host, cloud_port, timeout=2.5)
+        return conn
+
+    def reset_conn():
+        nonlocal conn
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = None
+
+    while True:
+        try:
+            now = time.time()
+            ip = get_local_ip()
+            wifi_ip = bridged_wifi_ip or ip
+            https_port = int(os.getenv("HTTPS_PORT", 5443))
+            http_port = int(os.getenv("SERVER_PORT", 5000))
+
+            # 클라우드 서버 자신(192.168.0.6)에서는 실행 중단
+            if ip == "192.168.0.6" and wifi_ip == "192.168.0.6":
+                return
+
+            # 1) 2초 주기로 로컬 IP(192.168.0.69) 및 카메라 상태 등록
+            if (now - last_sync_ts) >= 2.0:
+                last_sync_ts = now
+                cams_summary = get_camera_channels_summary(now)
+                payload = json.dumps({
+                    "local_ip": wifi_ip,
+                    "pc_ip": ip,
+                    "https_port": https_port,
+                    "http_port": http_port,
+                    "cameras": cams_summary,
+                }).encode("utf-8")
+                try:
+                    c = get_conn()
+                    c.request(
+                        "POST",
+                        "/api/agent/bridge-sync?agent_bridge=1",
+                        body=payload,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Local-Agent-Bridge": "1",
+                            "Connection": "keep-alive",
+                        },
+                    )
+                    resp = c.getresponse()
+                    raw = resp.read()
+                    if resp.status == 200 and raw:
+                        d = json.loads(raw.decode("utf-8", errors="ignore"))
+                        if d.get("cam_token"):
+                            cloud_cam_tok = str(d["cam_token"]).strip()
+                except Exception:
+                    reset_conn()
+
+            # 2) 로컬 PC에 새로 들어온 스마트폰 카메라 프레임이 있으면 즉시 클라우드 스튜디오로 전달
+            forwarded_any = False
+            for slot in (1, 2):
+                with latest_camera_lock:
+                    ch = camera_channels.get(slot, {})
+                    seq = int(ch.get("seq") or 0)
+                    frame_bytes = ch.get("frame")
+                    ts = float(ch.get("timestamp") or 0.0)
+                if frame_bytes and seq > last_forwarded_seq[slot] and (now - ts) < 5.0:
+                    last_forwarded_seq[slot] = seq
+                    tok_use = cloud_cam_tok or get_studio_cam_token()
+                    try:
+                        c = get_conn()
+                        c.request(
+                            "POST",
+                            f"/api/camera/frame?cam={slot}&seq={seq}&src=local_wifi_cam&cam_token={tok_use}",
+                            body=frame_bytes,
+                            headers={
+                                "Content-Type": "image/jpeg",
+                                "X-Cam-Token": tok_use,
+                                "Connection": "keep-alive",
+                            },
+                        )
+                        r_f = c.getresponse()
+                        r_f.read()
+                        forwarded_any = True
+                    except Exception:
+                        reset_conn()
+
+            time.sleep(0.025 if forwarded_any else 0.15)
+        except Exception:
+            reset_conn()
+            time.sleep(1.5)
+
+
 if __name__ == '__main__':
     init_excel()
 
@@ -14738,6 +14934,11 @@ if __name__ == '__main__':
     # 스마트폰 카메라 보안 컨텍스트(HTTPS) 로컬 포트 동시 가동
     https_thread = threading.Thread(target=run_https_cam_server, args=(host, https_port, local_ip), daemon=True)
     https_thread.start()
+
+    # 로컬 PC(Windows 등)에서 실행 중일 때 클라우드 스튜디오(49.50.132.140)로 실제 Wi-Fi IP(192.168.0.69) 및 카메라 프레임 자동 브릿지
+    if os.name == "nt" or os.getenv("ENABLE_LOCAL_TO_CLOUD_BRIDGE") == "1":
+        bridge_thread = threading.Thread(target=run_local_to_cloud_camera_bridge, daemon=True)
+        bridge_thread.start()
 
     # 사설 SSL 인증서 경고가 뜨거나 차단되는 스마트폰을 위해 공인 HTTPS 보안 터널(localhost.run)을 기본 자동 가동
     if os.getenv("ENABLE_PUBLIC_TUNNEL", "1") != "0":

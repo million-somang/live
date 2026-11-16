@@ -108,6 +108,15 @@
         const cloudPromise = nativeFetch(relPath, init).then(r => r.ok ? r.json() : null).catch(() => null);
         if (!bridgeState.connected) {
             const cloudData = await cloudPromise;
+            if (cloudData && cloudData.local_bridge_connected && cloudData.local_ip) {
+                bridgeState.cloudBridgeActive = true;
+                bridgeState.health = Object.assign({}, bridgeState.health || {}, {
+                    local_ip: cloudData.local_ip,
+                    pc_ip: cloudData.pc_ip || cloudData.local_ip,
+                    https_port: cloudData.https_port || 5443,
+                });
+                updateHeaderAgentBadgeUI();
+            }
             bridgeState.camSourceServer[1] = 'cloud';
             bridgeState.camSourceServer[2] = 'cloud';
             return new Response(JSON.stringify(cloudData || { status: 'error' }), {
@@ -266,7 +275,30 @@
             return true;
         }
 
-        const candidates = [LOCAL_AGENT_HTTP, LOCAL_AGENT_HTTPS];
+        // 비보안 HTTP(http://49.50.132.140:5000) 접속 시 크롬 PNA 정책이 127.0.0.1 직접 호출을 차단하므로
+        // 서버 간 역방향 브릿지(/api/agent/bridge-sync) 상태를 우선 확인하여 불필요한 127.0.0.1:5443 TLS 실패 소켓 생성을 방지
+        if (window.location.protocol === 'http:' && isRemoteCloudHost) {
+            try {
+                const rInfo = await nativeFetch('/api/camera/host-info');
+                if (rInfo.ok) {
+                    const dInfo = await rInfo.json();
+                    if (dInfo && dInfo.local_bridge_connected && dInfo.local_ip) {
+                        bridgeState.cloudBridgeActive = true;
+                        bridgeState.health = {
+                            status: 'ok',
+                            local_ip: dInfo.local_ip,
+                            pc_ip: dInfo.pc_ip || dInfo.local_ip,
+                            https_port: dInfo.https_port || 5443,
+                            ffmpeg_available: true,
+                        };
+                        updateHeaderAgentBadgeUI();
+                        return true;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        const candidates = window.location.protocol === 'http:' ? [LOCAL_AGENT_HTTP] : [LOCAL_AGENT_HTTP, LOCAL_AGENT_HTTPS];
         for (const base of candidates) {
             try {
                 const ctrl = new AbortController();
@@ -301,7 +333,7 @@
         const btn = document.getElementById('btnLocalAgentZeroTrafficBadge');
         const modalStatus = document.getElementById('localAgentModalStatusBox');
         if (btn) {
-            if (bridgeState.connected) {
+            if (bridgeState.connected || bridgeState.cloudBridgeActive) {
                 const ipTxt = (bridgeState.health && bridgeState.health.local_ip) ? ` · ${bridgeState.health.local_ip}` : '';
                 btn.style.background = '#ecfdf5';
                 btn.style.borderColor = '#10b981';
@@ -315,7 +347,7 @@
             }
         }
         if (modalStatus) {
-            if (bridgeState.connected) {
+            if (bridgeState.connected || bridgeState.cloudBridgeActive) {
                 const h = bridgeState.health || {};
                 modalStatus.style.background = '#ecfdf5';
                 modalStatus.style.borderColor = '#10b981';
