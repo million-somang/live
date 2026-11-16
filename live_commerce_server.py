@@ -3814,6 +3814,60 @@ def get_local_ip():
 _last_upnp_check_ts = 0.0
 
 
+def ensure_windows_firewall_edge_traversal(ports=(5443, 5000)):
+    """
+    이중 공유기(예: 상위 ipTIME 192.168.0.x -> 하위 TP-Link 192.168.1.x) 환경에서
+    UPnP 포트포워딩(192.168.0.69:5443 -> 192.168.1.103:5443)을 통해 들어오는 스마트폰 패킷은
+    Windows 방화벽에서 Edge Traversal(서브넷 간 NAT 통과) 패킷으로 분류됩니다.
+    python.exe 기본 규칙이 'Edge traversal: Defer to user'이면 백그라운드 프로세스에서 패킷이 자동 차단되므로
+    'edge=yes' 규칙을 자동 확인/등록합니다.
+    """
+    if os.name != "nt" or "pytest" in sys.modules or "unittest" in sys.modules:
+        return
+    try:
+        chk = subprocess.run(
+            ["netsh", "advfirewall", "firewall", "show", "rule", "name=LiveCommerce_Camera_5443", "verbose"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        out = (chk.stdout or "")
+        if "LiveCommerce_Camera_5443" in out and ("Yes" in out or "예" in out):
+            return
+    except Exception:
+        pass
+
+    port_str = ",".join(str(p) for p in ports)
+    cmd_args = (
+        f'/c netsh advfirewall firewall set rule name="python.exe" new edge=yes >nul 2>&1 & '
+        f'netsh advfirewall firewall delete rule name="LiveCommerce_Camera_5443" >nul 2>&1 & '
+        f'netsh advfirewall firewall add rule name="LiveCommerce_Camera_5443" '
+        f'dir=in action=allow protocol=TCP localport={port_str} edge=yes profile=any remoteip=any >nul 2>&1'
+    )
+    try:
+        # 1차: 현재 권한으로 시도
+        subprocess.run(["cmd.exe", *cmd_args.split()], capture_output=True, timeout=4)
+        chk2 = subprocess.run(
+            ["netsh", "advfirewall", "firewall", "show", "rule", "name=LiveCommerce_Camera_5443"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if "LiveCommerce_Camera_5443" in (chk2.stdout or ""):
+            print(f"🛡️ [Windows 방화벽] 서브넷 간 카메라 포트({port_str}) Edge Traversal(edge=yes) 허용 완료!", flush=True)
+            return
+    except Exception:
+        pass
+
+    try:
+        # 2차: 관리자 권한(RunAs) 1회 승격 실행
+        import ctypes
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", cmd_args, None, 0)
+        print(f"🛡️ [Windows 방화벽] 서브넷 간 카메라 포트({port_str}) Edge Traversal(edge=yes) 권한 승인 요청됨", flush=True)
+    except Exception as e:
+        print(f"ℹ️ [Windows 방화벽 확인] {e}", flush=True)
+
+
 def setup_upnp_cross_subnet_bridge(local_ip=None, ports=(5443, 5000), force=False):
     """
     공유기 이중 구성(예: Wi-Fi는 192.168.0.x, PC는 하위 공유기 192.168.1.x) 환경에서
@@ -14823,9 +14877,9 @@ def run_local_to_cloud_camera_bridge():
         try:
             now = time.time()
             ip = get_local_ip()
-            wifi_ip = bridged_wifi_ip or ip
             https_port = int(os.getenv("HTTPS_PORT", 5443))
             http_port = int(os.getenv("SERVER_PORT", 5000))
+            wifi_ip = bridged_wifi_ip or setup_upnp_cross_subnet_bridge(ip, ports=(https_port, http_port)) or ip
 
             # 클라우드 서버 자신(192.168.0.6)에서는 실행 중단
             if ip == "192.168.0.6" and wifi_ip == "192.168.0.6":
@@ -14930,6 +14984,13 @@ if __name__ == '__main__':
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     host = os.getenv("SERVER_HOST", "0.0.0.0")
     local_ip = get_local_ip()
+
+    # 기동 즉시 공유기 UPnP 대역 브릿지(192.168.0.69) 및 Windows 방화벽 Edge Traversal(edge=yes) 활성화
+    try:
+        setup_upnp_cross_subnet_bridge(local_ip, ports=(https_port, port))
+        ensure_windows_firewall_edge_traversal(ports=(https_port, port))
+    except Exception:
+        pass
 
     # 스마트폰 카메라 보안 컨텍스트(HTTPS) 로컬 포트 동시 가동
     https_thread = threading.Thread(target=run_https_cam_server, args=(host, https_port, local_ip), daemon=True)
