@@ -4209,19 +4209,22 @@
                 // CAM 1 또는 CAM 2가 새로 연결되었을 때 해당 멀티뷰 스트림만 갱신 (이미 스트림이 열려 있으면 재연결 루프 방지)
                 if (c1Newly) {
                     const mv1 = document.getElementById('cam1MultiviewImg');
-                    if (mv1 && (!mv1.src || !mv1.src.includes('/api/camera/stream'))) {
-                        mv1.src = '/api/camera/stream?cam=1&t=' + Date.now();
+                    if (mv1) {
+                        const rawU = '/api/camera/latest-frame?cam=1&t=' + Date.now();
+                        mv1.src = (typeof window.resolveStudioCameraUrl === 'function') ? window.resolveStudioCameraUrl(rawU, 1) : rawU;
                     }
                     showToast('🎥 [CAM 1 메인 카메라] 스마트폰이 무선 연결되었습니다!');
                 }
                 if (c2Newly) {
                     const mv2 = document.getElementById('cam2MultiviewImg');
-                    if (mv2 && (!mv2.src || !mv2.src.includes('/api/camera/stream'))) {
-                        mv2.src = '/api/camera/stream?cam=2&t=' + Date.now();
+                    if (mv2) {
+                        const rawU2 = '/api/camera/latest-frame?cam=2&t=' + Date.now();
+                        mv2.src = (typeof window.resolveStudioCameraUrl === 'function') ? window.resolveStudioCameraUrl(rawU2, 2) : rawU2;
                     }
                     const subImg = document.getElementById('subMonitorStreamImg');
                     if (subImg && subImg.style.display !== 'none' && (!subImg.src || !subImg.src.includes('/api/camera/stream'))) {
-                        subImg.src = '/api/camera/stream?cam=2&t=' + Date.now();
+                        const rawSub = '/api/camera/stream?cam=2&t=' + Date.now();
+                        subImg.src = (typeof window.resolveStudioCameraUrl === 'function') ? window.resolveStudioCameraUrl(rawSub, 2) : rawSub;
                     }
                     showToast('🔎 [CAM 2 서브/디테일 카메라] 스마트폰이 무선 연결되었습니다!');
                 }
@@ -4250,8 +4253,11 @@
                             if (video && video.style.display !== 'none') {
                                 video.style.display = 'none';
                             }
+                            const mainSlot = Number((data.switcher && data.switcher.active_main_cam) || camSwitcherState.active_main_cam || 1);
+                            const rawStreamUrl = `/api/camera/stream?cam=${mainSlot}&t=${Date.now()}`;
+                            const targetMainUrl = (typeof window.resolveStudioCameraUrl === 'function') ? window.resolveStudioCameraUrl(rawStreamUrl, mainSlot) : rawStreamUrl;
                             if (!img.src || !img.src.includes('/api/camera/stream') || img.style.display === 'none' || (img.complete && img.naturalWidth === 0)) {
-                                img.src = '/api/camera/stream?t=' + Date.now();
+                                img.src = targetMainUrl;
                             }
                             img.style.display = 'block';
                         }
@@ -4477,9 +4483,12 @@
                     mainImg.style.display = 'none';
                 } else if (isMobileActive || layout !== 'single') {
                     mainVideo.style.display = 'none';
-                    const desiredStream = `/api/camera/stream?cam=${topCamId}`;
+                    const rawDesired = `/api/camera/stream?cam=${topCamId}&t=${Date.now()}`;
+                    const desiredStream = (typeof window.resolveStudioCameraUrl === 'function')
+                        ? window.resolveStudioCameraUrl(rawDesired, topCamId)
+                        : rawDesired;
                     if (forceReload || !mainImg.src || !mainImg.src.includes(`cam=${topCamId}`)) {
-                        mainImg.src = `${desiredStream}&t=${Date.now()}`;
+                        mainImg.src = desiredStream;
                     }
                     mainImg.style.display = 'block';
                 }
@@ -4535,9 +4544,12 @@
                         subImg.style.display = 'none';
                     } else {
                         subVideo.style.display = 'none';
-                        const targetSubUrl = `/api/camera/stream?cam=${secondCamId}`;
+                        const rawSubUrl = `/api/camera/stream?cam=${secondCamId}&t=${Date.now()}`;
+                        const targetSubUrl = (typeof window.resolveStudioCameraUrl === 'function')
+                            ? window.resolveStudioCameraUrl(rawSubUrl, secondCamId)
+                            : rawSubUrl;
                         if (forceReload || !subImg.src || !subImg.src.includes(`cam=${secondCamId}`)) {
-                            subImg.src = `${targetSubUrl}&t=${Date.now()}`;
+                            subImg.src = targetSubUrl;
                         }
                         subImg.style.display = 'block';
                     }
@@ -4709,7 +4721,10 @@
                     const localWc = camSlot === 1 ? cam1LocalWebcamStream : cam2LocalWebcamStream;
                     if (!isDualCamPreviewCollapsed && !localWc && !loading && document.visibilityState !== 'hidden') {
                         loading = true;
-                        const nextUrl = `/api/camera/latest-frame?cam=${camSlot}&t=${Date.now()}`;
+                        const rawUrl = `/api/camera/latest-frame?cam=${camSlot}&t=${Date.now()}`;
+                        const nextUrl = (typeof window.resolveStudioCameraUrl === 'function')
+                            ? window.resolveStudioCameraUrl(rawUrl, camSlot)
+                            : rawUrl;
                         const pre = new Image();
                         pre.onload = () => {
                             imgEl.src = nextUrl;

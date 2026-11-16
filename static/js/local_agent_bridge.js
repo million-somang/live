@@ -1,8 +1,9 @@
 /**
  * 🌟 Live Commerce OS — Zero Server Video Traffic CSR <-> Local Agent Bridge
  * - 클라우드 서버(예: 49.50.132.140:5000)에서 OBS 스튜디오(/overlay/studio) 접속 시
- *   카메라 수신·프리뷰·WebRTC·FFmpeg RTMP 송출은 방송자 로컬 PC 에이전트(127.0.0.1:5000)로 직결하여
- *   호스팅 서버의 영상 트래픽을 0바이트(0원)로 유지합니다.
+ *   로컬 에이전트(127.0.0.1:5000)와 클라우드 서버의 카메라 상태를 자동 병합(Dual-Source Auto Merge)하여
+ *   [방식 1: 같은 네트워크 로컬 카메라(/cam)]와 [방식 2: 다른 네트워크 원격 카메라(/remote-cam)] 모두
+ *   무한 로딩 없이 즉시 연결되도록 처리합니다.
  */
 (function () {
     'use strict';
@@ -29,26 +30,46 @@
         health: null,
         lastCheckTs: 0,
         serverVideoTrafficBytes: 0,
+        camSourceServer: { 1: 'cloud', 2: 'cloud' }, // 'local' (127.0.0.1:5000) | 'cloud' (현재 접속 서버)
     };
 
     window.__ZERO_TRAFFIC_AGENT_BRIDGE__ = bridgeState;
 
-    // 1. 로컬 에이전트로 직결 라우팅할 미디어/하드웨어/RTMP 전용 경로 판별
-    //    (단, [방식 2: 다른 네트워크 원격 카메라(/remote-cam)] 사용 시 카메라 조회/프레임은 원격 서버 경로 유지)
+    function buildLocalAgentUrl(relPath) {
+        const sep = relPath.includes('?') ? '&' : '?';
+        const tokParam = (bridgeState.health && bridgeState.health.cam_token && relPath.startsWith('/api/camera/'))
+            ? `&cam_token=${encodeURIComponent(bridgeState.health.cam_token)}`
+            : '';
+        return `${bridgeState.agentBaseUrl}${relPath}${sep}agent_bridge=1${tokParam}`;
+    }
+
+    // 스튜디오 프리뷰(new Image 및 <img>)가 호출하는 통합 카메라 URL 해석기
+    window.resolveStudioCameraUrl = function (relPath, camSlot) {
+        if (!relPath) return '';
+        if (!isRemoteCloudHost || !bridgeState.connected) {
+            return relPath;
+        }
+        const slot = Number(camSlot) === 2 ? 2 : 1;
+        const activeSource = bridgeState.camSourceServer[slot];
+        if (activeSource === 'local') {
+            return buildLocalAgentUrl(relPath);
+        }
+        if (activeSource === 'cloud') {
+            return relPath;
+        }
+        if (window.__CAMERA_NETWORK_MODE__ === 'local') {
+            return buildLocalAgentUrl(relPath);
+        }
+        return relPath;
+    };
+
+    window.applyCameraNetworkModeRouting = function (mode) {
+        window.__CAMERA_NETWORK_MODE__ = mode;
+    };
+
+    // 1. 로컬 에이전트로 직결 라우팅할 RTMP/오디오 전용 경로 판별
     function isLocalAgentExclusivePath(pathStr) {
         if (!pathStr) return false;
-        const isRemoteCamMode = (window.__CAMERA_NETWORK_MODE__ === 'remote_network');
-        if (!isRemoteCamMode && (
-            pathStr.startsWith('/api/camera/frame') ||
-            pathStr.startsWith('/api/camera/audio') ||
-            pathStr.startsWith('/api/camera/stream') ||
-            pathStr.startsWith('/api/camera/latest-frame') ||
-            pathStr.startsWith('/api/camera/renew-url') ||
-            pathStr.startsWith('/api/camera/webrtc') ||
-            pathStr.startsWith('/api/camera/diag')
-        )) {
-            return true;
-        }
         return (
             pathStr.startsWith('/api/audio/') ||
             pathStr.startsWith('/api/youtube/rtmp/') ||
@@ -80,37 +101,126 @@
         return '';
     }
 
-    function buildLocalAgentUrl(relPath) {
-        const sep = relPath.includes('?') ? '&' : '?';
-        const tokParam = (bridgeState.health && bridgeState.health.cam_token && relPath.startsWith('/api/camera/'))
-            ? `&cam_token=${encodeURIComponent(bridgeState.health.cam_token)}`
-            : '';
-        return `${bridgeState.agentBaseUrl}${relPath}${sep}agent_bridge=1${tokParam}`;
+    // 3. /api/camera/host-info 스마트 병합: 로컬 에이전트(방식 1) + 클라우드 서버(방식 2) 동시 감지
+    const nativeFetch = window.fetch.bind(window);
+
+    async function fetchMergedCameraHostInfo(relPath, init) {
+        const cloudPromise = nativeFetch(relPath, init).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (!bridgeState.connected) {
+            const cloudData = await cloudPromise;
+            bridgeState.camSourceServer[1] = 'cloud';
+            bridgeState.camSourceServer[2] = 'cloud';
+            return new Response(JSON.stringify(cloudData || { status: 'error' }), {
+                status: cloudData ? 200 : 502,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        const localUrl = buildLocalAgentUrl(relPath);
+        const localPromise = nativeFetch(localUrl, {
+            method: 'GET',
+            mode: 'cors',
+            headers: { 'X-Local-Agent-Bridge': '1' },
+        }).then(r => r.ok ? r.json() : null).catch(() => null);
+
+        const [cloudData, localData] = await Promise.all([cloudPromise, localPromise]);
+        if (!localData && cloudData) {
+            bridgeState.camSourceServer[1] = 'cloud';
+            bridgeState.camSourceServer[2] = 'cloud';
+            return new Response(JSON.stringify(cloudData), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+        if (localData && !cloudData) {
+            bridgeState.camSourceServer[1] = 'local';
+            bridgeState.camSourceServer[2] = 'local';
+            return new Response(JSON.stringify(localData), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+        if (!localData && !cloudData) {
+            return new Response(JSON.stringify({ status: 'error' }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        // 양쪽 데이터를 병합:
+        // - 방식 1(local_https_url, cam1_url, cam2_url, local_ip)은 로컬 PC 에이전트의 실제 공유기 Wi-Fi IP 사용
+        // - 방식 2(remote_cam_url, remote_cam1_url, remote_cam2_url)는 클라우드 서버의 공인 IP 사용
+        const merged = Object.assign({}, cloudData, {
+            local_ip: localData.local_ip || cloudData.local_ip,
+            pc_ip: localData.pc_ip || cloudData.pc_ip,
+            bridged_wifi_ip: localData.bridged_wifi_ip || cloudData.bridged_wifi_ip,
+            local_https_url: localData.local_https_url || cloudData.local_https_url,
+            pc_direct_https_url: localData.pc_direct_https_url || cloudData.pc_direct_https_url,
+            http_cam_url: localData.http_cam_url || cloudData.http_cam_url,
+            cam_url: localData.cam_url || cloudData.cam_url,
+            cam1_url: localData.cam1_url || cloudData.cam1_url,
+            cam2_url: localData.cam2_url || cloudData.cam2_url,
+            remote_cam_url: cloudData.remote_cam_url || localData.remote_cam_url,
+            remote_cam1_url: cloudData.remote_cam1_url || localData.remote_cam1_url,
+            remote_cam2_url: cloudData.remote_cam2_url || localData.remote_cam2_url,
+            remote_cam_http_url: cloudData.remote_cam_http_url || localData.remote_cam_http_url,
+        });
+
+        const mergedCameras = Object.assign({}, cloudData.cameras || {});
+        [1, 2].forEach((slot) => {
+            const key = String(slot);
+            const lCam = (localData.cameras && (localData.cameras[key] || localData.cameras[slot])) || {};
+            const cCam = (cloudData.cameras && (cloudData.cameras[key] || cloudData.cameras[slot])) || {};
+            const lActive = !!(slot === 1 ? localData.cam1_active : localData.cam2_active) || lCam.active;
+            const cActive = !!(slot === 1 ? cloudData.cam1_active : cloudData.cam2_active) || cCam.active;
+            const lPending = (lCam.client_state === 'page_loaded' || lCam.client_state === 'requesting_camera');
+            const cPending = (cCam.client_state === 'page_loaded' || cCam.client_state === 'requesting_camera');
+
+            if (lActive) {
+                bridgeState.camSourceServer[slot] = 'local';
+                mergedCameras[key] = lCam;
+            } else if (cActive) {
+                bridgeState.camSourceServer[slot] = 'cloud';
+                mergedCameras[key] = cCam;
+            } else if (lPending && !cPending) {
+                bridgeState.camSourceServer[slot] = 'local';
+                mergedCameras[key] = lCam;
+            } else if (cPending && !lPending) {
+                bridgeState.camSourceServer[slot] = 'cloud';
+                mergedCameras[key] = cCam;
+            } else {
+                bridgeState.camSourceServer[slot] = (window.__CAMERA_NETWORK_MODE__ === 'local') ? 'local' : 'cloud';
+                mergedCameras[key] = (bridgeState.camSourceServer[slot] === 'local') ? lCam : cCam;
+            }
+        });
+
+        merged.cameras = mergedCameras;
+        merged.cam1_active = !!(localData.cam1_active || cloudData.cam1_active);
+        merged.cam2_active = !!(localData.cam2_active || cloudData.cam2_active);
+        merged.camera_active = !!(localData.camera_active || cloudData.camera_active || merged.cam1_active || merged.cam2_active);
+        merged.frame_seq = Math.max(Number(localData.frame_seq || 0), Number(cloudData.frame_seq || 0));
+
+        return new Response(JSON.stringify(merged), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        });
     }
 
-    // 3. window.fetch 인터셉터: 원격 클라우드 접속 시 카메라·오디오·RTMP 요청을 127.0.0.1:5000으로 직결
-    const nativeFetch = window.fetch.bind(window);
+    // 4. window.fetch 인터셉터
     window.fetch = async function (input, init) {
         const urlStr = typeof input === 'string' ? input : (input && input.url ? input.url : String(input));
         const method = (init && init.method) ? init.method : (input && input.method ? input.method : 'GET');
         const relPath = extractRelativeApiPath(urlStr);
 
         if (isRemoteCloudHost && relPath) {
-            // (A) 카메라·오디오·WebRTC·FFmpeg RTMP 요청은 클라우드 서버로 절대 보내지 않고 로컬 에이전트(127.0.0.1)로 직결
+            // (0) /api/camera/host-info 는 로컬 에이전트 + 클라우드 서버 상태를 병합하여 반환
+            if (relPath.startsWith('/api/camera/host-info') && String(method).toUpperCase() === 'GET') {
+                return fetchMergedCameraHostInfo(relPath, init);
+            }
+
+            // (A) 오디오·FFmpeg RTMP 요청은 로컬 에이전트 연결 시 127.0.0.1:5000으로 직결
             if (isLocalAgentExclusivePath(relPath)) {
-                if (!bridgeState.connected) {
-                    // RTMP 시작 또는 카메라 QR 요청 시 로컬 에이전트 실행 안내 모달 표시
-                    if (relPath.includes('/rtmp/start') || relPath.includes('/camera/renew-url')) {
-                        openLocalAgentZeroTrafficModal();
-                    }
-                    // 폴링 요청이 클라우드 서버로 흘러가 영상 트래픽을 유발하는 것을 차단
-                    if (relPath.includes('/rtmp/frame') || relPath.includes('/camera/frame') || relPath.includes('/camera/audio')) {
-                        return new Response(
-                            JSON.stringify({ status: 'agent_offline', zero_traffic_guarded: true }),
-                            { status: 200, headers: { 'Content-Type': 'application/json' } }
-                        );
-                    }
-                } else {
+                if (bridgeState.connected) {
                     const targetLocalUrl = buildLocalAgentUrl(relPath);
                     const nextInit = Object.assign({}, init || {});
                     const hdrs = new Headers(nextInit.headers || {});
@@ -140,60 +250,6 @@
 
         return nativeFetch(input, init);
     };
-
-    // 4. 카메라 프리뷰 <img> 태그 src를 로컬 에이전트(127.0.0.1:5000) 또는 원격 카메라 서버로 자동 리라이트
-    function rewriteCameraPreviewImageSources() {
-        if (!isRemoteCloudHost) return;
-        const imgIds = ['cam1MultiviewImg', 'cam2MultiviewImg', 'monitorStreamImg', 'subMonitorStreamImg'];
-        const isRemoteCamMode = (window.__CAMERA_NETWORK_MODE__ === 'remote_network');
-        imgIds.forEach((id) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            const rawSrc = el.getAttribute('src') || '';
-            if (isRemoteCamMode || !bridgeState.connected) {
-                if (rawSrc.startsWith(bridgeState.agentBaseUrl + '/api/camera/')) {
-                    const rel = rawSrc.substring(bridgeState.agentBaseUrl.length).replace(/([?&])agent_bridge=1(&|$)/, '$1').replace(/[?&]$/, '');
-                    el.setAttribute('src', rel);
-                }
-                return;
-            }
-            if (rawSrc.startsWith('/api/camera/')) {
-                el.setAttribute('src', buildLocalAgentUrl(rawSrc));
-            } else if (rawSrc.startsWith(window.location.origin + '/api/camera/')) {
-                const rel = rawSrc.substring(window.location.origin.length);
-                el.setAttribute('src', buildLocalAgentUrl(rel));
-            }
-        });
-    }
-
-    window.applyCameraNetworkModeRouting = function (mode) {
-        window.__CAMERA_NETWORK_MODE__ = mode;
-        rewriteCameraPreviewImageSources();
-    };
-
-    // MutationObserver로 동적 src 변경(`cam1MultiviewImg.src = '/api/camera/latest-frame...'`) 즉시 로컬 에이전트로 전환
-    function installImageSrcObserver() {
-        if (!isRemoteCloudHost || typeof MutationObserver === 'undefined') return;
-        const observer = new MutationObserver((mutations) => {
-            if (!bridgeState.connected || window.__CAMERA_NETWORK_MODE__ === 'remote_network') return;
-            for (const m of mutations) {
-                if (m.type === 'attributes' && m.attributeName === 'src' && m.target && m.target.tagName === 'IMG') {
-                    const val = m.target.getAttribute('src') || '';
-                    if (val.startsWith('/api/camera/')) {
-                        m.target.setAttribute('src', buildLocalAgentUrl(val));
-                    } else if (val.startsWith(window.location.origin + '/api/camera/')) {
-                        const rel = val.substring(window.location.origin.length);
-                        m.target.setAttribute('src', buildLocalAgentUrl(rel));
-                    }
-                }
-            }
-        });
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ['src'],
-            subtree: true,
-        });
-    }
 
     // 5. 로컬 에이전트 헬스체크 폴링 (127.0.0.1:5000 -> 폴백 5443)
     async function checkLocalAgentHealth() {
@@ -226,16 +282,11 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (data && data.status === 'ok') {
-                        const wasConnected = bridgeState.connected;
                         bridgeState.connected = true;
                         bridgeState.agentBaseUrl = base;
                         bridgeState.health = data;
                         bridgeState.lastCheckTs = Date.now();
                         updateHeaderAgentBadgeUI();
-                        rewriteCameraPreviewImageSources();
-                        if (!wasConnected && typeof fetchCameraHostInfo === 'function') {
-                            try { fetchCameraHostInfo(); } catch (e) {}
-                        }
                         return true;
                     }
                 }
@@ -365,7 +416,6 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         ensureLocalAgentModalMounted();
-        installImageSrcObserver();
         checkLocalAgentHealth();
         setInterval(checkLocalAgentHealth, 3500);
     });

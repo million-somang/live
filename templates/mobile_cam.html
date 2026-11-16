@@ -412,12 +412,35 @@
         const LOCAL_WIFI_IP = {{ (local_ip or '') | tojson }};
         const PUBLIC_TUNNEL_URL = {{ (public_tunnel_url or '') | tojson }};
         const INITIAL_CAM_ID = {{ cam_id | default(1) }};
+        const CAM_TOKEN = (new URLSearchParams(window.location.search).get('cam_token') || {{ (cam_token or '') | tojson }} || '').trim();
         const IS_TUNNEL_HOST = window.location.hostname.endsWith('.lhr.life') || window.location.hostname.endsWith('.localhost.run') || window.location.hostname.endsWith('.trycloudflare.com');
         let currentCamId = (new URLSearchParams(window.location.search).get('cam') === '2' || INITIAL_CAM_ID === 2) ? 2 : 1;
         let currentFacing = 'environment'; // 'environment'(후면) or 'user'(전면)
         let currentStream = null;
         let isStreaming = true;
         let frameLoopStarted = false;
+
+        // 자체 서명 인증서(:5443) 환경에서 모바일 브라우저가 세션 쿠키를 차단하더라도 403이 발생하지 않도록 모든 카메라 API 요청에 cam_token 자동 부착
+        (function installMobileCamTokenFetchWrapper() {
+            if (!CAM_TOKEN || !window.fetch) return;
+            const origFetch = window.fetch.bind(window);
+            window.fetch = function (input, init) {
+                let urlStr = typeof input === 'string' ? input : (input && input.url ? input.url : String(input));
+                if (urlStr.includes('/api/camera/') && !urlStr.includes('cam_token=')) {
+                    const sep = urlStr.includes('?') ? '&' : '?';
+                    urlStr = `${urlStr}${sep}cam_token=${encodeURIComponent(CAM_TOKEN)}`;
+                }
+                const nextInit = Object.assign({}, init || {});
+                try {
+                    const hdrs = new Headers(nextInit.headers || {});
+                    if (!hdrs.has('X-Cam-Token')) {
+                        hdrs.set('X-Cam-Token', CAM_TOKEN);
+                    }
+                    nextInit.headers = hdrs;
+                } catch (e) {}
+                return origFetch(urlStr, nextInit);
+            };
+        })();
 
         function reportClientLog(state, message) {
             try {
@@ -572,20 +595,25 @@
 
         function getLocalDirectHttpsUrl() {
             const host = LOCAL_WIFI_IP || window.location.hostname;
-            return `https://${host}:${HTTPS_PORT}/cam?cam=${currentCamId}`;
+            const tokPart = CAM_TOKEN ? `cam_token=${encodeURIComponent(CAM_TOKEN)}&` : '';
+            return `https://${host}:${HTTPS_PORT}/cam?${tokPart}cam=${currentCamId}`;
         }
 
         function getHttpsCamUrl() {
             const host = LOCAL_WIFI_IP || window.location.hostname;
+            const tokPart = CAM_TOKEN ? `cam_token=${encodeURIComponent(CAM_TOKEN)}&` : '';
             if (host && !host.endsWith('.lhr.life') && !host.endsWith('.localhost.run')) {
-                return `https://${host}:${HTTPS_PORT}/cam?cam=${currentCamId}`;
+                return `https://${host}:${HTTPS_PORT}/cam?${tokPart}cam=${currentCamId}`;
             }
             if (PUBLIC_TUNNEL_URL && PUBLIC_TUNNEL_URL.startsWith('https://')) {
-                const base = PUBLIC_TUNNEL_URL.replace(/([?&])cam=[12]/g, '');
-                const sep = base.includes('?') ? '&' : '?';
-                return `${base}${sep}cam=${currentCamId}`;
+                try {
+                    const u = new URL(PUBLIC_TUNNEL_URL);
+                    if (CAM_TOKEN) u.searchParams.set('cam_token', CAM_TOKEN);
+                    u.searchParams.set('cam', String(currentCamId));
+                    return u.toString();
+                } catch (e) {}
             }
-            return `https://${window.location.hostname}:${HTTPS_PORT}/cam?cam=${currentCamId}`;
+            return `https://${window.location.hostname}:${HTTPS_PORT}/cam?${tokPart}cam=${currentCamId}`;
         }
 
         // 페이지 로드 시 HTTP(비보안) 접속 여부 점검 및 이전 카메라 송출 상태 자동 복원

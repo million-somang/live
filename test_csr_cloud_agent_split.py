@@ -201,7 +201,26 @@ def run_tests():
         assert r_malformed.status_code == 200
         assert "다른 네트워크 원격 카메라" in r_malformed.get_data(as_text=True)
 
+        # 방식 1: 로컬 카메라(/cam)에서 쿠키 없이 cam_token만으로 프레임 전송 시 200 OK 및 cam1_active 즉시 전환 검증
         sample_jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+        stateless_phone = live_commerce_server.app.test_client(use_cookies=False)
+        r_local_cam_page = stateless_phone.get(f"/cam?cam_token={cam_token}&cam=1")
+        assert r_local_cam_page.status_code == 200
+        assert "installMobileCamTokenFetchWrapper" in r_local_cam_page.get_data(as_text=True)
+
+        r_local_frame = stateless_phone.post(
+            f"/api/camera/frame?cam=1&seq=5&cam_token={cam_token}",
+            data=sample_jpeg,
+            content_type="image/jpeg",
+        )
+        assert r_local_frame.status_code == 200
+        r_info_after = agent_client.get(
+            "/api/camera/host-info?agent_bridge=1",
+            headers={"X-Local-Agent-Bridge": "1"},
+        ).get_json()
+        assert r_info_after["cam1_active"] is True
+        assert r_info_after["camera_active"] is True
+
         r_up = agent_client.post(
             f"/api/remote-cam/frame?cam=1&seq=1&src=remote_cam_1&cam_token={cam_token}",
             data=sample_jpeg,
