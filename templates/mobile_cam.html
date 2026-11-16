@@ -594,17 +594,13 @@
         };
 
         function getLocalDirectHttpsUrl() {
-            const curHost = window.location.hostname;
-            const isCurUsable = curHost && curHost !== 'localhost' && curHost !== '127.0.0.1' && !IS_TUNNEL_HOST;
-            const host = isCurUsable ? curHost : (LOCAL_WIFI_IP || curHost);
+            const host = LOCAL_WIFI_IP || window.location.hostname;
             const tokPart = CAM_TOKEN ? `cam_token=${encodeURIComponent(CAM_TOKEN)}&` : '';
             return `https://${host}:${HTTPS_PORT}/cam?${tokPart}cam=${currentCamId}`;
         }
 
         function getHttpsCamUrl() {
-            const curHost = window.location.hostname;
-            const isCurUsable = curHost && curHost !== 'localhost' && curHost !== '127.0.0.1' && !IS_TUNNEL_HOST;
-            const host = isCurUsable ? curHost : (LOCAL_WIFI_IP || curHost);
+            const host = LOCAL_WIFI_IP || window.location.hostname;
             const tokPart = CAM_TOKEN ? `cam_token=${encodeURIComponent(CAM_TOKEN)}&` : '';
             if (host && !host.endsWith('.lhr.life') && !host.endsWith('.localhost.run')) {
                 return `https://${host}:${HTTPS_PORT}/cam?${tokPart}cam=${currentCamId}`;

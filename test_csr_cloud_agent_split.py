@@ -230,14 +230,14 @@ def run_tests():
         assert r_info_after["local_https_url"] == r_info_after_2["local_https_url"], "QR URL must not change every second"
         assert r_info_after["remote_cam1_url"] == r_info_after_2["remote_cam1_url"], "Remote QR URL must not change every second"
 
-        # 클라우드 공인 IP(49.50.132.140:5000) 접속 시 방식 1(로컬 /cam)도 사설 NAT IP가 아닌 공인 Host(49.50.132.140)를 반환하는지 검증
+        # 클라우드 공인 IP(49.50.132.140:5000) 접속 시에도 방식 1(로컬 /cam)은 로컬 Wi-Fi IP(192.168.x.x), 방식 2(/remote-cam)는 49.50.132.140을 유지하는지 검증
         r_cloud_host = agent_client.get(
             "/api/camera/host-info?agent_bridge=1",
             headers={"Host": "49.50.132.140:5000", "X-Local-Agent-Bridge": "1"},
         ).get_json()
-        assert r_cloud_host["local_ip"] == "49.50.132.140"
-        assert r_cloud_host["local_https_url"].startswith("https://49.50.132.140:5443/cam?")
-        assert r_cloud_host["cam1_url"].startswith("https://49.50.132.140:5443/cam?")
+        assert r_cloud_host["local_https_url"].startswith("https://192.168.")
+        assert r_cloud_host["cam1_url"].startswith("https://192.168.")
+        assert r_cloud_host["remote_cam1_url"].startswith("https://49.50.132.140:5443/remote-cam?")
 
         r_up = agent_client.post(
             f"/api/remote-cam/frame?cam=1&seq=1&src=remote_cam_1&cam_token={cam_token}",
