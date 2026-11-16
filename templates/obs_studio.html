@@ -5834,8 +5834,33 @@
         // 12. [QR 모달 & 유틸리티 (CAM 1 · CAM 2 2대 카메라 지원)]
         let qrStatusInterval = null;
         let lastHostInfoData = null;
-        let currentQrMode = 'local'; // 'local' (동일 Wi-Fi 보안 직결 기본값) or 'public'
+        let currentQrMode = null; // 클라우드 접속 시 'remote_network', 로컬 LAN 접속 시 'local' 자동 설정
         let currentQrCamId = 1;
+
+        function buildCleanCamUrl(rawUrl, camId) {
+            if (!rawUrl) return '';
+            try {
+                const u = new URL(rawUrl, window.location.origin);
+                if (u.pathname.includes('&')) {
+                    const segs = u.pathname.split('&');
+                    u.pathname = segs[0];
+                    const extraParams = new URLSearchParams(segs.slice(1).join('&'));
+                    extraParams.forEach((v, k) => {
+                        if (!u.searchParams.has(k)) u.searchParams.set(k, v);
+                    });
+                }
+                u.searchParams.set('cam', String(camId));
+                return u.toString();
+            } catch (e) {
+                const parts = String(rawUrl).split('?');
+                const pathParts = parts[0].split('&');
+                const cleanPath = pathParts[0];
+                const queryParts = pathParts.slice(1).concat(parts.slice(1));
+                const params = new URLSearchParams(queryParts.join('&'));
+                params.set('cam', String(camId));
+                return `${cleanPath}?${params.toString()}`;
+            }
+        }
 
         function selectQrModalCam(camId) {
             currentQrCamId = Number(camId) === 2 ? 2 : 1;
@@ -5874,10 +5899,7 @@
             } else {
                 baseUrl = lastHostInfoData.local_https_url || lastHostInfoData.cam_url || '';
             }
-            // URL의 cam 파라미터를 currentQrCamId로 맞춤
-            baseUrl = baseUrl.replace(/([?&])cam=[12]/g, '');
-            const sep = baseUrl.includes('?') ? '&' : '?';
-            const targetUrl = `${baseUrl}${sep}cam=${currentQrCamId}`;
+            const targetUrl = buildCleanCamUrl(baseUrl, currentQrCamId);
 
             document.getElementById('qrUrl').innerText = targetUrl;
             document.getElementById('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(targetUrl)}`;

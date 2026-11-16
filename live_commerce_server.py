@@ -198,6 +198,13 @@ def _studio_security_gateway():
 
     path = request.path or "/"
 
+    # 0. 이전 QR 정규식 치환으로 인해 물음표('?')가 유실된 카메라 경로(/remote-cam&... 또는 /cam&...) 자동 복구 (404 원천 방지)
+    if path.startswith("/remote-cam&") or path.startswith("/cam&"):
+        base_route, extra_q = path.split("&", 1)
+        orig_q = request.query_string.decode("utf-8", errors="ignore")
+        merged_q = f"{extra_q}&{orig_q}" if orig_q else extra_q
+        return redirect(f"{base_route}?{merged_q}", code=302)
+
     # 1. 정적 파일 및 기본 헬스체크 허용
     if path.startswith("/static/") or path in ("/status", "/favicon.ico"):
         return None
@@ -4116,17 +4123,17 @@ def api_camera_host_info():
     ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else wifi_ip
 
     # 방식 1: 같은 네트워크 (동일 공유기 Wi-Fi)
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
-    cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=1&cam_token={cam_tok}"
-    cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam=2&cam_token={cam_tok}"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}"
+    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=1"
+    cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=2"
+    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}&cam={req_cam}"
 
     # 방식 2: 다른 네트워크 (LTE/5G · 외부 Wi-Fi 전용 원격 카메라 페이지 /remote-cam)
-    remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam=1&cam_token={cam_tok}"
-    remote_cam2_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam=2&cam_token={cam_tok}"
+    remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=1"
+    remote_cam2_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=2"
     remote_cam_https_url = remote_cam2_https_url if req_cam == 2 else remote_cam1_https_url
-    remote_cam_http_url = f"http://{ext_host}:{port}/remote-cam?cam={req_cam}&cam_token={cam_tok}"
+    remote_cam_http_url = f"http://{ext_host}:{port}/remote-cam?cam_token={cam_tok}&cam={req_cam}"
 
     pub_base = public_tunnel_url or f"https://{ext_host}:{https_port}/remote-cam"
     pub_url = f"{pub_base}{'&' if '?' in pub_base else '?'}cam_token={cam_tok}"

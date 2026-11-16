@@ -196,6 +196,11 @@ def run_tests():
         assert r_rem_ok.status_code == 200
         assert "다른 네트워크 원격 카메라" in r_rem_ok.get_data(as_text=True)
 
+        # 물음표('?') 유실 형태의 구 QR 주소(/remote-cam&cam_token=...?cam=1) 자동 복구(302 -> 200) 검증
+        r_malformed = agent_client.get(f"/remote-cam&cam_token={cam_token}?cam=1", follow_redirects=True)
+        assert r_malformed.status_code == 200
+        assert "다른 네트워크 원격 카메라" in r_malformed.get_data(as_text=True)
+
         sample_jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
         r_up = agent_client.post(
             f"/api/remote-cam/frame?cam=1&seq=1&src=remote_cam_1&cam_token={cam_token}",
