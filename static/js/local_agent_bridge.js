@@ -57,7 +57,7 @@
         if (activeSource === 'cloud') {
             return relPath;
         }
-        if (window.__CAMERA_NETWORK_MODE__ === 'local') {
+        if (window.__CAMERA_NETWORK_MODE__ === 'pc_direct') {
             return buildLocalAgentUrl(relPath);
         }
         return relPath;
@@ -148,18 +148,20 @@
         }
 
         // 양쪽 데이터를 병합:
-        // - 방식 1(local_https_url, cam1_url, cam2_url, local_ip)은 로컬 PC 에이전트의 실제 공유기 Wi-Fi IP 사용
-        // - 방식 2(remote_cam_url, remote_cam1_url, remote_cam2_url)는 클라우드 서버의 공인 IP 사용
+        // - 클라우드 서버 접속 시: 방식 1(/cam)과 방식 2(/remote-cam) 모두 스마트폰이 즉시 도달 가능한 클라우드 공인 Host(:5443)를 기본 사용하고,
+        //   로컬 PC 에이전트(127.0.0.1:5000)에 이미 스마트폰이 연결된 경우(localAnyActive)에만 로컬 주소를 우선 노출합니다.
+        // - 로컬 PC 직접 연결 주소(pc_direct_https_url)는 항상 로컬 에이전트의 공유기 LAN IP를 제공합니다.
+        const localAnyActive = !!(localData.cam1_active || localData.cam2_active);
         const merged = Object.assign({}, cloudData, {
-            local_ip: localData.local_ip || cloudData.local_ip,
-            pc_ip: localData.pc_ip || cloudData.pc_ip,
+            local_ip: localAnyActive ? (localData.local_ip || cloudData.local_ip) : (cloudData.local_ip || localData.local_ip),
+            pc_ip: localData.local_ip || localData.pc_ip || cloudData.pc_ip,
             bridged_wifi_ip: localData.bridged_wifi_ip || cloudData.bridged_wifi_ip,
-            local_https_url: localData.local_https_url || cloudData.local_https_url,
-            pc_direct_https_url: localData.pc_direct_https_url || cloudData.pc_direct_https_url,
-            http_cam_url: localData.http_cam_url || cloudData.http_cam_url,
-            cam_url: localData.cam_url || cloudData.cam_url,
-            cam1_url: localData.cam1_url || cloudData.cam1_url,
-            cam2_url: localData.cam2_url || cloudData.cam2_url,
+            local_https_url: localAnyActive ? (localData.local_https_url || cloudData.local_https_url) : (cloudData.local_https_url || localData.local_https_url),
+            pc_direct_https_url: localData.local_https_url || localData.pc_direct_https_url || cloudData.pc_direct_https_url,
+            http_cam_url: localAnyActive ? (localData.http_cam_url || cloudData.http_cam_url) : (cloudData.http_cam_url || localData.http_cam_url),
+            cam_url: localAnyActive ? (localData.cam_url || cloudData.cam_url) : (cloudData.cam_url || localData.cam_url),
+            cam1_url: localAnyActive ? (localData.cam1_url || cloudData.cam1_url) : (cloudData.cam1_url || localData.cam1_url),
+            cam2_url: localAnyActive ? (localData.cam2_url || cloudData.cam2_url) : (cloudData.cam2_url || localData.cam2_url),
             remote_cam_url: cloudData.remote_cam_url || localData.remote_cam_url,
             remote_cam1_url: cloudData.remote_cam1_url || localData.remote_cam1_url,
             remote_cam2_url: cloudData.remote_cam2_url || localData.remote_cam2_url,
@@ -189,7 +191,7 @@
                 bridgeState.camSourceServer[slot] = 'cloud';
                 mergedCameras[key] = cCam;
             } else {
-                bridgeState.camSourceServer[slot] = (window.__CAMERA_NETWORK_MODE__ === 'local') ? 'local' : 'cloud';
+                bridgeState.camSourceServer[slot] = (window.__CAMERA_NETWORK_MODE__ === 'pc_direct') ? 'local' : 'cloud';
                 mergedCameras[key] = (bridgeState.camSourceServer[slot] === 'local') ? lCam : cCam;
             }
         });

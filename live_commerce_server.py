@@ -110,12 +110,29 @@ def resolve_studio_public_url() -> str:
     return f"{scheme}://{hostname}:{studio_port}"
 
 
-def get_studio_cam_token() -> str:
-    return security_core.create_signed_token(app.secret_key, "cam_pair", {"scope": "cam"}, ttl_sec=86400 * 7)
+_cached_cam_token = {"tok": "", "ts": 0.0}
+_cached_ov_token = {"tok": "", "ts": 0.0}
 
 
-def get_studio_overlay_token() -> str:
-    return security_core.create_signed_token(app.secret_key, "obs_overlay", {"scope": "overlay"}, ttl_sec=86400 * 30)
+def get_studio_cam_token(force_new: bool = False) -> str:
+    """QR 코드 주소가 매초 바뀌지 않도록 서명된 cam_token을 캐싱하여 반환합니다."""
+    now = time.time()
+    if force_new or not _cached_cam_token["tok"] or (now - _cached_cam_token["ts"]) > 86400:
+        _cached_cam_token["tok"] = security_core.create_signed_token(
+            app.secret_key, "cam_pair", {"scope": "cam"}, ttl_sec=86400 * 7
+        )
+        _cached_cam_token["ts"] = now
+    return _cached_cam_token["tok"]
+
+
+def get_studio_overlay_token(force_new: bool = False) -> str:
+    now = time.time()
+    if force_new or not _cached_ov_token["tok"] or (now - _cached_ov_token["ts"]) > 86400:
+        _cached_ov_token["tok"] = security_core.create_signed_token(
+            app.secret_key, "obs_overlay", {"scope": "overlay"}, ttl_sec=86400 * 30
+        )
+        _cached_ov_token["ts"] = now
+    return _cached_ov_token["tok"]
 
 
 def get_current_studio_user():
@@ -3965,6 +3982,35 @@ def get_waiting_camera_frame(cam_id=1):
         return None
 
 
+def _is_private_or_loopback_host(host_str: str) -> bool:
+    """요청 Host가 localhost 또는 사설 LAN IP(192.168.x.x / 10.x.x.x / 172.16~31.x.x)인지 판별합니다."""
+    if not host_str:
+        return True
+    h = str(host_str).strip().lower()
+    if h in ("localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"):
+        return True
+    try:
+        import ipaddress
+        ip_obj = ipaddress.ip_address(h)
+        return bool(ip_obj.is_private or ip_obj.is_loopback)
+    except Exception:
+        return False
+
+
+def _resolve_reachable_camera_host(wifi_ip: str, pc_ip: str = "") -> tuple[str, str]:
+    """
+    클라우드 서버(공인 IP/도메인, 예: 49.50.132.140)에서 실행 중일 때 get_local_ip()는
+    클라우드 데이터센터 내부의 사설 NAT IP(10.x.x.x 등)를 반환하므로 외부 스마트폰에서 접속할 수 없습니다.
+    요청 Host가 공인 IP/도메인이면 해당 공인 Host를 카메라 접속 호스트로 사용하고,
+    로컬 PC(localhost / 192.168.x.x)에서 실행 중일 때는 공유기 Wi-Fi IP(wifi_ip)를 반환합니다.
+    """
+    _, req_host = _extract_request_hostname_and_scheme()
+    if req_host and not _is_private_or_loopback_host(req_host):
+        return req_host, req_host
+    ext_host = req_host if req_host not in ("", "localhost", "127.0.0.1", "::1", "[::1]") else wifi_ip
+    return wifi_ip, ext_host
+
+
 @app.route('/cam', methods=['GET'])
 @app.route('/cam/<int:cam_id>', methods=['GET'])
 def mobile_cam_view(cam_id=None):
@@ -3972,6 +4018,7 @@ def mobile_cam_view(cam_id=None):
     slot = _parse_cam_slot(cam_id if cam_id is not None else request.args.get('cam', 1), 1)
     local_ip = get_local_ip()
     wifi_ip = bridged_wifi_ip or local_ip
+    cam_host, _ = _resolve_reachable_camera_host(wifi_ip, local_ip)
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     http_port = int(os.getenv("SERVER_PORT", 5000))
     cam_tok = (request.args.get("cam_token") or get_studio_cam_token()).strip()
@@ -3982,8 +4029,8 @@ def mobile_cam_view(cam_id=None):
         camera_channels[slot]["client_updated_at"] = time.time()
     return render_template(
         'mobile_cam.html',
-        local_ip=wifi_ip,
-        pc_ip=local_ip,
+        local_ip=cam_host,
+        pc_ip=cam_host if cam_host != wifi_ip else local_ip,
         https_port=https_port,
         http_port=http_port,
         public_tunnel_url=public_tunnel_url,
@@ -4135,7 +4182,7 @@ def api_camera_client_log():
 
 @app.route('/api/camera/host-info', methods=['GET'])
 def api_camera_host_info():
-    """스마트폰 접속용 [방식 1: 동일 네트워크 Wi-Fi 직결] 및 [방식 2: 다른 네트워크 별도 카메라 페이지(/remote-cam)] 주소와 듀얼 카메라 상태 반환"""
+    """스마트폰 접속용 [방식 1: 동일 네트워크 Wi-Fi 직결(/cam)] 및 [방식 2: 다른 네트워크 별도 카메라 페이지(/remote-cam)] 주소와 듀얼 카메라 상태 반환"""
     import time
     req_cam = _parse_cam_slot(request.args.get('cam', 1), 1)
     ip = get_local_ip()
@@ -4143,15 +4190,15 @@ def api_camera_host_info():
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     cam_tok = get_studio_cam_token()
-    _, req_host = _extract_request_hostname_and_scheme()
-    ext_host = req_host if req_host not in ("localhost", "127.0.0.1") else wifi_ip
+    cam_host, ext_host = _resolve_reachable_camera_host(wifi_ip, ip)
+    pc_direct_host = cam_host if cam_host != wifi_ip else ip
 
-    # 방식 1: 같은 네트워크 (동일 공유기 Wi-Fi)
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
-    cam1_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=1"
-    cam2_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}&cam=2"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    # 방식 1: 기본 카메라 페이지 (/cam) — 클라우드 서버 공인 IP 접속 시에는 사설 NAT IP 대신 도달 가능한 공인 Host 사용
+    local_https_url = f"https://{cam_host}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    cam1_https_url = f"https://{cam_host}:{https_port}/cam?cam_token={cam_tok}&cam=1"
+    cam2_https_url = f"https://{cam_host}:{https_port}/cam?cam_token={cam_tok}&cam=2"
+    pc_direct_https_url = f"https://{pc_direct_host}:{https_port}/cam?cam_token={cam_tok}&cam={req_cam}"
+    http_cam_url = f"http://{cam_host}:{port}/cam?cam_token={cam_tok}&cam={req_cam}"
 
     # 방식 2: 다른 네트워크 (LTE/5G · 외부 Wi-Fi 전용 원격 카메라 페이지 /remote-cam)
     remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=1"
@@ -4179,10 +4226,10 @@ def api_camera_host_info():
     is_active = bool((has_frame and ts > 0 and (now - ts) < 5.0) or cam1_active or cam2_active or vdo_conn)
     return jsonify({
         "status": "ok",
-        "local_ip": wifi_ip,
-        "pc_ip": ip,
+        "local_ip": cam_host,
+        "pc_ip": pc_direct_host,
         "server_host": ext_host,
-        "bridged_wifi_ip": wifi_ip,
+        "bridged_wifi_ip": cam_host,
         "port": port,
         "https_port": https_port,
         "cam_url": primary_url,
@@ -4286,10 +4333,14 @@ def api_camera_renew_url():
     port = int(os.getenv("SERVER_PORT", 5000))
     https_port = int(os.getenv("HTTPS_PORT", 5443))
     wifi_ip = setup_upnp_cross_subnet_bridge(ip, ports=(https_port, port), force=True) or ip
-    cam_tok = get_studio_cam_token()
-    local_https_url = f"https://{wifi_ip}:{https_port}/cam?cam_token={cam_tok}"
-    pc_direct_https_url = f"https://{ip}:{https_port}/cam?cam_token={cam_tok}"
-    http_cam_url = f"http://{wifi_ip}:{port}/cam?cam_token={cam_tok}"
+    cam_host, ext_host = _resolve_reachable_camera_host(wifi_ip, ip)
+    pc_direct_host = cam_host if cam_host != wifi_ip else ip
+    cam_tok = get_studio_cam_token(force_new=True)
+    local_https_url = f"https://{cam_host}:{https_port}/cam?cam_token={cam_tok}"
+    pc_direct_https_url = f"https://{pc_direct_host}:{https_port}/cam?cam_token={cam_tok}"
+    http_cam_url = f"http://{cam_host}:{port}/cam?cam_token={cam_tok}"
+    remote_cam1_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=1"
+    remote_cam2_https_url = f"https://{ext_host}:{https_port}/remote-cam?cam_token={cam_tok}&cam=2"
 
     # 공인 HTTPS 터널이 꺼져 있거나 재발급 요청 시 즉시 시작/갱신
     try:
@@ -4308,20 +4359,25 @@ def api_camera_renew_url():
     except Exception:
         pass
 
-    pub_base = public_tunnel_url or f"https://{wifi_ip}:{https_port}/cam"
+    pub_base = public_tunnel_url or f"https://{ext_host}:{https_port}/remote-cam"
     pub_url = f"{pub_base}{'&' if '?' in pub_base else '?'}cam_token={cam_tok}"
 
     return jsonify({
         "status": "ok",
-        "local_ip": wifi_ip,
-        "pc_ip": ip,
+        "local_ip": cam_host,
+        "pc_ip": pc_direct_host,
         "cam_url": local_https_url,
+        "cam1_url": f"{local_https_url}&cam=1",
+        "cam2_url": f"{local_https_url}&cam=2",
+        "remote_cam_url": remote_cam1_https_url,
+        "remote_cam1_url": remote_cam1_https_url,
+        "remote_cam2_url": remote_cam2_https_url,
         "public_cam_url": pub_url,
         "public_tunnel_active": bool(public_tunnel_url),
         "local_https_url": local_https_url,
         "pc_direct_https_url": pc_direct_https_url,
         "http_cam_url": http_cam_url,
-        "message": f"Wi-Fi 초고속 직결({local_https_url}) 및 공인 HTTPS({pub_url}) 주소가 활성화되었습니다."
+        "message": f"Wi-Fi 초고속 직결({local_https_url}) 및 원격 카메라({remote_cam1_https_url}) 주소가 새로 발급되었습니다."
     }), 200
 
 
