@@ -134,7 +134,7 @@ def run_tests():
         r_expired = client.get("/api/live/state-lite").get_json()
         assert r_expired["is_live"] is False, "Stale heartbeat must auto-expire is_live to False"
 
-    # 7. 로컬 라이브 에이전트 Private Network Access 헤더 검증
+    # 7. 로컬 라이브 에이전트 Private Network Access(PNA) · 헬스체크(/api/agent/health) · 브릿지 헤더 검증
     with live_commerce_server.app.test_client() as agent_client:
         r_pna = agent_client.get(
             "/api/agent/cloud-config",
@@ -145,6 +145,44 @@ def run_tests():
         )
         assert r_pna.status_code == 200
         assert r_pna.headers.get("Access-Control-Allow-Private-Network") == "true"
+
+        r_health = agent_client.get(
+            "/api/agent/health",
+            headers={
+                "Origin": "http://49.50.132.140:5000",
+                "Access-Control-Request-Private-Network": "true",
+                "X-Local-Agent-Bridge": "1",
+            }
+        )
+        assert r_health.status_code == 200
+        assert r_health.headers.get("Access-Control-Allow-Private-Network") == "true"
+        assert r_health.headers.get("Access-Control-Allow-Origin") == "http://49.50.132.140:5000"
+        health_json = r_health.get_json()
+        assert health_json["status"] == "ok"
+        assert health_json["zero_traffic_mode"] is True
+        assert health_json["server_video_traffic_bytes"] == 0
+        assert "cam_token" in health_json
+
+        r_opt = agent_client.options(
+            "/api/youtube/rtmp/start",
+            headers={
+                "Origin": "http://49.50.132.140:5000",
+                "Access-Control-Request-Private-Network": "true",
+                "Access-Control-Request-Method": "POST",
+            }
+        )
+        assert r_opt.status_code in (200, 204)
+        assert r_opt.headers.get("Access-Control-Allow-Private-Network") == "true"
+
+        r_bridge_cam = agent_client.get(
+            "/api/camera/host-info?agent_bridge=1",
+            headers={
+                "Origin": "http://49.50.132.140:5000",
+                "X-Local-Agent-Bridge": "1",
+            }
+        )
+        assert r_bridge_cam.status_code == 200
+        assert r_bridge_cam.get_json()["status"] == "ok"
 
     print("ALL CSR + LOCAL AGENT SPLIT TESTS PASSED!")
 

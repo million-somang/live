@@ -43,10 +43,13 @@ if not exist ".env" (
     if exist ".env.example" copy /y ".env.example" ".env" >nul
 )
 
+echo [5/5] 웹 원클릭 실행 프로토콜(golabang-agent://) 등록 중...
+call "%~dp0register_agent_protocol.bat" silent
+
 echo.
 echo ====================================================================
 echo  설치가 완료되었습니다!
-echo  - 단독 에이전트 실행: start_local_agent.bat
+echo  - 단독 에이전트 실행: start_local_agent.bat (또는 웹에서 원클릭 실행)
 echo  - 실행 후 상단 [클라우드몰 설정] 버튼에서 외부 쇼핑몰 주소와 시크릿 키를 입력하세요.
 echo ====================================================================
 pause

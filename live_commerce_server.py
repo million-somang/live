@@ -223,9 +223,31 @@ def _studio_security_gateway():
             ), 403
         return None
 
-    # 3. 로컬 에이전트 PNA 설정 조회 (GET /api/agent/cloud-config)
-    if path == "/api/agent/cloud-config" and request.method == "GET":
+    # 3. 로컬 에이전트 PNA 설정 및 헬스체크 조회 (GET /api/agent/cloud-config, /api/agent/health)
+    if path in ("/api/agent/cloud-config", "/api/agent/health") and request.method == "GET":
         if _is_direct_loopback_request() or request.headers.get("Access-Control-Request-Private-Network") == "true" or request.headers.get("Origin"):
+            return None
+        if path == "/api/agent/health":
+            return None
+
+    # 3-2. 클라우드 CSR 스튜디오 ↔ 로컬 PC 에이전트(127.0.0.1) 직결 브릿지 요청 허용 (서버 영상 트래픽 0바이트 모드)
+    if _is_direct_loopback_request() and (
+        request.headers.get("X-Local-Agent-Bridge") == "1"
+        or request.args.get("agent_bridge") == "1"
+    ):
+        if any(
+            path.startswith(prefix)
+            for prefix in (
+                "/api/agent/",
+                "/api/camera/",
+                "/api/audio/",
+                "/api/youtube/",
+                "/api/tiktok/",
+                "/api/instagram/",
+                "/api/overlay/",
+                "/api/broadcast/",
+            )
+        ):
             return None
 
     # 4. 채팅/쇼핑몰 인입 웹훅 경로 (POST /, /chat, /webhook, /api/chat, /api/mall/order-webhook)
@@ -292,12 +314,20 @@ def _studio_security_gateway():
 
 @app.after_request
 def _add_private_network_cors_headers(response):
-    """보안 응답 헤더, CSRF 스크립트 자동 주입 및 Private Network Access 허용"""
-    if request.headers.get("Access-Control-Request-Private-Network") == "true":
-        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    """보안 응답 헤더, CSRF 스크립트 자동 주입 및 Private Network Access(PNA) / CORS 허용"""
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
     origin = request.headers.get("Origin")
-    if origin and "Access-Control-Allow-Origin" not in response.headers:
+    if origin:
         response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Vary"] = "Origin"
+    elif "Access-Control-Allow-Origin" not in response.headers:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization, X-CSRF-Token, X-Requested-With, "
+        "X-Local-Agent-Bridge, X-Cam-Token, X-Overlay-Token, If-None-Match"
+    )
 
     allow_frame = request.path.startswith("/overlay/") or request.path.startswith("/cam")
     security_core.apply_security_headers(response, allow_framing=allow_frame)
@@ -3420,6 +3450,50 @@ class CloudMallSyncWorker:
 
 
 cloud_mall_sync_worker = CloudMallSyncWorker()
+
+
+@app.route('/api/agent/health', methods=['GET', 'OPTIONS'])
+def api_agent_health():
+    """
+    클라우드 CSR 스튜디오(49.50.132.140:5000 등)에서 방송자 로컬 PC 에이전트(127.0.0.1:5000)의
+    가동 상태, 로컬 Wi-Fi IP, 무선 카메라 보안 토큰, FFmpeg 및 RTMP 송출 상태를 1회 조회하는 경량 헬스체크 API
+    """
+    if request.method == 'OPTIONS':
+        return Response("", status=204)
+    import shutil
+    ip = get_local_ip() if 'get_local_ip' in globals() else '127.0.0.1'
+    wifi_ip = (globals().get('bridged_wifi_ip') or ip)
+    port = int(os.getenv("SERVER_PORT", 5000))
+    https_port = int(os.getenv("HTTPS_PORT", 5443))
+    cam_tok = get_studio_cam_token()
+    ov_tok = get_studio_overlay_token()
+    cfg = database.get_cloud_mall_config()
+    yt_rtmp_active = bool("youtube_direct_streamer" in globals() and youtube_direct_streamer is not None and youtube_direct_streamer.active)
+    tt_rtmp_active = bool("tiktok_direct_streamer" in globals() and tiktok_direct_streamer is not None and tiktok_direct_streamer.active)
+    ig_rtmp_active = bool("instagram_direct_streamer" in globals() and instagram_direct_streamer is not None and instagram_direct_streamer.active)
+    return jsonify({
+        "status": "ok",
+        "agent_version": "2.0.0",
+        "zero_traffic_mode": True,
+        "server_video_traffic_bytes": 0,
+        "agent_only_mode": bool(cfg.get("agent_only_mode") or os.getenv("AGENT_ONLY_MODE") == "1"),
+        "local_ip": wifi_ip,
+        "pc_ip": ip,
+        "http_port": port,
+        "https_port": https_port,
+        "cam_token": cam_tok,
+        "ov_token": ov_tok,
+        "cam1_url": f"https://{wifi_ip}:{https_port}/cam?cam=1&cam_token={cam_tok}",
+        "cam2_url": f"https://{wifi_ip}:{https_port}/cam?cam=2&cam_token={cam_tok}",
+        "ffmpeg_available": bool(shutil.which("ffmpeg")),
+        "rtmp_active": bool(yt_rtmp_active or tt_rtmp_active or ig_rtmp_active),
+        "platforms_rtmp": {
+            "youtube": yt_rtmp_active,
+            "tiktok": tt_rtmp_active,
+            "instagram": ig_rtmp_active,
+        },
+        "mall_url": cfg.get("mall_url", ""),
+    }), 200
 
 
 @app.route('/api/agent/cloud-config', methods=['GET', 'POST'])

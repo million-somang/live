@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/light_theme.css">
+    <script src="/static/js/local_agent_bridge.js"></script>
     <style>
         :root {
             --bg-dark: #f4f6f9;
@@ -1204,6 +1205,9 @@
                 <span class="live-dot" id="headerLiveIndicatorDot" style="background:#94a3b8; box-shadow:none; animation:none;"></span>
                 <span id="headerLiveIndicatorText">방송 대기중</span>
             </div>
+            <button type="button" class="btn-header" id="btnLocalAgentZeroTrafficBadge" onclick="openLocalAgentZeroTrafficModal()" style="background:#ecfdf5; border-color:#10b981; color:#047857; font-weight:800;" title="클릭하여 로컬 PC 에이전트(127.0.0.1:5000) 직결 상태 및 서버 영상 트래픽 0원 설정을 확인합니다">
+                <span>🟢 로컬 에이전트 직결 (서버트래픽 0B)</span>
+            </button>
         </div>
         <div class="header-actions">
             <button type="button" class="btn-header" id="btnHeaderYouTubeDirect" onclick="scrollToYouTubeDirectCard()" style="background:linear-gradient(135deg, #ef4444 0%, #06b6d4 100%); border:1px solid #f87171; color:#fff; box-shadow:0 4px 14px rgba(239,68,68,0.35);">
