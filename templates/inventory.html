@@ -187,7 +187,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: #fff;
+            color: #0f172a;
         }
 
         .product-num-badge {
@@ -202,18 +202,19 @@
 
         .product-price {
             font-size: 1.05rem;
-            color: #38bdf8;
+            color: #0284c7;
             font-weight: 700;
         }
 
         .product-specs {
             font-size: 0.84rem;
-            color: var(--text-muted);
+            color: #334155;
             margin-top: 4px;
             line-height: 1.4;
-            background: rgba(0, 0, 0, 0.25);
+            background: #f8fafc;
             padding: 6px 12px;
             border-radius: 6px;
+            border: 1px solid #e2e8f0;
             border-left: 3px solid var(--primary);
         }
 
@@ -224,42 +225,44 @@
         }
 
         .total-stock-pill {
-            background: rgba(99, 102, 241, 0.2);
-            color: #c7d2fe;
+            background: #eef2ff;
+            color: #3730a3;
             padding: 8px 16px;
             border-radius: 10px;
             font-weight: 700;
             font-size: 0.95rem;
-            border: 1px solid rgba(99, 102, 241, 0.35);
+            border: 1px solid #c7d2fe;
         }
 
         .btn-card-action {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid var(--card-border);
-            color: var(--text-main);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #1e293b;
             padding: 7px 12px;
             border-radius: 8px;
             font-size: 0.82rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
 
         .btn-card-action:hover {
-            background: rgba(255, 255, 255, 0.16);
-            color: #fff;
+            background: #f1f5f9;
+            border-color: #94a3b8;
+            color: #0f172a;
         }
 
         .btn-card-delete {
-            color: #fca5a5;
-            border-color: rgba(239, 68, 68, 0.35);
-            background: rgba(239, 68, 68, 0.12);
+            color: #dc2626;
+            border-color: #fecaca;
+            background: #fef2f2;
         }
 
         .btn-card-delete:hover {
-            background: rgba(239, 68, 68, 0.25);
-            color: #fff;
-            border-color: var(--danger-red);
+            background: #fee2e2;
+            color: #b91c1c;
+            border-color: #f87171;
         }
 
         /* 옵션 재고 테이블 */
@@ -272,26 +275,29 @@
         .stock-table th {
             text-align: left;
             padding: 10px 14px;
-            color: var(--text-muted);
-            font-weight: 600;
+            color: #475569;
+            font-weight: 700;
             border-bottom: 1px solid var(--card-border);
-            background: rgba(15, 23, 42, 0.4);
+            background: #f8fafc;
         }
 
         .stock-table td {
             padding: 12px 14px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #f1f5f9;
             vertical-align: middle;
+            color: #1e293b;
         }
 
         .stock-num {
             font-size: 1.1rem;
             font-weight: 700;
+            color: #0f172a;
         }
 
         .badge-warning {
-            background: rgba(245, 158, 11, 0.2);
-            color: #fbbf24;
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #fde68a;
             padding: 3px 8px;
             border-radius: 4px;
             font-size: 0.78rem;
@@ -300,8 +306,9 @@
         }
 
         .badge-danger {
-            background: rgba(239, 68, 68, 0.2);
-            color: #f87171;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
             padding: 3px 8px;
             border-radius: 4px;
             font-size: 0.78rem;
@@ -311,29 +318,31 @@
 
         .input-stock {
             width: 80px;
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid var(--card-border);
-            color: white;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #0f172a;
             padding: 6px 10px;
             border-radius: 6px;
             font-size: 0.9rem;
+            font-weight: 600;
             text-align: center;
         }
 
         .btn-update {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid var(--card-border);
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
             padding: 6px 12px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.82rem;
-            font-weight: 600;
+            font-weight: 700;
             transition: all 0.2s;
         }
 
         .btn-update:hover {
             background: var(--primary);
+            color: #ffffff;
             border-color: var(--primary);
         }
 
@@ -346,8 +355,8 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(8px);
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(6px);
             display: none;
             align-items: center;
             justify-content: center;
@@ -366,26 +375,28 @@
         }
 
         .modal-container {
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             border-radius: 20px;
             width: 100%;
             max-width: 780px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+            max-height: 92vh;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.28);
             display: flex;
             flex-direction: column;
+            color: #0f172a;
         }
 
         .modal-header {
-            padding: 20px 26px;
-            border-bottom: 1px solid var(--card-border);
+            padding: 18px 26px;
+            border-bottom: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: rgba(30, 41, 59, 0.5);
+            background: #f8fafc;
             border-radius: 20px 20px 0 0;
+            flex-shrink: 0;
         }
 
         .modal-header h3 {
@@ -394,30 +405,36 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: #fff;
+            color: #0f172a;
         }
 
         .modal-close-btn {
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.5rem;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #475569;
+            font-size: 1.35rem;
+            line-height: 1;
             cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 6px;
+            padding: 4px 10px;
+            border-radius: 8px;
             transition: all 0.2s;
         }
 
         .modal-close-btn:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.1);
+            color: #0f172a;
+            background: #e2e8f0;
+            border-color: #94a3b8;
         }
 
         .modal-body {
-            padding: 24px 26px;
+            padding: 22px 26px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 18px;
+            background: #ffffff;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
         }
 
         .form-row-2 {
@@ -433,9 +450,9 @@
         }
 
         .form-label {
-            font-size: 0.85rem;
+            font-size: 0.88rem;
             font-weight: 700;
-            color: #cbd5e1;
+            color: #1e293b;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -446,19 +463,20 @@
         }
 
         .form-input, .form-textarea {
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid var(--card-border);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
             padding: 10px 14px;
-            color: #fff;
+            color: #0f172a;
             font-size: 0.92rem;
+            font-weight: 500;
             transition: all 0.2s;
             outline: none;
         }
 
         .form-input:focus, .form-textarea:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
         }
 
         /* 이미지 업로드 & 미리보기 영역 */
@@ -466,8 +484,8 @@
             display: flex;
             gap: 16px;
             align-items: center;
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px dashed var(--card-border);
+            background: #f8fafc;
+            border: 1px dashed #94a3b8;
             border-radius: 12px;
             padding: 14px;
         }
@@ -476,8 +494,8 @@
             width: 100px;
             height: 100px;
             border-radius: 10px;
-            background: rgba(15, 23, 42, 0.9);
-            border: 1px solid var(--card-border);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -499,10 +517,10 @@
         }
 
         .btn-file-select {
-            background: rgba(99, 102, 241, 0.2);
-            color: #a5b4fc;
-            border: 1px solid rgba(99, 102, 241, 0.4);
-            padding: 7px 14px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #93c5fd;
+            padding: 8px 14px;
             border-radius: 8px;
             font-size: 0.85rem;
             font-weight: 700;
@@ -512,14 +530,15 @@
         }
 
         .btn-file-select:hover {
-            background: rgba(99, 102, 241, 0.35);
-            color: #fff;
+            background: #dbeafe;
+            color: #1e40af;
+            border-color: #60a5fa;
         }
 
         /* 옵션 매트릭스 생성기 박스 */
         .option-generator-card {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--card-border);
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
             border-radius: 12px;
             padding: 16px;
             display: flex;
@@ -528,9 +547,9 @@
         }
 
         .option-gen-title {
-            font-size: 0.9rem;
-            font-weight: 700;
-            color: #38bdf8;
+            font-size: 0.92rem;
+            font-weight: 800;
+            color: #0369a1;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -539,38 +558,41 @@
         .option-table-wrap {
             max-height: 240px;
             overflow-y: auto;
-            border: 1px solid var(--card-border);
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
-            background: rgba(15, 23, 42, 0.6);
+            background: #ffffff;
         }
 
         .modal-footer {
             padding: 16px 26px;
-            border-top: 1px solid var(--card-border);
+            border-top: 1px solid #e2e8f0;
             display: flex;
             justify-content: flex-end;
             gap: 10px;
-            background: rgba(30, 41, 59, 0.4);
+            background: #f8fafc;
             border-radius: 0 0 20px 20px;
+            flex-shrink: 0;
         }
 
         .btn-cancel {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid var(--card-border);
-            color: var(--text-muted);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #475569;
             padding: 9px 18px;
             border-radius: 8px;
             font-weight: 700;
             cursor: pointer;
+            transition: all 0.2s;
         }
 
         .btn-cancel:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.15);
+            color: #0f172a;
+            background: #f1f5f9;
+            border-color: #94a3b8;
         }
 
         .btn-save-product {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            background: linear-gradient(135deg, #2563eb, #4f46e5);
             border: none;
             color: #fff;
             padding: 9px 22px;
@@ -578,23 +600,23 @@
             font-weight: 800;
             font-size: 0.92rem;
             cursor: pointer;
-            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            transition: all 0.2s;
         }
 
         .btn-save-product:hover {
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            background: linear-gradient(135deg, #1d4ed8, #4338ca);
         }
 
         /* ==================================================== */
         /* 📊 등록 제품 개수 및 재고 상태 현황표 스타일 */
         /* ==================================================== */
         .summary-panel {
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(14px);
-            border: 1px solid rgba(99, 102, 241, 0.35);
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
             border-radius: 16px;
             padding: 20px 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
             display: flex;
             flex-direction: column;
             gap: 16px;
@@ -613,8 +635,8 @@
         }
 
         .summary-kpi-card {
-            background: rgba(30, 41, 59, 0.65);
-            border: 1px solid var(--card-border);
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 14px 16px;
             display: flex;
@@ -625,7 +647,7 @@
         .summary-kpi-label {
             font-size: 0.78rem;
             font-weight: 700;
-            color: var(--text-muted);
+            color: #475569;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -634,20 +656,20 @@
         .summary-kpi-value {
             font-size: 1.45rem;
             font-weight: 800;
-            color: #fff;
+            color: #0f172a;
             letter-spacing: -0.5px;
         }
 
         .summary-kpi-sub {
             font-size: 0.75rem;
-            color: var(--text-muted);
+            color: #64748b;
         }
 
         .summary-table-wrap {
             overflow-x: auto;
-            border: 1px solid var(--card-border);
+            border: 1px solid #e2e8f0;
             border-radius: 12px;
-            background: rgba(15, 23, 42, 0.55);
+            background: #ffffff;
         }
 
         .summary-table {
@@ -659,18 +681,19 @@
         .summary-table th {
             text-align: left;
             padding: 11px 14px;
-            color: #cbd5e1;
+            color: #475569;
             font-weight: 700;
             font-size: 0.8rem;
-            background: rgba(30, 41, 59, 0.75);
-            border-bottom: 1px solid var(--card-border);
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
             white-space: nowrap;
         }
 
         .summary-table td {
             padding: 11px 14px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid #f1f5f9;
             vertical-align: middle;
+            color: #1e293b;
         }
 
         .summary-table tbody tr:last-child td {
@@ -678,7 +701,7 @@
         }
 
         .summary-table tbody tr:hover {
-            background: rgba(99, 102, 241, 0.08);
+            background: #f8fafc;
         }
 
         .opt-mini-chip {
@@ -690,21 +713,21 @@
             font-size: 0.76rem;
             font-weight: 600;
             margin: 2px 4px 2px 0;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #e2e8f0;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            color: #334155;
         }
 
         .opt-mini-chip.low {
-            background: rgba(245, 158, 11, 0.15);
-            border-color: rgba(245, 158, 11, 0.4);
-            color: #fbbf24;
+            background: #fffbeb;
+            border-color: #fcd34d;
+            color: #b45309;
         }
 
         .opt-mini-chip.soldout {
-            background: rgba(239, 68, 68, 0.18);
-            border-color: rgba(239, 68, 68, 0.45);
-            color: #f87171;
+            background: #fef2f2;
+            border-color: #fca5a5;
+            color: #dc2626;
             text-decoration: line-through;
         }
 
@@ -747,9 +770,9 @@
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span style="font-size: 1.4rem;">📊</span>
                     <div>
-                        <h3 style="font-size: 1.12rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                        <h3 style="font-size: 1.12rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
                             <span>등록 제품 및 재고 상태 현황표</span>
-                            <span id="summaryHeaderCountBadge" style="background: rgba(99, 102, 241, 0.25); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.45); font-size: 0.78rem; font-weight: 800; padding: 2px 10px; border-radius: 12px;">
+                            <span id="summaryHeaderCountBadge" style="background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; font-size: 0.78rem; font-weight: 800; padding: 2px 10px; border-radius: 12px;">
                                 총 {{ items|length if items else 0 }}개 제품 등록됨
                             </span>
                         </h3>
@@ -758,7 +781,7 @@
                         </p>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; font-size: 0.78rem; color: var(--text-muted);">
+                <div style="display: flex; align-items: center; gap: 10px; font-size: 0.78rem; color: #475569; font-weight: 600;">
                     <span>🟢 여유 (6개 이상)</span>
                     <span>🟡 품절 임박 (1~5개)</span>
                     <span>🔴 품절 (0개)</span>
@@ -767,29 +790,29 @@
 
             <!-- 5대 핵심 재고 KPI 요약 카드 -->
             <div class="summary-kpi-grid">
-                <div class="summary-kpi-card" style="border-color: rgba(99, 102, 241, 0.35);">
+                <div class="summary-kpi-card" style="border-color: #c7d2fe; background: #f8fafc;">
                     <div class="summary-kpi-label">📦 총 등록 제품 수</div>
-                    <div class="summary-kpi-value" id="summaryTotalProducts" style="color: #a5b4fc;">{{ items|length if items else 0 }}개</div>
+                    <div class="summary-kpi-value" id="summaryTotalProducts" style="color: #3730a3;">{{ items|length if items else 0 }}개</div>
                     <div class="summary-kpi-sub" id="summaryTotalOptions">하위 옵션 총 0개</div>
                 </div>
-                <div class="summary-kpi-card" style="border-color: rgba(56, 189, 248, 0.35);">
+                <div class="summary-kpi-card" style="border-color: #bae6fd; background: #f8fafc;">
                     <div class="summary-kpi-label">🔢 전체 잔여 재고 합계</div>
-                    <div class="summary-kpi-value" id="summaryTotalStock" style="color: #38bdf8;">0개</div>
+                    <div class="summary-kpi-value" id="summaryTotalStock" style="color: #0284c7;">0개</div>
                     <div class="summary-kpi-sub" id="summaryPotentialProfit">완판 예상 이익 +0원</div>
                 </div>
-                <div class="summary-kpi-card" style="border-color: rgba(16, 185, 129, 0.35);">
+                <div class="summary-kpi-card" style="border-color: #a7f3d0; background: #f8fafc;">
                     <div class="summary-kpi-label">🟢 재고 여유 제품</div>
-                    <div class="summary-kpi-value" id="summaryNormalProducts" style="color: #34d399;">0개</div>
+                    <div class="summary-kpi-value" id="summaryNormalProducts" style="color: #059669;">0개</div>
                     <div class="summary-kpi-sub" id="summaryNormalOptions">여유 옵션 0개</div>
                 </div>
-                <div class="summary-kpi-card" style="border-color: rgba(245, 158, 11, 0.35);">
+                <div class="summary-kpi-card" style="border-color: #fde68a; background: #f8fafc;">
                     <div class="summary-kpi-label">🟡 품절 임박 포함</div>
-                    <div class="summary-kpi-value" id="summaryLowStockProducts" style="color: #fbbf24;">0개</div>
+                    <div class="summary-kpi-value" id="summaryLowStockProducts" style="color: #d97706;">0개</div>
                     <div class="summary-kpi-sub" id="summaryLowStockOptions">품절 임박 옵션 0개 (5개 이하)</div>
                 </div>
-                <div class="summary-kpi-card" style="border-color: rgba(239, 68, 68, 0.35);">
+                <div class="summary-kpi-card" style="border-color: #fecaca; background: #f8fafc;">
                     <div class="summary-kpi-label">🔴 품절(SOLD OUT) 포함</div>
-                    <div class="summary-kpi-value" id="summarySoldOutProducts" style="color: #f87171;">0개</div>
+                    <div class="summary-kpi-value" id="summarySoldOutProducts" style="color: #dc2626;">0개</div>
                     <div class="summary-kpi-sub" id="summarySoldOutOptions">품절 옵션 0개 / 전량 품절 0개</div>
                 </div>
             </div>
@@ -816,29 +839,29 @@
         </div>
 
         <!-- 📋 실시간 주문 승인 & 재고 차감 대기소 (Pending Orders) -->
-        <div class="pending-orders-panel" id="pendingOrdersPanel" style="margin-bottom: 24px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(14px); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 16px; padding: 20px 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+        <div class="pending-orders-panel" id="pendingOrdersPanel" style="margin-bottom: 24px; background: #ffffff; border: 1px solid #fcd34d; border-radius: 16px; padding: 20px 24px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 1.5rem;">📋</span>
                     <div>
-                        <h3 style="font-size: 1.15rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px;">
+                        <h3 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
                             <span>실시간 주문 확인 & 재고 차감 대기소</span>
-                            <span class="badge-pending-count" id="pendingCountBadge" style="background: #f59e0b; color: #000; font-size: 0.8rem; font-weight: 800; padding: 2px 8px; border-radius: 12px;">0건 대기 중</span>
+                            <span class="badge-pending-count" id="pendingCountBadge" style="background: #f59e0b; color: #ffffff; font-size: 0.8rem; font-weight: 800; padding: 2px 8px; border-radius: 12px;">0건 대기 중</span>
                         </h3>
                         <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
                             시청자 주문 댓글이 들어오면 이곳에 대기하며, 관리자가 <strong>[✅ 확인 및 재고 차감]</strong>을 누를 때만 실제 옵션 재고에서 차감됩니다.
                         </p>
                     </div>
                 </div>
-                <div style="font-size: 0.78rem; color: #34d399; display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 8px; height: 8px; background: #34d399; border-radius: 50%; box-shadow: 0 0 8px #34d399;"></span>
+                <div style="font-size: 0.78rem; color: #059669; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                    <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);"></span>
                     <span>실시간 2.5초 자동 동기화 가동 중</span>
                 </div>
             </div>
 
             <!-- 대기 주문 목록 -->
             <div id="pendingOrdersList" style="display: flex; flex-direction: column; gap: 10px;">
-                <div id="pendingOrdersEmpty" style="text-align: center; padding: 24px 16px; color: var(--text-muted); font-size: 0.88rem; background: rgba(0,0,0,0.25); border-radius: 10px;">
+                <div id="pendingOrdersEmpty" style="text-align: center; padding: 24px 16px; color: #64748b; font-size: 0.88rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
                     ✨ 현재 확인 대기 중인 주문이 없습니다. (시청자가 방송에서 주문 댓글을 남기면 즉시 이곳에 표시됩니다)
                 </div>
             </div>
@@ -873,17 +896,17 @@
                                             정가: {{ "{:,}".format(item.consumer_price) }}원
                                         </div>
                                     {% endif %}
-                                    <div class="product-price" style="font-size:1.1rem; font-weight:800; color:#38bdf8;">
+                                    <div class="product-price" style="font-size:1.1rem; font-weight:800; color:#0284c7;">
                                         판매가: {{ "{:,}".format(item.price) }}원
                                     </div>
-                                    <div style="font-size:0.85rem; color:#cbd5e1; background:rgba(255,255,255,0.06); padding:2px 8px; border-radius:6px;" title="공급 원가 (사입가)">
-                                        원가: <strong style="color:#f59e0b;">{{ "{:,}".format(item.cost_price) }}원</strong>
+                                    <div style="font-size:0.85rem; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:6px;" title="공급 원가 (사입가)">
+                                        원가: <strong style="color:#d97706;">{{ "{:,}".format(item.cost_price) }}원</strong>
                                     </div>
-                                    <div style="font-size:0.85rem; font-weight:700; color:#34d399; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); padding:2px 8px; border-radius:6px;" title="개당 순이익 = 판매가 - 원가">
+                                    <div style="font-size:0.85rem; font-weight:700; color:#047857; background:#ecfdf5; border:1px solid #a7f3d0; padding:2px 8px; border-radius:6px;" title="개당 순이익 = 판매가 - 원가">
                                         개당 이익: +{{ "{:,}".format(item.margin_unit) }}원 ({{ item.margin_rate }}%)
                                     </div>
                                     {% if item.total_stock > 0 and item.potential_profit > 0 %}
-                                        <div style="font-size:0.82rem; color:#a5b4fc; background:rgba(99,102,241,0.18); border:1px solid rgba(99,102,241,0.35); padding:2px 8px; border-radius:6px;" title="잔여 재고 {{ item.total_stock }}개 완판 시 총 예상 순이익">
+                                        <div style="font-size:0.82rem; color:#3730a3; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 8px; border-radius:6px;" title="잔여 재고 {{ item.total_stock }}개 완판 시 총 예상 순이익">
                                             완판 시 예상 이익: <strong>+{{ "{:,}".format(item.potential_profit) }}원</strong>
                                         </div>
                                     {% endif %}
@@ -922,7 +945,7 @@
                             {% for opt in item.options %}
                             <tr>
                                 <td><strong>{{ opt.color }}</strong></td>
-                                <td><span style="background:rgba(255,255,255,0.08); padding:3px 8px; border-radius:4px;">{{ opt.size }}</span></td>
+                                <td><span style="background:#f1f5f9; border:1px solid #cbd5e1; color:#1e293b; font-weight:600; padding:3px 8px; border-radius:4px;">{{ opt.size }}</span></td>
                                 <td>
                                     <span class="stock-num" id="stock-val-{{ item.id }}-{{ opt.color }}-{{ opt.size }}">{{ opt.stock }}</span>개
                                 </td>
@@ -932,7 +955,7 @@
                                     {% elif opt.stock <= 5 %}
                                         <span class="badge-warning">품절 임박 ({{ opt.stock }}개 남음)</span>
                                     {% else %}
-                                        <span style="color:#34d399; font-size:0.85rem; font-weight:600;">여유</span>
+                                        <span style="color:#059669; font-size:0.85rem; font-weight:700;">여유</span>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -948,9 +971,9 @@
                 </div>
                 {% endfor %}
             {% else %}
-                <div style="text-align: center; padding: 60px 24px; background: var(--card-bg); backdrop-filter: blur(14px); border: 1px dashed var(--card-border); border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
-                    <div style="font-size: 3.5rem; filter: drop-shadow(0 0 16px rgba(99,102,241,0.3));">📦</div>
-                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #fff;">등록된 라이브 판매 상품이 없습니다</h3>
+                <div style="text-align: center; padding: 60px 24px; background: var(--card-bg); border: 1px dashed #cbd5e1; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
+                    <div style="font-size: 3.5rem;">📦</div>
+                    <h3 style="font-size: 1.35rem; font-weight: 800; color: #0f172a;">등록된 라이브 판매 상품이 없습니다</h3>
                     <p style="color: var(--text-muted); font-size: 0.92rem; max-width: 480px; line-height: 1.5;">
                         기존 목업 상품이 모두 정리되었습니다.<br>
                         오늘 방송에서 판매할 실제 상품을 직접 등록하시면, AI 주문 접수와 고객 CS에 즉시 실시간 연동됩니다.
@@ -993,43 +1016,43 @@
                     <div class="form-group">
                         <label class="form-label">
                             <span>소비자가 (정가)</span>
-                            <span style="font-size:0.75rem; color:var(--text-muted);">(원)</span>
+                            <span style="font-size:0.75rem; color:#64748b;">(원)</span>
                         </label>
                         <input type="number" id="prodConsumerPrice" class="form-input" placeholder="예: 50000" min="0" step="1000" oninput="calcModalMargin()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">
                             <span>방송 특가 (판매가) <span class="req">*</span></span>
-                            <span style="font-size:0.75rem; color:#38bdf8;">실판매</span>
+                            <span style="font-size:0.75rem; color:#0284c7; font-weight:800;">실판매</span>
                         </label>
                         <input type="number" id="prodPrice" class="form-input" placeholder="예: 39000" min="0" step="1000" oninput="calcModalMargin()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">
                             <span>공급 원가 (사입가) <span class="req">*</span></span>
-                            <span style="font-size:0.75rem; color:#f59e0b;">사입비</span>
+                            <span style="font-size:0.75rem; color:#d97706; font-weight:800;">사입비</span>
                         </label>
                         <input type="number" id="prodCostPrice" class="form-input" placeholder="예: 18000" min="0" step="1000" oninput="calcModalMargin()">
                     </div>
                 </div>
 
                 <!-- 1-2. 실시간 이익 및 마진율 계산 프리뷰 카드 -->
-                <div id="modalMarginPreviewCard" style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+                <div id="modalMarginPreviewCard" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
                     <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
                         <div>
-                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">개당 순이익 (마진)</span>
-                            <strong id="previewMarginUnit" style="font-size: 1.15rem; color: #34d399;">+0원</strong>
+                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">개당 순이익 (마진)</span>
+                            <strong id="previewMarginUnit" style="font-size: 1.15rem; color: #059669;">+0원</strong>
                         </div>
-                        <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 16px;">
-                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">마진율 (이익률)</span>
-                            <strong id="previewMarginRate" style="font-size: 1.15rem; color: #38bdf8;">0.0%</strong>
+                        <div style="border-left: 1px solid #cbd5e1; padding-left: 16px;">
+                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">마진율 (이익률)</span>
+                            <strong id="previewMarginRate" style="font-size: 1.15rem; color: #0284c7;">0.0%</strong>
                         </div>
-                        <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 16px;">
-                            <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">정가 대비 할인율</span>
-                            <strong id="previewDiscountRate" style="font-size: 1.15rem; color: #f43f5e;">0%</strong>
+                        <div style="border-left: 1px solid #cbd5e1; padding-left: 16px;">
+                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">정가 대비 할인율</span>
+                            <strong id="previewDiscountRate" style="font-size: 1.15rem; color: #e11d48;">0%</strong>
                         </div>
                     </div>
-                    <div style="font-size: 0.8rem; color: #a5b4fc; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.35); padding: 4px 10px; border-radius: 6px;">
+                    <div style="font-size: 0.8rem; font-weight: 700; color: #3730a3; background: #eef2ff; border: 1px solid #c7d2fe; padding: 5px 12px; border-radius: 6px;">
                         💡 원가 대비 마진 실시간 계산
                     </div>
                 </div>
@@ -1039,7 +1062,7 @@
                     <label class="form-label">상품 대표 사진</label>
                     <div class="image-upload-wrapper">
                         <div class="image-preview-box" id="imagePreviewBox">
-                            <span style="font-size:2rem; opacity:0.5;" id="previewPlaceholder">📷</span>
+                            <span style="font-size:2rem; opacity:0.6;" id="previewPlaceholder">📷</span>
                             <img id="imagePreview" src="" style="display:none;" alt="미리보기">
                         </div>
                         <div class="upload-controls">
@@ -1047,8 +1070,8 @@
                             <button type="button" class="btn-file-select" onclick="document.getElementById('prodImageFile').click()">
                                 📁 PC에서 사진 선택
                             </button>
-                            <input type="text" id="prodImageUrl" class="form-input" placeholder="또는 사진 URL 직접 입력" style="font-size:0.8rem;" oninput="onUrlInput(this.value)">
-                            <div style="font-size:0.75rem; color:var(--text-muted);">
+                            <input type="text" id="prodImageUrl" class="form-input" placeholder="또는 사진 URL 직접 입력" style="font-size:0.85rem;" oninput="onUrlInput(this.value)">
+                            <div style="font-size:0.78rem; color:#64748b;">
                                 * 권장 크기: 정사각형(1:1) / 지원 형식: JPG, JFIF, PNG, WEBP
                             </div>
                         </div>
@@ -1059,7 +1082,7 @@
                 <div class="form-group">
                     <label class="form-label">
                         <span>제품 사양 및 설명 (Specs)</span>
-                        <span style="font-size:0.75rem; color:#38bdf8; font-weight:normal;">💡 AI가 시청자 문의 시 이 내용을 바탕으로 자동 답변합니다</span>
+                        <span style="font-size:0.78rem; color:#2563eb; font-weight:700;">💡 AI가 시청자 문의 시 이 내용을 바탕으로 자동 답변합니다</span>
                     </label>
                     <textarea id="prodSpecs" class="form-textarea" rows="2" placeholder="예: 코튼 100% 헤비웨이트 원단, 덤블워싱 가공으로 세탁 후 변형 없음, 루즈 오버핏, 세탁기 찬물 세탁 권장"></textarea>
                 </div>
@@ -1068,7 +1091,7 @@
                 <div class="option-generator-card">
                     <div class="option-gen-title">
                         <span>⚡ 색상 x 사이즈 옵션 매트릭스 생성기</span>
-                        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">쉼표(,)로 구분해 여러 개 입력</span>
+                        <span style="font-size:0.78rem; color:#64748b; font-weight:600;">쉼표(,)로 구분해 여러 개 입력</span>
                     </div>
 
                     <div class="form-row-2">
@@ -1083,7 +1106,7 @@
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <button type="button" class="btn-file-select" onclick="generateOptionMatrix()" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border-color:rgba(56,189,248,0.4);">
+                        <button type="button" class="btn-file-select" onclick="generateOptionMatrix()" style="background:#e0f2fe; color:#0369a1; border-color:#7dd3fc;">
                             ⚡ 옵션 조합 일괄 생성
                         </button>
                         <button type="button" class="btn-card-action" onclick="addSingleOptionRow('', '', 10)">
@@ -1529,7 +1552,7 @@
                 if (listEl) {
                     if (pending.length === 0) {
                         listEl.innerHTML = `
-                            <div id="pendingOrdersEmpty" style="text-align: center; padding: 24px 16px; color: var(--text-muted); font-size: 0.88rem; background: rgba(0,0,0,0.25); border-radius: 10px;">
+                            <div id="pendingOrdersEmpty" style="text-align: center; padding: 24px 16px; color: #64748b; font-size: 0.88rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px;">
                                 ✨ 현재 확인 대기 중인 주문이 없습니다. (시청자가 방송에서 주문 댓글을 남기면 즉시 이곳에 표시됩니다)
                             </div>
                         `;
@@ -1538,29 +1561,29 @@
                         pending.forEach(ord => {
                             const priceStr = (ord.total_price || 0).toLocaleString();
                             html += `
-                                <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 12px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+                                <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 12px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
                                     <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 260px;">
                                         <div style="display: flex; align-items: center; gap: 8px;">
-                                            <span style="background: rgba(99,102,241,0.25); color: #a5b4fc; font-size: 0.75rem; font-weight: 800; padding: 2px 7px; border-radius: 4px;">#${ord.id}</span>
-                                            <span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 0.75rem; font-weight: 700; padding: 2px 7px; border-radius: 4px;">⏳ 확인 대기 (재고 미차감)</span>
-                                            <strong style="color: #fff; font-size: 0.95rem;">${escapeHtml(ord.buyer_name)}</strong>
-                                            <span style="font-size: 0.78rem; color: var(--text-muted);">${ord.order_time}</span>
+                                            <span style="background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; font-size: 0.75rem; font-weight: 800; padding: 2px 7px; border-radius: 4px;">#${ord.id}</span>
+                                            <span style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; font-size: 0.75rem; font-weight: 700; padding: 2px 7px; border-radius: 4px;">⏳ 확인 대기 (재고 미차감)</span>
+                                            <strong style="color: #0f172a; font-size: 0.95rem;">${escapeHtml(ord.buyer_name)}</strong>
+                                            <span style="font-size: 0.78rem; color: #64748b;">${ord.order_time}</span>
                                         </div>
-                                        <div style="font-size: 0.92rem; color: #fff; margin-top: 2px;">
+                                        <div style="font-size: 0.92rem; color: #0f172a; margin-top: 2px;">
                                             <strong>${escapeHtml(ord.item_name)}</strong>
-                                            <span style="color: #38bdf8; margin-left: 4px;">(${escapeHtml(ord.color)} / ${escapeHtml(ord.size)})</span>
-                                            <span style="color: #f59e0b; font-weight: 700; margin-left: 6px;">${ord.quantity}개</span>
-                                            <span style="color: var(--text-muted); font-size: 0.82rem; margin-left: 8px;">(총 ${priceStr}원)</span>
+                                            <span style="color: #0284c7; font-weight: 700; margin-left: 4px;">(${escapeHtml(ord.color)} / ${escapeHtml(ord.size)})</span>
+                                            <span style="color: #d97706; font-weight: 800; margin-left: 6px;">${ord.quantity}개</span>
+                                            <span style="color: #64748b; font-size: 0.82rem; margin-left: 8px;">(총 ${priceStr}원)</span>
                                         </div>
-                                        <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; margin-top: 2px;">
+                                        <div style="font-size: 0.78rem; color: #334155; background: #ffffff; border: 1px solid #e2e8f0; padding: 4px 8px; border-radius: 4px; margin-top: 2px;">
                                             💬 시청자 원문: "${escapeHtml(ord.raw_message)}"
                                         </div>
                                     </div>
                                     <div style="display: flex; gap: 8px; align-items: center;">
-                                        <button type="button" onclick="confirmOrder(${ord.id}, this)" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(16,185,129,0.3); transition: all 0.15s;">
+                                        <button type="button" onclick="confirmOrder(${ord.id}, this)" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 12px rgba(16,185,129,0.25); transition: all 0.15s;">
                                             <span>✅ 확인 및 재고 차감</span>
                                         </button>
-                                        <button type="button" onclick="rejectOrder(${ord.id}, this)" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s;">
+                                        <button type="button" onclick="rejectOrder(${ord.id}, this)" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all 0.15s;">
                                             <span>❌ 반려</span>
                                         </button>
                                     </div>
@@ -1594,13 +1617,13 @@
                                 const statusCell = row.children[3];
                                 if (statusCell) {
                                     if (opt.stock === 0) {
-                                        statusCell.innerHTML = '<span class="badge-danger" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); padding: 4px 10px; border-radius: 6px; font-weight: 800;">🚨 품절 (SOLD OUT)</span>';
-                                        row.style.background = 'rgba(239, 68, 68, 0.05)';
+                                        statusCell.innerHTML = '<span class="badge-danger" style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 6px; font-weight: 800;">🚨 품절 (SOLD OUT)</span>';
+                                        row.style.background = '#fef2f2';
                                     } else if (opt.stock <= 5) {
                                         statusCell.innerHTML = `<span class="badge-warning">⚠️ 품절 임박 (${opt.stock}개 남음)</span>`;
-                                        row.style.background = 'rgba(245, 158, 11, 0.05)';
+                                        row.style.background = '#fffbeb';
                                     } else {
-                                        statusCell.innerHTML = '<span style="color:#34d399; font-size:0.85rem; font-weight:600;">여유</span>';
+                                        statusCell.innerHTML = '<span style="color:#059669; font-size:0.85rem; font-weight:700;">여유</span>';
                                         row.style.background = 'transparent';
                                     }
                                 }
@@ -1688,17 +1711,17 @@
                     if (itemStock <= 0 && opts.length > 0) {
                         soldOutProds++;
                         allSoldOutProds++;
-                        statusBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.22); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; display: inline-block;">🔴 전량 품절</span>`;
+                        statusBadgeHtml = `<span style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; display: inline-block;">🔴 전량 품절</span>`;
                     } else if (itemSoldOutOpts > 0) {
                         soldOutProds++;
                         if (itemLowOpts > 0) lowStockProds++;
-                        statusBadgeHtml = `<span style="background: rgba(239, 68, 68, 0.16); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🔴 일부 품절 (${itemSoldOutOpts}개 옵션)</span>`;
+                        statusBadgeHtml = `<span style="background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🔴 일부 품절 (${itemSoldOutOpts}개 옵션)</span>`;
                     } else if (itemLowOpts > 0 || itemStock <= 5) {
                         lowStockProds++;
-                        statusBadgeHtml = `<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.45); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🟡 품절 임박 (${itemLowOpts || 1}개 옵션)</span>`;
+                        statusBadgeHtml = `<span style="background: #fffbeb; color: #b45309; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🟡 품절 임박 (${itemLowOpts || 1}개 옵션)</span>`;
                     } else {
                         normalProds++;
-                        statusBadgeHtml = `<span style="background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🟢 여유</span>`;
+                        statusBadgeHtml = `<span style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; display: inline-block;">🟢 여유</span>`;
                     }
 
                     const priceStr = Number(item.price || 0).toLocaleString();
@@ -1710,20 +1733,20 @@
                                 <span class="product-num-badge" style="font-size: 0.76rem; padding: 3px 8px;">${item.num}번</span>
                             </td>
                             <td>
-                                <a href="javascript:void(0)" onclick="scrollToProductCard('${item.id}')" style="color: #fff; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;" title="클릭 시 해당 상품 상세 카드로 이동">
+                                <a href="javascript:void(0)" onclick="scrollToProductCard('${item.id}')" style="color: #0f172a; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;" title="클릭 시 해당 상품 상세 카드로 이동">
                                     <span>${escapeHtml(item.name)}</span>
                                 </a>
                             </td>
                             <td>
-                                <div style="color: #38bdf8; font-weight: 700;">${priceStr}원</div>
-                                <div style="font-size: 0.74rem; color: #34d399;">마진 ${marginRateStr}</div>
+                                <div style="color: #0284c7; font-weight: 800;">${priceStr}원</div>
+                                <div style="font-size: 0.74rem; color: #059669; font-weight: 700;">마진 ${marginRateStr}</div>
                             </td>
                             <td>
                                 <div style="display: flex; flex-wrap: wrap; align-items: center;">
                                     ${optChipsHtml || '<span style="color: var(--text-muted); font-size: 0.78rem;">옵션 없음</span>'}
                                 </div>
                             </td>
-                            <td style="text-align: right; font-weight: 800; font-size: 0.98rem; color: ${itemStock === 0 ? '#f87171' : (itemStock <= 5 ? '#fbbf24' : '#f8fafc')};">
+                            <td style="text-align: right; font-weight: 800; font-size: 0.98rem; color: ${itemStock === 0 ? '#dc2626' : (itemStock <= 5 ? '#d97706' : '#0f172a')};">
                                 ${itemStock.toLocaleString()}개
                             </td>
                             <td style="text-align: center;">

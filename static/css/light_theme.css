@@ -108,8 +108,13 @@ h1, h2, h3, h4, h5, h6 {
 .platform-card,
 .order-card,
 .cs-card,
+.modal-container,
 .modal-content,
 .modal-box,
+.modal-body,
+.summary-panel,
+.summary-table-wrap,
+.option-table-wrap,
 .qr-card,
 .session-modal-card,
 .yt-modal-card,
@@ -150,6 +155,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* 서브 카드 & 아이템 행 (라이트 슬레이트 표면) */
+.modal-header,
+.modal-footer,
+.summary-kpi-card,
+.option-generator-card,
+.image-upload-wrapper,
 .stage-node-card,
 .stage-line-row,
 .history-session-item,
@@ -372,6 +382,8 @@ tr:hover td {
 .btn-action:not(.btn-fullscreen):not(.active),
 .btn-ctrl:not(.active),
 .btn-sm:not(.primary),
+.btn-card-action:not(.btn-card-delete),
+.btn-cancel,
 .quick-chip-btn {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
@@ -404,7 +416,9 @@ tr:hover td {
 .top-btn:hover,
 .btn-action:not(.btn-fullscreen):not(.active):hover,
 .btn-ctrl:not(.active):hover,
-.btn-sm:not(.primary):hover {
+.btn-sm:not(.primary):hover,
+.btn-card-action:not(.btn-card-delete):hover,
+.btn-cancel:hover {
     background: #f1f5f9 !important;
     border-color: #94a3b8 !important;
     color: #0f172a !important;
