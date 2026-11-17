@@ -13458,6 +13458,24 @@ class SimulcastAutomationBridge:
             last_login_check_ts = time.time()
 
             while not self._worker_stop_flags.get(platform, False):
+                # 0) 새 팝업 창(Google/Kakao OAuth 등 window.open) 감지 및 자동 포커스 전환
+                try:
+                    open_pages = [p for p in context.pages if not p.is_closed()]
+                    if open_pages:
+                        latest_page = open_pages[-1]
+                        if latest_page != page:
+                            page = latest_page
+                            try:
+                                page.set_viewport_size({"width": 1280, "height": 820})
+                            except Exception:
+                                pass
+                            try:
+                                cdp = context.new_cdp_session(page)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
                 # 1) 명령 큐 처리
                 cmd = None
                 with self.lock:
@@ -13501,11 +13519,25 @@ class SimulcastAutomationBridge:
                         elif act == "REMOTE_CLICK":
                             rx = float(pl.get("x", 640))
                             ry = float(pl.get("y", 410))
-                            self.trusted_click_by_coords(cdp, rx, ry)
+                            try:
+                                self.trusted_click_by_coords(cdp, rx, ry)
+                            except Exception:
+                                page.mouse.click(rx, ry)
                         elif act == "REMOTE_TEXT":
                             r_text = str(pl.get("text") or "")
                             if r_text:
-                                page.keyboard.type(r_text, delay=25)
+                                page.keyboard.type(r_text, delay=20)
+                            if pl.get("press_enter"):
+                                page.keyboard.press("Enter")
+                        elif act == "REMOTE_KEY":
+                            key_name = str(pl.get("key") or "Enter")
+                            page.keyboard.press(key_name)
+                        elif act == "CLOSE_POPUP":
+                            open_pages = [p for p in context.pages if not p.is_closed()]
+                            if len(open_pages) > 1:
+                                open_pages[-1].close()
+                                page = open_pages[0]
+                                cdp = context.new_cdp_session(page)
                     except Exception as cmd_err:
                         self._log(f"⚠️ [{platform}] 명령({act}) 처리 중 오류: {cmd_err}")
 

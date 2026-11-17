@@ -1663,6 +1663,12 @@
                                         내장 브라우저가 아직 실행되지 않았습니다.<br>[🔑 로그인/창 열기] 또는 [🚀 CDP 자동 키추출·송출]을 누르면 실시간 브라우저 화면이 표시됩니다.
                                     </div>
                                 </div>
+                                <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin-top:2px;">
+                                    <input type="text" class="form-control" id="bridgeRemoteTextInput" placeholder="⌨️ 클릭한 입력칸에 타이핑할 글자(아이디/비번 등) 입력 후 Enter" style="flex:1; min-width:150px; font-size:0.73rem; padding:5px 8px;" onkeypress="if(event.key==='Enter'){ event.preventDefault(); sendBridgeRemoteText(true); }">
+                                    <button type="button" class="btn-action" onclick="sendBridgeRemoteText(true)" style="width:auto; padding:4px 9px; font-size:0.7rem; font-weight:800;">⌨️ 입력+Enter</button>
+                                    <button type="button" class="btn-action" onclick="sendBridgeRemoteKey('Backspace')" style="width:auto; padding:4px 7px; font-size:0.7rem; font-weight:800;" title="백스페이스(지우기)">⌫</button>
+                                    <button type="button" class="btn-action" onclick="closeBridgePopupTab()" style="width:auto; padding:4px 8px; font-size:0.69rem; font-weight:800;" title="열린 소셜 로그인 팝업창 닫고 본래 창으로 복귀">🗗 팝업 닫기</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -9164,6 +9170,44 @@
                 });
                 showToast(`🖱️ [${bridgePreviewPlatform.toUpperCase()}] (${targetX}, ${targetY}) isTrusted 하드웨어 클릭 전송 완료!`);
                 setTimeout(refreshBridgePreviewScreenshot, 450);
+            } catch (e) {}
+        }
+
+        async function sendBridgeRemoteText(pressEnter = true) {
+            const inp = document.getElementById('bridgeRemoteTextInput');
+            const txt = inp ? inp.value : '';
+            try {
+                await fetch(`/api/simulcast/bridge/action/${bridgePreviewPlatform}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'REMOTE_TEXT', text: txt, press_enter: Boolean(pressEnter) })
+                });
+                if (inp) inp.value = '';
+                showToast(`⌨️ [${bridgePreviewPlatform.toUpperCase()}] 텍스트 입력 전송 완료!`);
+                setTimeout(refreshBridgePreviewScreenshot, 500);
+            } catch (e) {}
+        }
+
+        async function sendBridgeRemoteKey(keyName) {
+            try {
+                await fetch(`/api/simulcast/bridge/action/${bridgePreviewPlatform}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'REMOTE_KEY', key: keyName })
+                });
+                setTimeout(refreshBridgePreviewScreenshot, 400);
+            } catch (e) {}
+        }
+
+        async function closeBridgePopupTab() {
+            try {
+                await fetch(`/api/simulcast/bridge/action/${bridgePreviewPlatform}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'CLOSE_POPUP' })
+                });
+                showToast(`🗗 [${bridgePreviewPlatform.toUpperCase()}] 팝업 창을 닫고 기본 화면으로 돌아왔습니다.`);
+                setTimeout(refreshBridgePreviewScreenshot, 500);
             } catch (e) {}
         }
 
