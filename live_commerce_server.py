@@ -12686,11 +12686,13 @@ class SimulcastAutomationBridge:
         if detail_msg:
             self._log(detail_msg)
 
-    def ensure_platform_worker(self, platform, visible_window=True):
+    def ensure_platform_worker(self, platform, visible_window=True, headless=None):
         """유튜브, 인스타그램 또는 틱톡 전용 영구 프로필 Chromium 워커 스레드를 기동합니다."""
         platform = platform.lower().strip()
         if platform not in ("youtube", "instagram", "tiktok"):
             return
+        if headless is not None:
+            visible_window = not bool(headless)
         with self.lock:
             th = self._worker_threads.get(platform)
             if th is not None and th.is_alive():
@@ -13416,11 +13418,14 @@ class SimulcastAutomationBridge:
                 "--disable-backgrounding-occluded-windows",
                 "--disable-blink-features=AutomationControlled",
                 "--autoplay-policy=no-user-gesture-required",
-                "--no-sandbox"
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
             ]
+            has_display = (sys.platform == "win32") or (sys.platform == "darwin") or bool(os.environ.get("DISPLAY"))
+            use_headless = (not bool(visible_window)) or (not has_display)
             context = pw.chromium.launch_persistent_context(
                 user_data_dir=profile_dir,
-                headless=not bool(visible_window),
+                headless=use_headless,
                 args=launch_args,
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
                 locale="ko-KR",
@@ -13431,7 +13436,7 @@ class SimulcastAutomationBridge:
 
             with self.lock:
                 self.platforms[platform]["browser_running"] = True
-                self.platforms[platform]["headless"] = not bool(visible_window)
+                self.platforms[platform]["headless"] = use_headless
                 self.platforms[platform]["status"] = "🌐 내장 브라우저 기동됨 (페이지 접속 중...)"
 
             try:
