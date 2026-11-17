@@ -408,7 +408,8 @@ def _add_private_network_cors_headers(response):
 
     allow_frame = request.path.startswith("/overlay/") or request.path.startswith("/cam")
     security_core.apply_security_headers(response, allow_framing=allow_frame)
-    security_core.inject_csrf_into_html_response(response, security_core.get_csrf_token(session))
+    if not request.path.startswith("/api/"):
+        security_core.inject_csrf_into_html_response(response, security_core.get_csrf_token(session))
 
     try:
         start_t = getattr(request, "_traffic_start_ts", None)
@@ -14147,7 +14148,6 @@ def api_youtube_chat_disconnect():
     }), 200
 
 
-@app.route('/api/youtube/rtmp/start', methods=['POST'])
 def _trigger_youtube_background_onair():
     """유튜브 스튜디오를 수동으로 열지 않아도 백그라운드 워커가 제어실에 접속해 자동 온에어를 시도합니다."""
     try:
@@ -14158,6 +14158,7 @@ def _trigger_youtube_background_onair():
         print(f"⚠️ [유튜브 백그라운드 온에어 기동 경고] {e}", flush=True)
 
 
+@app.route('/api/youtube/rtmp/start', methods=['POST'])
 def api_youtube_rtmp_start():
     """웹 OBS 스튜디오 화면을 유튜브 스트림 키(RTMP)로 직접 실시간 송출 시작합니다."""
     data = request.get_json(silent=True) or {}
