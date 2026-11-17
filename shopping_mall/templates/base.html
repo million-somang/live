@@ -342,7 +342,7 @@
     <div class="top-promo-bar">
         <span class="live-pill">LIVE STORE</span>
         <span id="topBarTickerText">
-            {{ live_state.ticker_message if live_state and live_state.ticker_message else '실시간 라이브 방송 중 선택된 상품을 [🔴 라이브 커머스] 메뉴에서 바로 확인하세요! (50,000원 이상 무료배송)' }}
+            {{ live_state.ticker_message if live_state and live_state.ticker_message else '실시간 라이브 방송 중 선택된 상품을 [🔴 라이브 커머스] 메뉴에서 바로 확인하세요!' }}
         </span>
     </div>
 
@@ -435,13 +435,15 @@
             <div id="instantBuyItemSummary" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px; margin-bottom:16px; display:flex; gap:12px; align-items:center;">
             </div>
             <form id="instantBuyForm" onsubmit="submitInstantBuyOrder(event)">
-                <div class="form-group">
-                    <label class="form-label">수령인 성함 *</label>
-                    <input type="text" id="ibBuyerName" class="form-input" placeholder="예: 홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">연락처 (휴대폰) *</label>
-                    <input type="tel" id="ibBuyerPhone" class="form-input" placeholder="예: 010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div class="form-group">
+                        <label class="form-label">수령인 성함 *</label>
+                        <input type="text" id="ibBuyerName" class="form-input" placeholder="예: 홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">연락처 (휴대폰) *</label>
+                        <input type="tel" id="ibBuyerPhone" class="form-input" placeholder="예: 010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">배송지 주소 *</label>
@@ -460,18 +462,22 @@
                     <input type="text" id="ibMemo" class="form-input" placeholder="예: 문 앞에 놓아주세요 (당일출고 요청)">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">결제 수단</label>
-                    <select id="ibPaymentMethod" class="form-input" style="font-weight:700;">
-                        <option value="CARD">💳 신용/체크카드 즉시결제</option>
-                        <option value="KAKAOPAY">🟡 카카오페이 간편결제</option>
-                        <option value="NAVERPAY">🟢 네이버페이 간편결제</option>
-                        <option value="BANK">🏦 무통장 입금 (30분 내 입금 시 당일발송)</option>
+                    <label class="form-label">결제 수단 (계좌입금 전용)</label>
+                    <select id="ibPaymentMethod" class="form-input" style="font-weight:800; background:#f8fafc;">
+                        <option value="BANK" selected>🏦 계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
                     </select>
+                    <div style="margin-top:8px; background:#fffbeb; border:1.5px solid #fcd34d; border-radius:12px; padding:11px 14px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:0.75rem; font-weight:800; color:#92400e;">🏦 입금 계좌 안내 (택배비 4,000원 포함 금액 입금)</div>
+                            <div style="font-size:0.95rem; font-weight:900; color:#0f172a; margin-top:2px;">카카오뱅크 <span style="color:#d97706;">3333 233 094904</span> (예금주: 박창현)</div>
+                        </div>
+                        <button type="button" onclick="copyMallBankAccount()" style="padding:6px 11px; border-radius:8px; border:1px solid #f59e0b; background:#ffffff; color:#92400e; font-size:0.76rem; font-weight:800; cursor:pointer; white-space:nowrap;">📋 계좌 복사</button>
+                    </div>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:18px;">
                     <button type="button" onclick="closeInstantBuyModal()" style="flex:1; padding:14px; border-radius:12px; border:1px solid #cbd5e1; background:#fff; font-weight:800; cursor:pointer;">취소</button>
                     <button type="submit" id="ibSubmitBtn" style="flex:2; padding:14px; border-radius:12px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.98rem; font-weight:900; cursor:pointer; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
-                        ⚡ 지금 바로 결제 완료하기
+                        ⚡ 지금 바로 주문 완료하기
                     </button>
                 </div>
             </form>
@@ -575,7 +581,7 @@
             pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
             const sumEl = document.getElementById('instantBuyItemSummary');
             const subtotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
-            const ship = subtotal >= 50000 ? 0 : 3000;
+            const ship = 4000;
             const total = subtotal + ship;
             const imgHtml = item.image_url
                 ? `<img src="${item.image_url}" style="width:64px; height:64px; border-radius:10px; object-fit:cover; border:1px solid #e2e8f0;">`
@@ -587,7 +593,7 @@
                         <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 방송 특가 상품</div>
                         <div style="font-size:0.96rem; font-weight:900; color:#0f172a;">${item.name}</div>
                         <div style="font-size:0.82rem; color:#475569; margin-top:2px;">옵션: <strong>${item.color} / ${item.size}</strong> • 수량: <strong>${item.quantity}개</strong></div>
-                        <div style="font-size:0.95rem; font-weight:900; color:#e11d48; margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:#64748b; font-weight:600;">(배송비 ${ship === 0 ? '무료' : ship.toLocaleString() + '원'})</span></div>
+                        <div style="font-size:0.95rem; font-weight:900; color:#e11d48; margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:#475569; font-weight:700;">(상품 ${subtotal.toLocaleString()}원 + 택배비 4,000원)</span></div>
                     </div>
                 `;
             }
@@ -606,6 +612,17 @@
         function closeInstantBuyModal() {
             document.getElementById('instantBuyModal').style.display = 'none';
             pendingInstantBuyItem = null;
+        }
+
+        function copyMallBankAccount() {
+            const acc = '3333 233 094904';
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(acc).then(() => {
+                    showMallToast('🏦 입금 계좌번호(카카오뱅크 3333 233 094904 박창현)가 복사되었습니다!');
+                }).catch(() => {});
+            } else {
+                showMallToast('🏦 입금 계좌: 카카오뱅크 3333 233 094904 (박창현)');
+            }
         }
 
         async function submitInstantBuyOrder(e) {
@@ -665,7 +682,7 @@
                     return;
                 }
                 closeInstantBuyModal();
-                showMallToast(`🎉 주문 완료! 주문번호 [${data.order.order_code}] (${data.order.total_amount.toLocaleString()}원)`);
+                showMallToast(`🎉 주문 완료! 주문번호 [${data.order.order_code}] • 총 ${data.order.total_amount.toLocaleString()}원 (카카오뱅크 3333 233 094904 박창현)`);
                 if (typeof onLiveOrderCompleted === 'function') {
                     onLiveOrderCompleted(data.order);
                 }
@@ -674,7 +691,7 @@
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerText = '⚡ 지금 바로 결제 완료하기';
+                    btn.innerText = '⚡ 지금 바로 주문 완료하기';
                 }
             }
         }

@@ -14433,11 +14433,14 @@ def api_payment_template():
     # GET
     default_tmpl = """[@{buyer_name}님 실시간 라이브 주문 안내]
 - 주문 상품: {item_name} ({color}/{size}) {quantity}개
-- 총 결제 금액: {total_price}원
-- 입금 계좌: 카카오뱅크 3333-12-3456789 (예금주: 라이브커머스)
+- 총 결제 금액: {total_price}원 (택배비 4,000원 별도)
+- 입금 계좌: 카카오뱅크 3333 233 094904 (예금주: 박창현)
 - 배송지 작성 양식: https://forms.gle/liveorder
 * 30분 이내 입금 확인 시 오늘 즉시 당일 발송됩니다! 감사합니다."""
     tmpl = database.get_overlay_state('payment_template', default_tmpl)
+    if tmpl and '3333-12-3456789' in tmpl:
+        tmpl = tmpl.replace('카카오뱅크 3333-12-3456789 (예금주: 라이브커머스)', '카카오뱅크 3333 233 094904 (예금주: 박창현)')
+        database.set_overlay_state('payment_template', tmpl)
     return jsonify({"status": "ok", "template": tmpl}), 200
 
 

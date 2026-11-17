@@ -123,11 +123,11 @@ def init_mall_db():
                     address TEXT NOT NULL,
                     address_detail TEXT DEFAULT '',
                     delivery_memo TEXT DEFAULT '',
-                    payment_method TEXT NOT NULL DEFAULT 'CARD',
-                    payment_status TEXT NOT NULL DEFAULT 'PAID',
-                    order_status TEXT NOT NULL DEFAULT '주문완료',
+                    payment_method TEXT NOT NULL DEFAULT 'BANK',
+                    payment_status TEXT NOT NULL DEFAULT '입금대기',
+                    order_status TEXT NOT NULL DEFAULT '결제대기',
                     subtotal_amount INTEGER NOT NULL DEFAULT 0,
-                    shipping_fee INTEGER NOT NULL DEFAULT 0,
+                    shipping_fee INTEGER NOT NULL DEFAULT 4000,
                     total_amount INTEGER NOT NULL DEFAULT 0,
                     source_page TEXT NOT NULL DEFAULT 'MALL',
                     created_at TEXT NOT NULL
@@ -764,7 +764,7 @@ def create_mall_order(order_data):
     address = str(order_data.get("address") or "").strip()
     address_detail = str(order_data.get("address_detail") or "").strip()
     delivery_memo = str(order_data.get("delivery_memo") or "").strip()
-    payment_method = str(order_data.get("payment_method") or "CARD").strip().upper()
+    payment_method = "BANK"
     source_page = str(order_data.get("source_page") or "MALL").strip().upper()
     items_req = order_data.get("items") or []
 
@@ -838,10 +838,10 @@ def create_mall_order(order_data):
                     "line_total": line_total
                 })
 
-            shipping_fee = 0 if subtotal >= 50000 or subtotal == 0 else 3000
+            shipping_fee = 4000
             total_amount = subtotal + shipping_fee
-            pay_status = "입금대기" if payment_method == "BANK" else "결제완료"
-            ord_status = "결제대기" if payment_method == "BANK" else "상품준비중"
+            pay_status = "입금대기"
+            ord_status = "결제대기"
 
             user_id = order_data.get("user_id")
             user_id = int(user_id) if user_id is not None and str(user_id).strip().isdigit() else None

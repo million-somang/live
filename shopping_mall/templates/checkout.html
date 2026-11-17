@@ -25,24 +25,36 @@
             <input type="text" id="coMemo" class="form-input" placeholder="부재 시 문 앞에 놓아주세요">
         </div>
 
-        <h3 style="font-size:1.12rem; font-weight:900; margin:24px 0 12px;">💳 결제 수단 선택</h3>
-        <select id="coPaymentMethod" class="form-input" style="font-weight:800;">
-            <option value="CARD">💳 신용/체크카드 결제</option>
-            <option value="KAKAOPAY">🟡 카카오페이 간편결제</option>
-            <option value="NAVERPAY">🟢 네이버페이 간편결제</option>
-            <option value="BANK">🏦 무통장 입금</option>
+        <h3 style="font-size:1.12rem; font-weight:900; margin:24px 0 12px;">🏦 결제 수단 (계좌입금 전용)</h3>
+        <select id="coPaymentMethod" class="form-input" style="font-weight:800; background:#f8fafc;">
+            <option value="BANK" selected>🏦 계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
         </select>
+        <div style="margin-top:10px; background:#fffbeb; border:1.5px solid #fcd34d; border-radius:14px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div>
+                <div style="font-size:0.78rem; font-weight:800; color:#92400e;">🏦 입금 계좌 번호 (택배비 4,000원 포함 총 결제금액 입금)</div>
+                <div style="font-size:1.05rem; font-weight:900; color:#0f172a; margin-top:3px;">카카오뱅크 <span style="color:#d97706;">3333 233 094904</span> (예금주: 박창현)</div>
+            </div>
+            <button type="button" onclick="copyMallBankAccount()" style="padding:8px 14px; border-radius:10px; border:1px solid #f59e0b; background:#ffffff; color:#92400e; font-size:0.8rem; font-weight:800; cursor:pointer;">📋 계좌번호 복사</button>
+        </div>
     </div>
 
     <div style="background:#fff; border-radius:20px; padding:26px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
         <h3 style="font-size:1.1rem; font-weight:900; margin-bottom:14px;">🛍️ 주문 상품 확인</h3>
-        <div id="coOrderItemsSummary" style="margin-bottom:16px; max-height:280px; overflow-y:auto;"></div>
+        <div id="coOrderItemsSummary" style="margin-bottom:14px; max-height:280px; overflow-y:auto;"></div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.9rem; color:#475569;">
+            <span>총 상품 금액</span>
+            <strong id="coSubtotalAmount" style="color:#0f172a;">0원</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.9rem; color:#475569;">
+            <span>택배비용 (필수 추가)</span>
+            <strong id="coShippingAmount" style="color:#0f172a;">+4,000원</strong>
+        </div>
         <div style="border-top:2px solid #f1f5f9; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
             <span style="font-weight:900;">최종 결제 금액</span>
             <span id="coTotalAmount" style="font-size:1.5rem; font-weight:900; color:#e11d48;">0원</span>
         </div>
         <button type="submit" id="coSubmitBtn" style="width:100%; padding:16px; border-radius:14px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:1.02rem; font-weight:900; cursor:pointer; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
-            ⚡ 결제 및 주문 완료하기
+            ⚡ 주문 완료하기 (계좌입금)
         </button>
     </div>
 </form>
@@ -68,7 +80,11 @@
                 </div>
             `;
         }).join('');
-        const ship = sub >= 50000 ? 0 : 3000;
+        const ship = 4000;
+        const subEl = document.getElementById('coSubtotalAmount');
+        if (subEl) subEl.innerText = `${sub.toLocaleString()}원`;
+        const shipEl = document.getElementById('coShippingAmount');
+        if (shipEl) shipEl.innerText = `+${ship.toLocaleString()}원`;
         document.getElementById('coTotalAmount').innerText = `${(sub + ship).toLocaleString()}원`;
     }
 

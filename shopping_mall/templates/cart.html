@@ -15,8 +15,8 @@
             <strong id="cartSubtotalText" style="color:#0f172a;">0원</strong>
         </div>
         <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.92rem; color:#475569;">
-            <span>배송비 (5만원 이상 무료)</span>
-            <strong id="cartShippingText" style="color:#0f172a;">0원</strong>
+            <span>택배비용 (필수 추가)</span>
+            <strong id="cartShippingText" style="color:#0f172a;">4,000원</strong>
         </div>
         <div style="border-top:2px solid #f1f5f9; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:20px;">
             <span style="font-size:1rem; font-weight:900;">총 결제 금액</span>
@@ -79,10 +79,10 @@
             `;
         }).join('');
 
-        const shipping = subtotal >= 50000 ? 0 : 3000;
+        const shipping = 4000;
         const total = subtotal + shipping;
         document.getElementById('cartSubtotalText').innerText = `${subtotal.toLocaleString()}원`;
-        document.getElementById('cartShippingText').innerText = shipping === 0 ? '무료배송' : `${shipping.toLocaleString()}원`;
+        document.getElementById('cartShippingText').innerText = `${shipping.toLocaleString()}원`;
         document.getElementById('cartTotalText').innerText = `${total.toLocaleString()}원`;
     }
 

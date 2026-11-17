@@ -56,7 +56,12 @@
             </div>
             {% endfor %}
         </div>
+        <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:10px 14px; margin-top:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-size:0.86rem; font-weight:800; color:#92400e;">🏦 입금 계좌: <strong style="color:#0f172a;">카카오뱅크 3333 233 094904</strong> (예금주: 박창현)</span>
+            <button type="button" onclick="copyMallBankAccount()" style="padding:4px 10px; border-radius:8px; border:1px solid #f59e0b; background:#fff; color:#92400e; font-size:0.76rem; font-weight:800; cursor:pointer;">📋 계좌 복사</button>
+        </div>
         <div style="text-align:right; margin-top:12px; font-size:1.1rem; font-weight:900; color:#e11d48;">
+            <span style="font-size:0.84rem; color:#475569; font-weight:700; margin-right:8px;">(상품 {{ "{:,}".format(ord.subtotal_amount or (ord.total_amount - (ord.shipping_fee or 4000))) }}원 + 택배비 {{ "{:,}".format(ord.shipping_fee or 4000) }}원)</span>
             총 결제 금액: {{ "{:,}".format(ord.total_amount) }}원
         </div>
     </div>
