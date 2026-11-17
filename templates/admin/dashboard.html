@@ -893,12 +893,14 @@
             if (catBody && Array.isArray(snap.categories)) {
                 catBody.innerHTML = snap.categories.map(c => {
                     const pct = Math.min(100, Math.max(0, Number(c.share_pct) || 0));
+                    const totalBytes = Number(c.total_bytes != null ? c.total_bytes : ((Number(c.rx_bytes) || 0) + (Number(c.tx_bytes) || 0)));
                     return `<tr>
                         <td><span class="cat-pill"><span class="cat-dot" style="background:${escapeHtmlText(c.color || '#2563eb')};"></span>${escapeHtmlText(c.label)}</span></td>
-                        <td style="font-weight:700;">${Number(c.requests || 0).toLocaleString()}</td>
+                        <td style="font-weight:800;color:#2563eb;">${formatBps(c.current_bps)}</td>
+                        <td style="font-weight:700;">${Number(c.requests || 0).toLocaleString()}건</td>
                         <td>${formatBytes(c.rx_bytes)}</td>
                         <td>${formatBytes(c.tx_bytes)}</td>
-                        <td style="font-weight:700;color:var(--accent-blue);">${formatBps(c.current_bps)}</td>
+                        <td style="font-weight:700;">${formatBytes(totalBytes)}</td>
                         <td>
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <div class="traffic-bar-wrap"><div class="traffic-bar-fill" style="width:${pct}%;background:${escapeHtmlText(c.color || '#2563eb')};"></div></div>
@@ -917,14 +919,15 @@
                 } else {
                     ipBody.innerHTML = snap.top_clients.map(ip => {
                         const ago = Number(ip.last_seen_ago_sec || 0);
-                        const agoTxt = ago < 2 ? '방금 전' : `${ago.toFixed(0)}초 전`;
+                        const agoTxt = ago < 2 ? '🟢 방금 전' : `${ago.toFixed(0)}초 전`;
+                        const totalIpBytes = Number(ip.total_bytes != null ? ip.total_bytes : ((Number(ip.rx_bytes) || 0) + (Number(ip.tx_bytes) || 0)));
                         return `<tr>
                             <td class="mono" style="font-weight:800;color:var(--text-primary);">${escapeHtmlText(ip.ip)}</td>
-                            <td>${Number(ip.requests || 0).toLocaleString()}</td>
-                            <td>${formatBytes(ip.rx_bytes)}</td>
-                            <td>${formatBytes(ip.tx_bytes)}</td>
-                            <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlText(ip.last_path)}</td>
                             <td style="color:${ago < 10 ? '#059669' : 'var(--text-muted)'};font-weight:700;">${agoTxt}</td>
+                            <td style="font-weight:700;">${Number(ip.requests || 0).toLocaleString()}건</td>
+                            <td>${formatBytes(ip.rx_bytes)} / ${formatBytes(ip.tx_bytes)}</td>
+                            <td style="font-weight:700;">${formatBytes(totalIpBytes)}</td>
+                            <td class="mono" style="color:var(--text-secondary);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtmlText(ip.last_path)}</td>
                         </tr>`;
                     }).join('');
                 }
@@ -934,22 +937,19 @@
             const epBody = document.getElementById('tfEndpointTableBody');
             if (epBody && Array.isArray(snap.top_endpoints)) {
                 if (snap.top_endpoints.length === 0) {
-                    epBody.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted);">집계된 엔드포인트가 없습니다.</td></tr>';
+                    epBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);">집계된 엔드포인트가 없습니다.</td></tr>';
                 } else {
                     epBody.innerHTML = snap.top_endpoints.map(ep => {
                         const methodClass = 'method-' + String(ep.method || 'GET').toUpperCase();
                         const stCode = Number(ep.last_status || 200);
                         const stClass = stCode === 304 ? 'http-304' : (stCode >= 500 ? 'http-5xx' : (stCode >= 400 ? 'http-4xx' : 'http-2xx'));
+                        const totalEpBytes = Number(ep.total_bytes != null ? ep.total_bytes : ((Number(ep.rx_bytes) || 0) + (Number(ep.tx_bytes) || 0)));
                         return `<tr>
-                            <td><span class="method-badge ${methodClass}">${escapeHtmlText(ep.method)}</span></td>
-                            <td class="mono" style="font-weight:700;">${escapeHtmlText(ep.path)}</td>
-                            <td><span class="cat-pill">${escapeHtmlText(ep.category_label || ep.category)}</span></td>
-                            <td style="font-weight:800;">${Number(ep.requests || 0).toLocaleString()}</td>
-                            <td>${formatBytes(ep.rx_bytes)}</td>
-                            <td>${formatBytes(ep.tx_bytes)}</td>
+                            <td class="mono" style="font-weight:700;"><span class="method-badge ${methodClass}" style="margin-right:6px;">${escapeHtmlText(ep.method)}</span>${escapeHtmlText(ep.path)}</td>
+                            <td style="font-weight:800;">${Number(ep.requests || 0).toLocaleString()}건</td>
+                            <td style="font-weight:700;">${formatBytes(totalEpBytes)} <span style="font-size:0.75rem;color:var(--text-muted);">(${formatBytes(ep.rx_bytes)}/${formatBytes(ep.tx_bytes)})</span></td>
                             <td class="mono">${Number(ep.avg_latency_ms || 0).toFixed(1)} ms</td>
                             <td><span class="${stClass}">${stCode}</span></td>
-                            <td style="color:${Number(ep.errors || 0) > 0 ? 'var(--accent-red)' : 'var(--text-muted)'};font-weight:700;">${Number(ep.errors || 0)}</td>
                         </tr>`;
                     }).join('');
                 }
