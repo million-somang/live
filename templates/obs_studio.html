@@ -1488,24 +1488,24 @@
             <!-- 탭 1: ▶️🎵📸 유튜브·틱톡·인스타 연결 (내부 5단 서브탭: 📹 영상 / 🎤 음성 / ▶️ 유튜브 연동 / 🎵 틱톡 연동 / 📸 인스타 연동) -->
             <div class="tab-content active" id="tab-screen">
                 <!-- 상단 고정: 유튜브 + 틱톡 + 인스타그램 실시간 동시 송출 상태 요약 & 원클릭 시작/종료 바 -->
-                <div class="control-card" id="youtubeDirectCard" style="padding: 12px 14px; gap: 10px; border-color: rgba(239, 68, 68, 0.55); background: linear-gradient(180deg, rgba(239, 68, 68, 0.14) 0%, rgba(15, 23, 42, 0.9) 100%); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.15);">
+                <div class="control-card" id="youtubeDirectCard" style="padding: 12px 14px; gap: 10px; border-color: #cbd5e1; background: #ffffff; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);">
                     <div class="card-header" style="gap: 8px; flex-wrap:wrap;">
                         <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
-                            <span class="card-title" style="color: #f87171; font-size: 0.88rem; white-space:nowrap;">
+                            <span class="card-title" style="color: #0f172a; font-size: 0.9rem; font-weight: 900; white-space:nowrap;">
                                 <span>▶️🎵📸 유튜브·틱톡·인스타 라이브 동시 송출 제어</span>
                             </span>
-                            <span id="mainBroadcastStatusPill" style="font-size:0.72rem; font-weight:900; padding:3px 9px; border-radius:999px; background:rgba(148,163,184,0.15); border:1px solid rgba(148,163,184,0.35); color:#cbd5e1; white-space:nowrap;">
+                            <span id="mainBroadcastStatusPill" style="font-size:0.74rem; font-weight:900; padding:3px 10px; border-radius:999px; background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; white-space:nowrap;">
                                 ⚪ 방송 대기
                             </span>
                         </div>
                         <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
-                            <span id="ytRtmpStatusBadge" style="font-size:0.72rem; font-weight:800; color:#94a3b8; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); padding:3px 8px; border-radius:6px; white-space:nowrap;">
+                            <span id="ytRtmpStatusBadge" style="font-size:0.73rem; font-weight:800; color:#475569; background:#f8fafc; border:1px solid #cbd5e1; padding:3px 9px; border-radius:6px; white-space:nowrap;">
                                 ▶️ YT 대기
                             </span>
-                            <span id="ttRtmpStatusBadge" style="font-size:0.72rem; font-weight:800; color:#94a3b8; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); padding:3px 8px; border-radius:6px; white-space:nowrap;">
+                            <span id="ttRtmpStatusBadge" style="font-size:0.73rem; font-weight:800; color:#475569; background:#f8fafc; border:1px solid #cbd5e1; padding:3px 9px; border-radius:6px; white-space:nowrap;">
                                 🎵 TT 대기
                             </span>
-                            <span id="igRtmpStatusBadge" style="font-size:0.72rem; font-weight:800; color:#94a3b8; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); padding:3px 8px; border-radius:6px; white-space:nowrap;">
+                            <span id="igRtmpStatusBadge" style="font-size:0.73rem; font-weight:800; color:#475569; background:#f8fafc; border:1px solid #cbd5e1; padding:3px 9px; border-radius:6px; white-space:nowrap;">
                                 📸 IG 대기
                             </span>
                         </div>
@@ -1516,9 +1516,9 @@
                         <button type="button" class="btn-action" id="btnStartSimulcastRtmp" onclick="startSimulcastDirectRtmp()" style="flex:1; background:linear-gradient(135deg, #ef4444 0%, #ec4899 50%, #06b6d4 100%); border:none; color:#fff; font-weight:900; padding:11px 14px; font-size:0.86rem; box-shadow:0 4px 16px rgba(239,68,68,0.35);">
                             <span>🔴 유튜브 + 틱톡 + 인스타 동시 송출 시작</span>
                         </button>
-                        <div id="simulcastLiveActiveStatusBox" style="display:none; flex:1; align-items:center; justify-content:center; gap:8px; padding:10px 12px; border-radius:8px; background:rgba(239,68,68,0.24); border:2px solid #ef4444; color:#fff; font-weight:900; font-size:0.85rem; box-shadow:0 0 16px rgba(239,68,68,0.35);">
-                            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#ef4444; box-shadow:0 0 10px #ef4444;"></span>
-                            <span id="simulcastLiveActiveStatusText">🔴 방송중 (00:00)</span>
+                        <div id="simulcastLiveActiveStatusBox" style="display:none; flex:1; align-items:center; justify-content:center; gap:8px; padding:10px 12px; border-radius:8px; background:#fef2f2; border:2px solid #ef4444; color:#991b1b; font-weight:900; font-size:0.86rem; box-shadow:0 2px 10px rgba(239,68,68,0.15);">
+                            <span id="simulcastLiveActiveStatusDot" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#ef4444; box-shadow:0 0 8px #ef4444;"></span>
+                            <span id="simulcastLiveActiveStatusText" style="color:inherit; font-weight:900;">🔴 방송중 (00:00)</span>
                         </div>
                         <button type="button" class="btn-action btn-danger" id="btnStopSimulcastRtmp" onclick="stopSimulcastDirectRtmp()" style="display:none; flex:1; font-weight:900; padding:11px 14px; font-size:0.84rem; background:linear-gradient(135deg, #dc2626 0%, #991b1b 100%); border:1px solid #f87171; color:#fff; white-space:nowrap; box-shadow:0 4px 14px rgba(220,38,38,0.4);">
                             <span>⏹️ 방송 종료 (기록 저장 & 초기화)</span>
@@ -1527,22 +1527,22 @@
 
                     <!-- 플랫폼별 개별 송출 시작/종료 버튼 -->
                     <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px;">
-                        <button type="button" class="btn-action" id="btnStartYtRtmp" onclick="startYouTubeDirectRtmp()" style="background:rgba(239,68,68,0.22); border-color:#ef4444; color:#fecaca; font-weight:800; padding:7px 8px; font-size:0.75rem;">
+                        <button type="button" class="btn-action" id="btnStartYtRtmp" onclick="startYouTubeDirectRtmp()" style="background:#fef2f2; border-color:#ef4444; color:#b91c1c; font-weight:800; padding:7px 8px; font-size:0.75rem;">
                             <span>▶️ 유튜브 단독 송출</span>
                         </button>
-                        <button type="button" class="btn-action" id="btnApplyYtBitrate" onclick="startYouTubeDirectRtmp()" style="display:none; background:rgba(234,179,8,0.22); border-color:#eab308; color:#fde047; font-weight:800; padding:7px 8px; font-size:0.73rem;">
+                        <button type="button" class="btn-action" id="btnApplyYtBitrate" onclick="startYouTubeDirectRtmp()" style="display:none; background:#fffbeb; border-color:#f59e0b; color:#92400e; font-weight:800; padding:7px 8px; font-size:0.73rem;">
                             <span>⚡ YT 비트레이트 재적용</span>
                         </button>
                         <button type="button" class="btn-action btn-danger" id="btnStopYtRtmp" onclick="stopYouTubeDirectRtmp()" style="display:none; font-weight:800; padding:7px 8px; font-size:0.75rem;">
                             <span>⏹️ 유튜브 방송 종료</span>
                         </button>
-                        <button type="button" class="btn-action" id="btnStartTtRtmp" onclick="startTikTokDirectRtmp()" style="background:rgba(6,182,212,0.22); border-color:#06b6d4; color:#a5f3fc; font-weight:800; padding:7px 8px; font-size:0.75rem;">
+                        <button type="button" class="btn-action" id="btnStartTtRtmp" onclick="startTikTokDirectRtmp()" style="background:#ecfeff; border-color:#06b6d4; color:#0e7490; font-weight:800; padding:7px 8px; font-size:0.75rem;">
                             <span>🎵 틱톡 단독 송출</span>
                         </button>
                         <button type="button" class="btn-action btn-danger" id="btnStopTtRtmp" onclick="stopTikTokDirectRtmp()" style="display:none; font-weight:800; padding:7px 8px; font-size:0.75rem;">
                             <span>⏹️ 틱톡 방송 종료</span>
                         </button>
-                        <button type="button" class="btn-action" id="btnStartIgRtmp" onclick="startInstagramDirectRtmp()" style="background:rgba(236,72,153,0.22); border-color:#ec4899; color:#fbcfe8; font-weight:800; padding:7px 8px; font-size:0.75rem;">
+                        <button type="button" class="btn-action" id="btnStartIgRtmp" onclick="startInstagramDirectRtmp()" style="background:#fdf2f8; border-color:#ec4899; color:#9d174d; font-weight:800; padding:7px 8px; font-size:0.75rem;">
                             <span>📸 인스타 단독 송출</span>
                         </button>
                         <button type="button" class="btn-action btn-danger" id="btnStopIgRtmp" onclick="stopInstagramDirectRtmp()" style="display:none; font-weight:800; padding:7px 8px; font-size:0.75rem;">
@@ -1551,15 +1551,15 @@
                     </div>
 
                     <!-- 📺 유튜브 실제 온에어(On-Air) 감지 & 스튜디오 제어실 원클릭 안내 배너 -->
-                    <div id="ytOnAirNoticeBox" style="display:none; flex-direction:column; gap:6px; padding:9px 11px; border-radius:9px; background:rgba(245,158,11,0.14); border:1px solid rgba(251,191,36,0.55); font-size:0.73rem; line-height:1.45; color:#fef3c7;">
+                    <div id="ytOnAirNoticeBox" style="display:none; flex-direction:column; gap:6px; padding:9px 11px; border-radius:9px; background:#fffbeb; border:1px solid #f59e0b; font-size:0.75rem; line-height:1.45; color:#78350f;">
                         <div id="ytOnAirNoticeText">
                             📡 <strong>유튜브 RTMP 영상·음성(30fps) 전송 중!</strong> 단, 유튜브 스튜디오에서 이전 방송이 <strong>[종료됨]</strong> 상태이거나 <strong>[실시간 스트리밍 시작] / [공개]</strong> 전환 대기 중이어서 아직 유튜브 채널에 라이브가 뜨지 않았습니다.
                         </div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;" id="ytOnAirNoticeActions">
-                            <a href="https://studio.youtube.com/channel/UCAHMDwerww8SD23NQ4fKHEQ/livestreaming" target="_blank" class="btn-action" style="flex:1; text-decoration:none; padding:6px 10px; font-size:0.73rem; font-weight:900; background:rgba(239,68,68,0.28); border-color:#ef4444; color:#fecaca; justify-content:center;">
+                            <a href="https://studio.youtube.com/channel/UCAHMDwerww8SD23NQ4fKHEQ/livestreaming" target="_blank" class="btn-action" style="flex:1; text-decoration:none; padding:6px 10px; font-size:0.74rem; font-weight:900; background:#fef2f2; border-color:#ef4444; color:#b91c1c; justify-content:center;">
                                 📺 유튜브 스튜디오 제어실 열기 (필수 확인)
                             </a>
-                            <a href="https://www.youtube.com/@골라방-n3j/live" target="_blank" id="ytLiveWatchDirectLink" class="btn-action" style="flex:1; text-decoration:none; padding:6px 10px; font-size:0.73rem; font-weight:800; background:rgba(56,189,248,0.18); border-color:rgba(56,189,248,0.5); color:#bae6fd; justify-content:center;">
+                            <a href="https://www.youtube.com/@골라방-n3j/live" target="_blank" id="ytLiveWatchDirectLink" class="btn-action" style="flex:1; text-decoration:none; padding:6px 10px; font-size:0.74rem; font-weight:800; background:#f0f9ff; border-color:#0284c7; color:#0369a1; justify-content:center;">
                                 🔴 내 유튜브 라이브 페이지 열기
                             </a>
                         </div>
@@ -1602,7 +1602,7 @@
                             <div id="bridgeStepPill4" style="font-size:0.62rem; font-weight:800; text-align:center; padding:3px 2px; border-radius:5px; background:rgba(255,255,255,0.05); color:#94a3b8; border:1px solid rgba(255,255,255,0.08); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">④ 키추출·송출</div>
                             <div id="bridgeStepPill5" style="font-size:0.62rem; font-weight:800; text-align:center; padding:3px 2px; border-radius:5px; background:rgba(255,255,255,0.05); color:#94a3b8; border:1px solid rgba(255,255,255,0.08); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">⑤ GoLive·채팅</div>
                         </div>
-                        <div id="bridgeStatusSummaryLine" style="font-size:0.69rem; color:#cbd5e1; background:rgba(0,0,0,0.35); padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.07); line-height:1.35;">
+                        <div id="bridgeStatusSummaryLine" style="font-size:0.71rem; color:#334155; background:#f8fafc; padding:5px 9px; border-radius:6px; border:1px solid #e2e8f0; line-height:1.4;">
                             💡 방송 시작 시 <strong>🔴 방송중</strong> 및 플랫폼 <strong>🟢 연결됨</strong>이 표시되며, 방송 종료 시 <strong>📂 이전 방송 기록</strong>에 자동 저장 후 초기화됩니다.
                         </div>
 
@@ -8744,36 +8744,36 @@
                     if (rtmpBadge) {
                         if (isYtActuallyOnAir) {
                             rtmpBadge.innerText = '▶️ YT 연결됨';
-                            rtmpBadge.style.color = '#34d399';
-                            rtmpBadge.style.background = 'rgba(16, 185, 129, 0.25)';
+                            rtmpBadge.style.color = '#065f46';
+                            rtmpBadge.style.background = '#dcfce7';
                             rtmpBadge.style.borderColor = '#10b981';
                         } else {
                             rtmpBadge.innerText = '🟡▶️ YT 신호전송중 (온에어 대기)';
-                            rtmpBadge.style.color = '#fde047';
-                            rtmpBadge.style.background = 'rgba(245, 158, 11, 0.22)';
+                            rtmpBadge.style.color = '#92400e';
+                            rtmpBadge.style.background = '#fef3c7';
                             rtmpBadge.style.borderColor = '#f59e0b';
                         }
                     }
                     if (ytOnAirNoticeBox) {
                         ytOnAirNoticeBox.style.display = 'flex';
                         if (isYtActuallyOnAir) {
-                            ytOnAirNoticeBox.style.background = 'rgba(16, 185, 129, 0.14)';
-                            ytOnAirNoticeBox.style.borderColor = 'rgba(52, 211, 153, 0.55)';
-                            ytOnAirNoticeBox.style.color = '#d1fae5';
+                            ytOnAirNoticeBox.style.background = '#ecfdf5';
+                            ytOnAirNoticeBox.style.borderColor = '#10b981';
+                            ytOnAirNoticeBox.style.color = '#065f46';
                             if (ytOnAirNoticeText) {
-                                ytOnAirNoticeText.innerHTML = `🟢 <strong>유튜브 실제 라이브 방송 온에어(연결됨) 확인 완료!</strong> (방송 ID: <strong style="color:#fde047;">${escapeStudioHtml(ytLiveVid)}</strong> · ${escapeStudioHtml(chat.broadcast_title || stage5Yt.title || '실시간 스트리밍 중')})`;
+                                ytOnAirNoticeText.innerHTML = `🟢 <strong>유튜브 실제 라이브 방송 온에어(연결됨) 확인 완료!</strong> (방송 ID: <strong style="color:#047857;">${escapeStudioHtml(ytLiveVid)}</strong> · ${escapeStudioHtml(chat.broadcast_title || stage5Yt.title || '실시간 스트리밍 중')})`;
                             }
                             if (ytLiveWatchDirectLink && ytLiveVid) {
                                 ytLiveWatchDirectLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(ytLiveVid)}`;
                                 ytLiveWatchDirectLink.innerText = '▶️ 현재 유튜브 라이브 방송 보기';
                             }
                         } else {
-                            ytOnAirNoticeBox.style.background = 'rgba(245, 158, 11, 0.14)';
-                            ytOnAirNoticeBox.style.borderColor = 'rgba(251, 191, 36, 0.55)';
-                            ytOnAirNoticeBox.style.color = '#fef3c7';
+                            ytOnAirNoticeBox.style.background = '#fffbeb';
+                            ytOnAirNoticeBox.style.borderColor = '#f59e0b';
+                            ytOnAirNoticeBox.style.color = '#78350f';
                             if (ytOnAirNoticeText) {
                                 const ytDiag = escapeStudioHtml(rtmp.diagnostic_reason || '유튜브 스튜디오 라이브 관제실(Live Control Room)에서 스트림이 수신될 때까지 대기 중입니다.');
-                                ytOnAirNoticeText.innerHTML = `🟡 <strong>로컬 RTMP 신호 전송 중 · 실제 유튜브 온에어 미확인</strong><br>${ytDiag} <button type="button" onclick="openBridgeLoginWindow('youtube')" style="margin-left:6px; padding:2px 8px; border-radius:4px; border:1px solid #fbbf24; background:rgba(245,158,11,0.28); color:#fef08a; cursor:pointer; font-size:0.74rem; font-weight:700;">▶️ 내장 브라우저로 유튜브 스튜디오 열기</button>`;
+                                ytOnAirNoticeText.innerHTML = `🟡 <strong>로컬 RTMP 신호 전송 중 · 실제 유튜브 온에어 미확인</strong><br>${ytDiag} <button type="button" onclick="openBridgeLoginWindow('youtube')" style="margin-left:6px; padding:2px 8px; border-radius:4px; border:1px solid #d97706; background:#fef3c7; color:#92400e; cursor:pointer; font-size:0.74rem; font-weight:800;">▶️ 내장 브라우저로 유튜브 스튜디오 열기</button>`;
                             }
                             if (ytLiveWatchDirectLink) {
                                 ytLiveWatchDirectLink.href = 'https://studio.youtube.com/';
@@ -8790,11 +8790,11 @@
                         const gopFrames = (rtmp.fps || 30) * kfSec;
                         const encName = rtmp.encoder_name || 'NVIDIA NVENC H.264 (P2 · ULL 초저지연)';
                         const simParts = [];
-                        if (ttRtmp.active) simParts.push('<strong style="color:#00f2fe;">🎵 틱톡 동시 송출 중</strong>');
-                        if (igRtmp.active) simParts.push('<strong style="color:#f472b6;">📸 인스타 동시 송출 중</strong>');
+                        if (ttRtmp.active) simParts.push('<strong style="color:#0e7490;">🎵 틱톡 동시 송출 중</strong>');
+                        if (igRtmp.active) simParts.push('<strong style="color:#be185d;">📸 인스타 동시 송출 중</strong>');
                         const simBadge = simParts.length ? ` · ${simParts.join(' · ')}` : '';
                         const connStateText = isYtActuallyOnAir ? '🟢 연결됨 (온에어)' : '🟡 RTMP 신호 전송 중 (유튜브 스튜디오 온에어 대기)';
-                        rtmpDetail.innerHTML = `✅ <strong>유튜브 실시간 방송 송출 중! (${connStateText})</strong>${simBadge} (송출 시간: <strong>${mins}:${secs}</strong> | 현재 속도: <strong style="color:#34d399;">${Number(rtmp.current_fps || 30).toFixed(1)} FPS</strong> | 누적: <strong>${rtmp.frames_sent || 0}f</strong>)<br>📊 규격: <strong>${rtmp.width}×${rtmp.height} (${rtmp.fps || 30}fps)</strong> | 인코더: <strong style="color:#34d399;">${escapeStudioHtml(encName)}</strong> | 키프레임: <strong style="color:#fde047;">${kfSec}초(${gopFrames}f)</strong><br>📡 비디오: <strong style="color:#fde047;">${rtmp.video_bitrate_kbps || 4500}kbps CBR (1s 버퍼)</strong> | 오디오: <strong style="color:#38bdf8;">${rtmp.audio_bitrate_kbps || 128}kbps · 48kHz (${micLabel})</strong>`;
+                        rtmpDetail.innerHTML = `✅ <strong>유튜브 실시간 방송 송출 중! (${connStateText})</strong>${simBadge} (송출 시간: <strong>${mins}:${secs}</strong> | 현재 속도: <strong style="color:#059669;">${Number(rtmp.current_fps || 30).toFixed(1)} FPS</strong> | 누적: <strong>${rtmp.frames_sent || 0}f</strong>)<br>📊 규격: <strong>${rtmp.width}×${rtmp.height} (${rtmp.fps || 30}fps)</strong> | 인코더: <strong style="color:#059669;">${escapeStudioHtml(encName)}</strong> | 키프레임: <strong style="color:#b45309;">${kfSec}초(${gopFrames}f)</strong><br>📡 비디오: <strong style="color:#b45309;">${rtmp.video_bitrate_kbps || 4500}kbps CBR (1s 버퍼)</strong> | 오디오: <strong style="color:#0284c7;">${rtmp.audio_bitrate_kbps || 128}kbps · 48kHz (${micLabel})</strong>`;
                     }
                 } else {
                     isYouTubeRtmpActive = false;
@@ -8802,14 +8802,14 @@
                     if (rtmpBadge) {
                         if (rtmp.last_error) {
                             rtmpBadge.innerText = '❌ YT 오류';
-                            rtmpBadge.style.color = '#fca5a5';
-                            rtmpBadge.style.background = 'rgba(239, 68, 68, 0.22)';
+                            rtmpBadge.style.color = '#b91c1c';
+                            rtmpBadge.style.background = '#fee2e2';
                             rtmpBadge.style.borderColor = '#ef4444';
                         } else {
                             rtmpBadge.innerText = '▶️ YT 대기';
-                            rtmpBadge.style.color = '#94a3b8';
-                            rtmpBadge.style.background = 'rgba(255,255,255,0.06)';
-                            rtmpBadge.style.borderColor = 'rgba(255,255,255,0.12)';
+                            rtmpBadge.style.color = '#475569';
+                            rtmpBadge.style.background = '#f8fafc';
+                            rtmpBadge.style.borderColor = '#cbd5e1';
                         }
                     }
                     if (btnStartRtmp) btnStartRtmp.style.display = 'inline-flex';
@@ -8817,15 +8817,15 @@
                     if (btnStopRtmp) btnStopRtmp.style.display = 'none';
                     if (rtmpDetail) {
                         if (rtmp.last_error) {
-                            rtmpDetail.innerHTML = `⚠️ <strong style="color:#fca5a5;">유튜브 송출 안내:</strong> ${escapeStudioHtml(rtmp.last_error)}`;
+                            rtmpDetail.innerHTML = `⚠️ <strong style="color:#dc2626;">유튜브 송출 안내:</strong> ${escapeStudioHtml(rtmp.last_error)}`;
                         } else if (ttRtmp.active) {
                             const ttMins = String(Math.floor((ttRtmp.elapsed_seconds || 0) / 60)).padStart(2, '0');
                             const ttSecs = String((ttRtmp.elapsed_seconds || 0) % 60).padStart(2, '0');
-                            rtmpDetail.innerHTML = `🎵 <strong style="color:#00f2fe;">틱톡 라이브 실시간 방송 송출 중!</strong> (송출 시간: <strong>${ttMins}:${ttSecs}</strong> | 현재 속도: <strong style="color:#34d399;">${Number(ttRtmp.current_fps || 30).toFixed(1)} FPS</strong> | 누적: <strong>${ttRtmp.frames_sent || 0}f</strong>)`;
+                            rtmpDetail.innerHTML = `🎵 <strong style="color:#0e7490;">틱톡 라이브 실시간 방송 송출 중!</strong> (송출 시간: <strong>${ttMins}:${ttSecs}</strong> | 현재 속도: <strong style="color:#059669;">${Number(ttRtmp.current_fps || 30).toFixed(1)} FPS</strong> | 누적: <strong>${ttRtmp.frames_sent || 0}f</strong>)`;
                         } else if (igRtmp.active) {
                             const igMins = String(Math.floor((igRtmp.elapsed_seconds || 0) / 60)).padStart(2, '0');
                             const igSecs = String((igRtmp.elapsed_seconds || 0) % 60).padStart(2, '0');
-                            rtmpDetail.innerHTML = `📸 <strong style="color:#f472b6;">인스타그램 라이브 실시간 방송 송출 중!</strong> (송출 시간: <strong>${igMins}:${igSecs}</strong> | 현재 속도: <strong style="color:#34d399;">${Number(igRtmp.current_fps || 30).toFixed(1)} FPS</strong> | 누적: <strong>${igRtmp.frames_sent || 0}f</strong>)`;
+                            rtmpDetail.innerHTML = `📸 <strong style="color:#be185d;">인스타그램 라이브 실시간 방송 송출 중!</strong> (송출 시간: <strong>${igMins}:${igSecs}</strong> | 현재 속도: <strong style="color:#059669;">${Number(igRtmp.current_fps || 30).toFixed(1)} FPS</strong> | 누적: <strong>${igRtmp.frames_sent || 0}f</strong>)`;
                         } else {
                             rtmpDetail.innerHTML = `💡 스트림 키를 입력하고 <strong>[🔴 유튜브 + 틱톡 + 인스타 동시 송출 시작]</strong> 또는 개별 송출 버튼을 누르면 현재 모니터 화면(폰카메라/웹캠 + 상품카드/자막/로고)과 48kHz 마이크 음성이 직접 송출됩니다.`;
                         }
@@ -8842,13 +8842,13 @@
                     if (ttRtmpBadge) {
                         if (isTtVerifiedLive) {
                             ttRtmpBadge.innerText = '🎵 TT 연결됨';
-                            ttRtmpBadge.style.color = '#34d399';
-                            ttRtmpBadge.style.background = 'rgba(16, 185, 129, 0.25)';
+                            ttRtmpBadge.style.color = '#065f46';
+                            ttRtmpBadge.style.background = '#dcfce7';
                             ttRtmpBadge.style.borderColor = '#10b981';
                         } else {
                             ttRtmpBadge.innerText = '🟡🎵 TT 신호전송 (온에어 대기)';
-                            ttRtmpBadge.style.color = '#fde047';
-                            ttRtmpBadge.style.background = 'rgba(245, 158, 11, 0.22)';
+                            ttRtmpBadge.style.color = '#92400e';
+                            ttRtmpBadge.style.background = '#fef3c7';
                             ttRtmpBadge.style.borderColor = '#f59e0b';
                         }
                     }
@@ -8856,10 +8856,10 @@
                     if (btnStopTtRtmp) btnStopTtRtmp.style.display = 'inline-flex';
                     if (ttRtmpDetail) {
                         if (isTtVerifiedLive) {
-                            ttRtmpDetail.innerHTML = `✅ <strong style="color:#00f2fe;">틱톡 라이브 실시간 송출 중! (🟢 연결됨)</strong> (${ttMins}:${ttSecs} · ${Number(ttRtmp.current_fps || 30).toFixed(1)} FPS · ${ttRtmp.frames_sent || 0}f · ${ttRtmp.video_bitrate_kbps || 4500}kbps)`;
+                            ttRtmpDetail.innerHTML = `✅ <strong style="color:#0e7490;">틱톡 라이브 실시간 송출 중! (🟢 연결됨)</strong> (${ttMins}:${ttSecs} · ${Number(ttRtmp.current_fps || 30).toFixed(1)} FPS · ${ttRtmp.frames_sent || 0}f · ${ttRtmp.video_bitrate_kbps || 4500}kbps)`;
                         } else {
                             const ttDiag = escapeStudioHtml(ttRtmp.diagnostic_reason || '틱톡 LIVE Studio에서 Go LIVE 상태를 확인 중입니다.');
-                            ttRtmpDetail.innerHTML = `🟡 <strong style="color:#fde047;">틱톡 RTMP 신호 전송 중 (온에어 대기)</strong> (${ttMins}:${ttSecs} · ${Number(ttRtmp.current_fps || 30).toFixed(1)} FPS · ${ttRtmp.frames_sent || 0}f)<br><span style="color:#fef3c7;">${ttDiag}</span>`;
+                            ttRtmpDetail.innerHTML = `🟡 <strong style="color:#92400e;">틱톡 RTMP 신호 전송 중 (온에어 대기)</strong> (${ttMins}:${ttSecs} · ${Number(ttRtmp.current_fps || 30).toFixed(1)} FPS · ${ttRtmp.frames_sent || 0}f)<br><span style="color:#78350f;">${ttDiag}</span>`;
                         }
                     }
                 } else {
@@ -8867,21 +8867,21 @@
                     if (ttRtmpBadge) {
                         if (ttRtmp.last_error) {
                             ttRtmpBadge.innerText = '❌ TT 오류';
-                            ttRtmpBadge.style.color = '#fca5a5';
-                            ttRtmpBadge.style.background = 'rgba(239, 68, 68, 0.22)';
+                            ttRtmpBadge.style.color = '#b91c1c';
+                            ttRtmpBadge.style.background = '#fee2e2';
                             ttRtmpBadge.style.borderColor = '#ef4444';
                         } else {
                             ttRtmpBadge.innerText = '🎵 TT 대기';
-                            ttRtmpBadge.style.color = '#94a3b8';
-                            ttRtmpBadge.style.background = 'rgba(255,255,255,0.06)';
-                            ttRtmpBadge.style.borderColor = 'rgba(255,255,255,0.12)';
+                            ttRtmpBadge.style.color = '#475569';
+                            ttRtmpBadge.style.background = '#f8fafc';
+                            ttRtmpBadge.style.borderColor = '#cbd5e1';
                         }
                     }
                     if (btnStartTtRtmp) btnStartTtRtmp.style.display = 'inline-flex';
                     if (btnStopTtRtmp) btnStopTtRtmp.style.display = 'none';
                     if (ttRtmpDetail) {
                         if (ttRtmp.last_error) {
-                            ttRtmpDetail.innerHTML = `⚠️ <strong style="color:#fca5a5;">틱톡 송출 오류:</strong> ${escapeStudioHtml(ttRtmp.last_error)}`;
+                            ttRtmpDetail.innerHTML = `⚠️ <strong style="color:#dc2626;">틱톡 송출 오류:</strong> ${escapeStudioHtml(ttRtmp.last_error)}`;
                         } else {
                             ttRtmpDetail.innerHTML = `💡 틱톡 LIVE Studio 또는 라이브 프로듀서에서 발급받은 <strong>RTMP 서버 URL</strong>과 <strong>스트림 키</strong>를 입력하면 유튜브와 동시에 30fps H.264 실시간 영상 + 48kHz 마이크 음성이 송출됩니다.`;
                         }
@@ -8898,13 +8898,13 @@
                     if (igRtmpBadge) {
                         if (isIgVerifiedLive) {
                             igRtmpBadge.innerText = '📸 IG 연결됨';
-                            igRtmpBadge.style.color = '#34d399';
-                            igRtmpBadge.style.background = 'rgba(16, 185, 129, 0.25)';
+                            igRtmpBadge.style.color = '#065f46';
+                            igRtmpBadge.style.background = '#dcfce7';
                             igRtmpBadge.style.borderColor = '#10b981';
                         } else {
                             igRtmpBadge.innerText = '🟡📸 IG 신호전송 (GoLive 대기)';
-                            igRtmpBadge.style.color = '#fde047';
-                            igRtmpBadge.style.background = 'rgba(245, 158, 11, 0.22)';
+                            igRtmpBadge.style.color = '#92400e';
+                            igRtmpBadge.style.background = '#fef3c7';
                             igRtmpBadge.style.borderColor = '#f59e0b';
                         }
                     }
@@ -8912,10 +8912,10 @@
                     if (btnStopIgRtmp) btnStopIgRtmp.style.display = 'inline-flex';
                     if (igRtmpDetail) {
                         if (isIgVerifiedLive) {
-                            igRtmpDetail.innerHTML = `✅ <strong style="color:#f472b6;">인스타그램 라이브 실시간 송출 중! (🟢 연결됨)</strong> (${igMins}:${igSecs} · ${Number(igRtmp.current_fps || 30).toFixed(1)} FPS · ${igRtmp.frames_sent || 0}f · ${igRtmp.video_bitrate_kbps || 2500}kbps)`;
+                            igRtmpDetail.innerHTML = `✅ <strong style="color:#be185d;">인스타그램 라이브 실시간 송출 중! (🟢 연결됨)</strong> (${igMins}:${igSecs} · ${Number(igRtmp.current_fps || 30).toFixed(1)} FPS · ${igRtmp.frames_sent || 0}f · ${igRtmp.video_bitrate_kbps || 2500}kbps)`;
                         } else {
                             const igDiag = escapeStudioHtml(igRtmp.diagnostic_reason || '인스타그램 Live Producer에서 [라이브 방송 시작(Go live)]을 눌러야 온에어됩니다.');
-                            igRtmpDetail.innerHTML = `🟡 <strong style="color:#fde047;">인스타그램 RTMPS 신호 전송 중 (GoLive 대기)</strong> (${igMins}:${igSecs} · ${Number(igRtmp.current_fps || 30).toFixed(1)} FPS · ${igRtmp.frames_sent || 0}f)<br><span style="color:#fef3c7;">${igDiag}</span>`;
+                            igRtmpDetail.innerHTML = `🟡 <strong style="color:#92400e;">인스타그램 RTMPS 신호 전송 중 (GoLive 대기)</strong> (${igMins}:${igSecs} · ${Number(igRtmp.current_fps || 30).toFixed(1)} FPS · ${igRtmp.frames_sent || 0}f)<br><span style="color:#78350f;">${igDiag}</span>`;
                         }
                     }
                 } else {
@@ -8923,21 +8923,21 @@
                     if (igRtmpBadge) {
                         if (igRtmp.last_error) {
                             igRtmpBadge.innerText = '❌ IG 오류';
-                            igRtmpBadge.style.color = '#fca5a5';
-                            igRtmpBadge.style.background = 'rgba(239, 68, 68, 0.22)';
+                            igRtmpBadge.style.color = '#b91c1c';
+                            igRtmpBadge.style.background = '#fee2e2';
                             igRtmpBadge.style.borderColor = '#ef4444';
                         } else {
                             igRtmpBadge.innerText = '📸 IG 대기';
-                            igRtmpBadge.style.color = '#94a3b8';
-                            igRtmpBadge.style.background = 'rgba(255,255,255,0.06)';
-                            igRtmpBadge.style.borderColor = 'rgba(255,255,255,0.12)';
+                            igRtmpBadge.style.color = '#475569';
+                            igRtmpBadge.style.background = '#f8fafc';
+                            igRtmpBadge.style.borderColor = '#cbd5e1';
                         }
                     }
                     if (btnStartIgRtmp) btnStartIgRtmp.style.display = 'inline-flex';
                     if (btnStopIgRtmp) btnStopIgRtmp.style.display = 'none';
                     if (igRtmpDetail) {
                         if (igRtmp.last_error) {
-                            igRtmpDetail.innerHTML = `⚠️ <strong style="color:#fca5a5;">인스타그램 송출 오류:</strong> ${escapeStudioHtml(igRtmp.last_error)}`;
+                            igRtmpDetail.innerHTML = `⚠️ <strong style="color:#dc2626;">인스타그램 송출 오류:</strong> ${escapeStudioHtml(igRtmp.last_error)}`;
                         } else {
                             igRtmpDetail.innerHTML = `💡 인스타그램 라이브 프로듀서(Live Producer)에서 발급받은 <strong>스트림 키</strong>를 입력하면 유튜브·틱톡과 동시에 30fps H.264 실시간 영상 + 48kHz 마이크 음성이 송출됩니다.`;
                         }
@@ -8947,6 +8947,7 @@
                 // 동시 송출 버튼, 방송중 배너 및 상단 헤더 도트/버튼 업데이트
                 const mainStatusPill = document.getElementById('mainBroadcastStatusPill');
                 const activeStatusBox = document.getElementById('simulcastLiveActiveStatusBox');
+                const activeStatusDot = document.getElementById('simulcastLiveActiveStatusDot');
                 const activeStatusText = document.getElementById('simulcastLiveActiveStatusText');
                 const hdrLiveBox = document.getElementById('headerLiveIndicatorBox');
                 const hdrLiveDot = document.getElementById('headerLiveIndicatorDot');
@@ -8962,17 +8963,26 @@
                     if (activeStatusBox) activeStatusBox.style.display = 'flex';
                     if (btnStopSimulcast) btnStopSimulcast.style.display = 'inline-flex';
                     if (anyVerifiedLive) {
+                        if (activeStatusBox) {
+                            activeStatusBox.style.background = '#fee2e2';
+                            activeStatusBox.style.borderColor = '#ef4444';
+                            activeStatusBox.style.color = '#991b1b';
+                        }
+                        if (activeStatusDot) {
+                            activeStatusDot.style.background = '#ef4444';
+                            activeStatusDot.style.boxShadow = '0 0 8px #ef4444';
+                        }
                         if (activeStatusText) activeStatusText.innerText = `🔴 방송중 (${liveMm}:${liveSs})`;
                         if (mainStatusPill) {
                             mainStatusPill.innerText = `🔴 방송중 (${liveMm}:${liveSs})`;
-                            mainStatusPill.style.background = 'rgba(239, 68, 68, 0.28)';
+                            mainStatusPill.style.background = '#fee2e2';
                             mainStatusPill.style.borderColor = '#ef4444';
-                            mainStatusPill.style.color = '#fecaca';
+                            mainStatusPill.style.color = '#991b1b';
                         }
                         if (hdrLiveBox) {
-                            hdrLiveBox.style.background = 'rgba(239, 68, 68, 0.22)';
+                            hdrLiveBox.style.background = '#fee2e2';
                             hdrLiveBox.style.borderColor = '#ef4444';
-                            hdrLiveBox.style.color = '#fecaca';
+                            hdrLiveBox.style.color = '#991b1b';
                         }
                         if (hdrLiveDot) {
                             hdrLiveDot.style.background = '#ef4444';
@@ -8981,38 +8991,47 @@
                         if (hdrLiveTxt) hdrLiveTxt.innerText = `🔴 방송중 (${liveMm}:${liveSs})`;
                         if (hdrSimLbl) hdrSimLbl.innerText = `🔴 방송중 (${liveMm}:${liveSs})`;
                         if (headerDot) {
-                            headerDot.style.background = '#4ade80';
-                            headerDot.style.boxShadow = '0 0 8px #4ade80';
+                            headerDot.style.background = '#10b981';
+                            headerDot.style.boxShadow = '0 0 8px #10b981';
                         }
                     } else {
+                        if (activeStatusBox) {
+                            activeStatusBox.style.background = '#fef3c7';
+                            activeStatusBox.style.borderColor = '#f59e0b';
+                            activeStatusBox.style.color = '#92400e';
+                        }
+                        if (activeStatusDot) {
+                            activeStatusDot.style.background = '#d97706';
+                            activeStatusDot.style.boxShadow = '0 0 8px #f59e0b';
+                        }
                         if (activeStatusText) activeStatusText.innerText = `🟡 신호전송중 · 온에어 대기 (${liveMm}:${liveSs})`;
                         if (mainStatusPill) {
                             mainStatusPill.innerText = `🟡 신호전송 · 온에어 대기 (${liveMm}:${liveSs})`;
-                            mainStatusPill.style.background = 'rgba(245, 158, 11, 0.24)';
+                            mainStatusPill.style.background = '#fef3c7';
                             mainStatusPill.style.borderColor = '#f59e0b';
-                            mainStatusPill.style.color = '#fef08a';
+                            mainStatusPill.style.color = '#92400e';
                         }
                         if (hdrLiveBox) {
-                            hdrLiveBox.style.background = 'rgba(245, 158, 11, 0.22)';
+                            hdrLiveBox.style.background = '#fef3c7';
                             hdrLiveBox.style.borderColor = '#f59e0b';
-                            hdrLiveBox.style.color = '#fef08a';
+                            hdrLiveBox.style.color = '#92400e';
                         }
                         if (hdrLiveDot) {
-                            hdrLiveDot.style.background = '#f59e0b';
+                            hdrLiveDot.style.background = '#d97706';
                             hdrLiveDot.style.boxShadow = '0 0 10px #f59e0b';
                         }
                         if (hdrLiveTxt) hdrLiveTxt.innerText = `🟡 신호전송중 (${liveMm}:${liveSs})`;
                         if (hdrSimLbl) hdrSimLbl.innerText = `🟡 온에어 대기 (${liveMm}:${liveSs})`;
                         if (headerDot) {
-                            headerDot.style.background = '#fbbf24';
-                            headerDot.style.boxShadow = '0 0 8px #fbbf24';
+                            headerDot.style.background = '#f59e0b';
+                            headerDot.style.boxShadow = '0 0 8px #f59e0b';
                         }
                     }
                     if (hdrNewBtn) {
                         hdrNewBtn.innerHTML = '<span>⏹️ 방송 종료 (기록저장&초기화)</span>';
-                        hdrNewBtn.style.background = 'rgba(239, 68, 68, 0.25)';
+                        hdrNewBtn.style.background = '#fee2e2';
                         hdrNewBtn.style.borderColor = '#ef4444';
-                        hdrNewBtn.style.color = '#fecaca';
+                        hdrNewBtn.style.color = '#991b1b';
                     }
                 } else {
                     if (btnStartSimulcast) btnStartSimulcast.style.display = 'inline-flex';
@@ -9020,14 +9039,14 @@
                     if (btnStopSimulcast) btnStopSimulcast.style.display = 'none';
                     if (mainStatusPill) {
                         mainStatusPill.innerText = '⚪ 방송 대기';
-                        mainStatusPill.style.background = 'rgba(148, 163, 184, 0.15)';
-                        mainStatusPill.style.borderColor = 'rgba(148, 163, 184, 0.35)';
-                        mainStatusPill.style.color = '#cbd5e1';
+                        mainStatusPill.style.background = '#f1f5f9';
+                        mainStatusPill.style.borderColor = '#cbd5e1';
+                        mainStatusPill.style.color = '#334155';
                     }
                     if (hdrLiveBox) {
-                        hdrLiveBox.style.background = 'rgba(148, 163, 184, 0.14)';
-                        hdrLiveBox.style.borderColor = 'rgba(148, 163, 184, 0.35)';
-                        hdrLiveBox.style.color = '#cbd5e1';
+                        hdrLiveBox.style.background = '#f1f5f9';
+                        hdrLiveBox.style.borderColor = '#cbd5e1';
+                        hdrLiveBox.style.color = '#334155';
                     }
                     if (hdrLiveDot) {
                         hdrLiveDot.style.background = '#94a3b8';

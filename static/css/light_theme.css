@@ -209,6 +209,10 @@ h1, h2, h3, h4, h5, h6 {
 .stage-line-title,
 .chat-username,
 .chat-row-message,
+.qa-question,
+.qa-buyer,
+.q-text,
+.side-card-title,
 .lineup-name,
 .product-main-name,
 .stat-value,
@@ -469,7 +473,13 @@ tr:hover td {
 [style*="rgba(30, 41, 59"],
 [style*="rgba(30,41,59"],
 [style*="rgba(11, 17, 32"],
-[style*="rgba(2, 6, 23"] {
+[style*="rgba(2, 6, 23"],
+[style*="rgba(0, 0, 0, 0.25"],
+[style*="rgba(0,0,0,0.25"],
+[style*="rgba(0, 0, 0, 0.35"],
+[style*="rgba(0,0,0,0.35"],
+[style*="rgba(0, 0, 0, 0.45"],
+[style*="rgba(0,0,0,0.45"] {
     background: #ffffff !important;
     color: #0f172a !important;
     border-color: #cbd5e1 !important;
@@ -486,17 +496,126 @@ tr:hover td {
     background: rgba(15, 23, 42, 0.45) !important;
 }
 
-/* 인라인 밝은 글씨(#f8fafc, #e2e8f0, #cbd5e1)를 라이트 배경 위에서 진한 슬레이트로 자동 전환 */
+/* 인라인 밝은 글씨(#f8fafc, #e2e8f0, #cbd5e1, #f1f5f9)를 라이트 배경 위에서 진한 슬레이트로 자동 전환 */
 [style*="color:#f8fafc"],
 [style*="color: #f8fafc"],
+[style*="color: rgb(248, 250, 252)"],
+[style*="color:#f1f5f9"],
+[style*="color: #f1f5f9"],
+[style*="color: rgb(241, 245, 249)"],
 [style*="color:#e2e8f0"],
 [style*="color: #e2e8f0"],
+[style*="color: rgb(226, 232, 240)"],
 [style*="color:#cbd5e1"],
-[style*="color: #cbd5e1"] {
+[style*="color: #cbd5e1"],
+[style*="color: rgb(203, 213, 225)"] {
     color: #1e293b !important;
 }
 
 [style*="color:#94a3b8"],
-[style*="color: #94a3b8"] {
-    color: #64748b !important;
+[style*="color: #94a3b8"],
+[style*="color: rgb(148, 163, 184)"] {
+    color: #475569 !important;
+}
+
+/* 다크 테마용 밝은 파스텔/네온 글씨를 라이트 배경 위에서 고대비 진한 색상으로 자동 보정 */
+/* 1) 연노랑/골드(#fde047, #fef08a, #fef3c7, #fcd34d, #fde68a) -> 진한 앰버 브라운(#92400e) */
+[style*="color:#fde047"],
+[style*="color: #fde047"],
+[style*="color: rgb(253, 224, 71)"],
+[style*="color:#fef08a"],
+[style*="color: #fef08a"],
+[style*="color: rgb(254, 240, 138)"],
+[style*="color:#fef3c7"],
+[style*="color: #fef3c7"],
+[style*="color: rgb(254, 243, 199)"],
+[style*="color:#fde68a"],
+[style*="color: #fde68a"],
+[style*="color: rgb(253, 230, 138)"],
+[style*="color:#fcd34d"],
+[style*="color: #fcd34d"],
+[style*="color: rgb(252, 211, 77)"],
+[style*="color:#fbbf24"],
+[style*="color: #fbbf24"],
+[style*="color: rgb(251, 191, 36)"] {
+    color: #92400e !important;
+}
+
+/* 2) 연빨강/연분홍(#fecaca, #fca5a5, #fda4af) -> 진한 레드(#b91c1c) */
+[style*="color:#fecaca"],
+[style*="color: #fecaca"],
+[style*="color: rgb(254, 202, 202)"],
+[style*="color:#fca5a5"],
+[style*="color: #fca5a5"],
+[style*="color: rgb(252, 165, 165)"],
+[style*="color:#fda4af"],
+[style*="color: #fda4af"],
+[style*="color: rgb(253, 164, 175)"] {
+    color: #b91c1c !important;
+}
+
+/* 3) 연민트/연초록(#d1fae5, #a7f3d0, #6ee7b7, #86efac, #4ade80, #34d399) -> 진한 에메랄드(#065f46) */
+[style*="color:#d1fae5"],
+[style*="color: #d1fae5"],
+[style*="color: rgb(209, 250, 229)"],
+[style*="color:#a7f3d0"],
+[style*="color: #a7f3d0"],
+[style*="color: rgb(167, 243, 208)"],
+[style*="color:#6ee7b7"],
+[style*="color: #6ee7b7"],
+[style*="color: rgb(110, 231, 183)"],
+[style*="color:#86efac"],
+[style*="color: #86efac"],
+[style*="color: rgb(134, 239, 172)"],
+[style*="color:#34d399"],
+[style*="color: #34d399"],
+[style*="color: rgb(52, 211, 153)"] {
+    color: #047857 !important;
+}
+
+/* 4) 연하늘/연시안(#bae6fd, #7dd3fc, #a5f3fc, #67e8f9, #93c5fd) -> 진한 블루/시안(#0369a1) */
+[style*="color:#bae6fd"],
+[style*="color: #bae6fd"],
+[style*="color: rgb(186, 230, 253)"],
+[style*="color:#7dd3fc"],
+[style*="color: #7dd3fc"],
+[style*="color: rgb(125, 211, 252)"],
+[style*="color:#a5f3fc"],
+[style*="color: #a5f3fc"],
+[style*="color: rgb(165, 243, 252)"],
+[style*="color:#67e8f9"],
+[style*="color: #67e8f9"],
+[style*="color: rgb(103, 232, 249)"],
+[style*="color:#93c5fd"],
+[style*="color: #93c5fd"],
+[style*="color: rgb(147, 197, 253)"] {
+    color: #0369a1 !important;
+}
+
+/* 5) 연보라/연핑크(#e9d5ff, #d8b4fe, #c084fc, #c7d2fe, #a5b4fc, #fbcfe8, #f9a8d4) -> 진한 퍼플/마젠타 */
+[style*="color:#e9d5ff"],
+[style*="color: #e9d5ff"],
+[style*="color: rgb(233, 213, 255)"],
+[style*="color:#d8b4fe"],
+[style*="color: #d8b4fe"],
+[style*="color: rgb(216, 180, 254)"],
+[style*="color:#c084fc"],
+[style*="color: #c084fc"],
+[style*="color: rgb(192, 132, 252)"],
+[style*="color:#c7d2fe"],
+[style*="color: #c7d2fe"],
+[style*="color: rgb(199, 210, 254)"],
+[style*="color:#a5b4fc"],
+[style*="color: #a5b4fc"],
+[style*="color: rgb(165, 180, 252)"] {
+    color: #4338ca !important;
+}
+
+[style*="color:#fbcfe8"],
+[style*="color: #fbcfe8"],
+[style*="color: rgb(251, 207, 232)"],
+[style*="color:#f9a8d4"],
+[style*="color: #f9a8d4"],
+[style*="color: rgb(249, 168, 212)"] {
+    color: #9d174d !important;
 }

@@ -98,14 +98,14 @@
         /* 세그먼트 카운트다운 타이머 뱃지 */
         .timer-badge {
             display: none;
-            background: rgba(245, 158, 11, 0.2);
+            background: #fef3c7;
             border: 2px solid #f59e0b;
-            color: #fde047;
+            color: #92400e;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: calc(1rem * var(--prompter-scale));
             font-weight: 900;
-            box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
             animation: pulseGlow 1.2s infinite alternate;
         }
 
@@ -452,11 +452,11 @@
         .stock-highlight {
             font-size: calc(1.1rem * var(--prompter-scale));
             font-weight: 900;
-            color: #34d399;
+            color: #059669;
         }
 
         .stock-highlight.danger {
-            color: #f87171;
+            color: #dc2626;
             animation: liveBlink 0.8s infinite alternate;
         }
 
@@ -464,7 +464,7 @@
             font-size: calc(1.55rem * var(--prompter-scale));
             font-weight: 900;
             line-height: 1.25;
-            color: #ffffff;
+            color: #0f172a;
             word-break: keep-all;
         }
 
@@ -478,7 +478,7 @@
         .price-main {
             font-size: calc(2rem * var(--prompter-scale));
             font-weight: 900;
-            color: #fbbf24;
+            color: #e11d48;
             letter-spacing: -0.5px;
         }
 
@@ -489,9 +489,9 @@
         }
 
         .discount-badge {
-            background: rgba(239, 68, 68, 0.2);
+            background: #fee2e2;
             border: 1px solid #ef4444;
-            color: #fca5a5;
+            color: #b91c1c;
             font-size: calc(0.85rem * var(--prompter-scale));
             font-weight: 900;
             padding: 2px 8px;
@@ -507,49 +507,49 @@
         }
 
         .opt-chip {
-            background: rgba(30, 41, 59, 0.9);
-            border: 1px solid rgba(148, 163, 184, 0.3);
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
             border-radius: 8px;
             padding: 5px 10px;
             font-size: calc(0.85rem * var(--prompter-scale));
             font-weight: 800;
-            color: #e2e8f0;
+            color: #0f172a;
             display: inline-flex;
             align-items: center;
             gap: 6px;
         }
 
         .opt-chip .opt-stk {
-            color: #34d399;
+            color: #059669;
             font-weight: 900;
         }
 
         .opt-chip.low-stock {
-            border-color: rgba(245, 158, 11, 0.6);
-            background: rgba(120, 53, 15, 0.25);
+            border-color: #f59e0b;
+            background: #fffbeb;
         }
         .opt-chip.low-stock .opt-stk {
-            color: #fbbf24;
+            color: #b45309;
         }
 
         .opt-chip.sold-out {
-            border-color: rgba(239, 68, 68, 0.5);
-            background: rgba(127, 29, 29, 0.25);
-            opacity: 0.7;
+            border-color: #f87171;
+            background: #fef2f2;
+            opacity: 0.85;
         }
         .opt-chip.sold-out .opt-stk {
-            color: #f87171;
+            color: #dc2626;
         }
 
         .product-specs-box {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px dashed rgba(255, 255, 255, 0.2);
+            background: #f8fafc;
+            border: 1px dashed #cbd5e1;
             border-radius: 10px;
             padding: calc(10px * var(--prompter-scale)) calc(14px * var(--prompter-scale));
             font-size: calc(1rem * var(--prompter-scale));
             line-height: 1.45;
-            color: #93c5fd;
-            font-weight: 600;
+            color: #1e293b;
+            font-weight: 700;
         }
 
         /* 5. 3단 실시간 지표 요약 (주문 / 매출 / 채팅) */
@@ -778,8 +778,8 @@
         }
 
         .lineup-num {
-            background: rgba(59, 130, 246, 0.25);
-            color: #93c5fd;
+            background: #dbeafe;
+            color: #1d4ed8;
             font-weight: 900;
             font-size: calc(0.82rem * var(--prompter-scale));
             padding: 3px 8px;
@@ -795,7 +795,7 @@
         .lineup-name {
             font-size: calc(0.95rem * var(--prompter-scale));
             font-weight: 800;
-            color: #f8fafc;
+            color: #0f172a;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -811,27 +811,29 @@
         .lineup-price {
             font-size: calc(0.95rem * var(--prompter-scale));
             font-weight: 900;
-            color: #fbbf24;
+            color: #e11d48;
         }
 
         .lineup-stock {
             font-size: calc(0.8rem * var(--prompter-scale));
             font-weight: 800;
-            color: #34d399;
-            background: rgba(16, 185, 129, 0.12);
+            color: #047857;
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
             padding: 2px 8px;
             border-radius: 6px;
         }
 
         .lineup-stock.low {
-            color: #f87171;
-            background: rgba(239, 68, 68, 0.15);
+            color: #dc2626;
+            background: #fef2f2;
+            border-color: #fecaca;
         }
 
         /* 6. 우측 패널: 실시간 전체 채팅 스트림 */
         .qa-section {
-            background: #090d16;
-            border: 1px solid rgba(6, 182, 212, 0.4);
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
             border-radius: 16px;
             padding: calc(14px * var(--prompter-scale));
             display: flex;
@@ -849,14 +851,14 @@
             flex-wrap: wrap;
             gap: 8px;
             padding-bottom: 8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid #e2e8f0;
             flex-shrink: 0;
         }
 
         .qa-title {
             font-size: calc(1.02rem * var(--prompter-scale));
             font-weight: 900;
-            color: #38bdf8;
+            color: #0284c7;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -869,9 +871,9 @@
         }
 
         .chat-filter-btn {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            color: #94a3b8;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            color: #475569;
             font-size: calc(0.78rem * var(--prompter-scale));
             font-weight: 800;
             padding: 4px 10px;
@@ -881,8 +883,8 @@
         }
 
         .chat-filter-btn.active {
-            background: #0284c7;
-            border-color: #38bdf8;
+            background: #2563eb;
+            border-color: #1d4ed8;
             color: #ffffff;
         }
 
@@ -897,8 +899,9 @@
         }
 
         .qa-item {
-            background: rgba(255, 255, 255, 0.04);
-            border-left: 4px solid #475569;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #64748b;
             border-radius: 0 10px 10px 0;
             padding: calc(9px * var(--prompter-scale)) calc(12px * var(--prompter-scale));
             display: flex;
@@ -908,13 +911,15 @@
         }
 
         .qa-item.cat-question {
-            background: rgba(56, 189, 248, 0.09);
-            border-left-color: #38bdf8;
+            background: #f0f9ff;
+            border-color: #bae6fd;
+            border-left: 4px solid #0284c7;
         }
 
         .qa-item.cat-order {
-            background: rgba(245, 158, 11, 0.1);
-            border-left-color: #fbbf24;
+            background: #fffbeb;
+            border-color: #fde68a;
+            border-left: 4px solid #f59e0b;
         }
 
         .qa-meta-row {
@@ -925,9 +930,9 @@
         }
 
         .qa-buyer {
-            font-size: calc(0.84rem * var(--prompter-scale));
+            font-size: calc(0.86rem * var(--prompter-scale));
             font-weight: 800;
-            color: #cbd5e1;
+            color: #1e293b;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -937,36 +942,39 @@
         .plat-badge {
             font-size: calc(0.7rem * var(--prompter-scale));
             font-weight: 900;
-            padding: 1px 6px;
+            padding: 2px 7px;
             border-radius: 4px;
-            background: rgba(255, 255, 255, 0.14);
-            color: #f8fafc;
+            background: #e2e8f0;
+            color: #1e293b;
+            border: 1px solid #cbd5e1;
         }
-        .plat-YOUTUBE { background: rgba(239, 68, 68, 0.28); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); }
-        .plat-NAVER { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.45); }
-        .plat-INSTAGRAM { background: rgba(236, 72, 153, 0.25); color: #f9a8d4; border: 1px solid rgba(236, 72, 153, 0.45); }
-        .plat-KAKAO { background: rgba(250, 204, 21, 0.25); color: #fef08a; border: 1px solid rgba(250, 204, 21, 0.45); }
+        .plat-YOUTUBE { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
+        .plat-TIKTOK { background: #cffafe; color: #0e7490; border: 1px solid #22d3ee; }
+        .plat-NAVER { background: #dcfce7; color: #047857; border: 1px solid #34d399; }
+        .plat-INSTAGRAM { background: #fce7f3; color: #be185d; border: 1px solid #f472b6; }
+        .plat-KAKAO { background: #fef3c7; color: #92400e; border: 1px solid #fbbf24; }
 
         .cat-tag {
             font-size: calc(0.7rem * var(--prompter-scale));
             font-weight: 900;
-            padding: 1px 6px;
+            padding: 2px 7px;
             border-radius: 4px;
         }
-        .cat-tag.question { background: rgba(56, 189, 248, 0.22); color: #7dd3fc; }
-        .cat-tag.order { background: rgba(245, 158, 11, 0.24); color: #fde047; }
-        .cat-tag.chat { background: rgba(148, 163, 184, 0.16); color: #94a3b8; }
+        .cat-tag.question { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
+        .cat-tag.order { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
+        .cat-tag.chat { background: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; }
 
         .qa-time {
-            font-size: calc(0.74rem * var(--prompter-scale));
-            color: #64748b;
+            font-size: calc(0.76rem * var(--prompter-scale));
+            color: #475569;
+            font-weight: 700;
             font-variant-numeric: tabular-nums;
         }
 
         .qa-question {
             font-size: calc(1.08rem * var(--prompter-scale));
-            font-weight: 700;
-            color: #ffffff;
+            font-weight: 800;
+            color: #0f172a;
             line-height: 1.38;
             word-break: break-word;
         }
@@ -984,12 +992,12 @@
         .qa-ai-reply {
             margin-top: 3px;
             padding: 5px 9px;
-            background: rgba(16, 185, 129, 0.1);
-            border-left: 2px solid #10b981;
+            background: #ecfdf5;
+            border-left: 3px solid #10b981;
             border-radius: 4px;
             font-size: calc(0.86rem * var(--prompter-scale));
-            color: #6ee7b7;
-            font-weight: 700;
+            color: #065f46;
+            font-weight: 800;
         }
 
         /* 📷 쇼호스트 모니터링 PiP 창 스타일 */
@@ -1330,7 +1338,7 @@
 
         // 배율 기본값 1.0 고정 (이전 로컬스토리지 잔여값 제거)
         document.documentElement.style.setProperty('--prompter-scale', 1);
-        localStorage.removeItem('host_prompter_scale');
+        try { localStorage.removeItem('host_prompter_scale'); } catch (e) {}
 
         // 전체화면 토글
         function toggleHostFullscreen() {
@@ -1658,11 +1666,13 @@
             document.getElementById('timerCountdown').innerText = strTime;
 
             if (timer.remaining_seconds <= 30) {
+                badge.style.background = '#fee2e2';
                 badge.style.borderColor = '#ef4444';
-                badge.style.color = '#fca5a5';
+                badge.style.color = '#b91c1c';
             } else {
+                badge.style.background = '#fef3c7';
                 badge.style.borderColor = '#f59e0b';
-                badge.style.color = '#fde047';
+                badge.style.color = '#92400e';
             }
         }
 
@@ -2302,15 +2312,15 @@
             const el = document.createElement('div');
             el.className = itemCls;
             if (isOfficial) {
-                el.style.border = '1.5px solid rgba(16, 185, 129, 0.6)';
-                el.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(15, 23, 42, 0.95))';
+                el.style.border = '1.5px solid #10b981';
+                el.style.background = '#ecfdf5';
             }
             el.setAttribute('data-chat-id', key);
             el.innerHTML = `
                 <div class="qa-meta-row">
                     <div class="qa-buyer">
                         <span class="plat-badge plat-${escapeHtml(plat)}">${escapeHtml(plat)}</span>
-                        <span class="${catCls}" style="${isOfficial ? 'background:rgba(16,185,129,0.25); color:#6ee7b7;' : ''}">${catLabel}</span>
+                        <span class="${catCls}" style="${isOfficial ? 'background:#d1fae5; color:#065f46; border:1px solid #34d399;' : ''}">${catLabel}</span>
                         <span>${isOfficial ? escapeHtml(senderRaw) : '@' + escapeHtml(senderRaw.replace(/^@+/, ''))}</span>
                     </div>
                     <span class="qa-time">${escapeHtml(timeStr)}</span>
@@ -2321,7 +2331,7 @@
         }
 
         // 6. 우측 패널: 실시간 전체 채팅 스트림 무중단 증분 렌더링 (중간 누락 0건 보장)
-        let latestHostChatIntegrity = null;
+        var latestHostChatIntegrity = null;
         function renderQuestions(chats, forceReset = false, integrity = null, totalDbChats = null) {
             if (integrity) latestHostChatIntegrity = integrity;
             const list = document.getElementById('qaList');
