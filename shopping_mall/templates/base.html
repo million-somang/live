@@ -428,11 +428,26 @@
     <!-- ⚡ 페이지 이동 없는 즉시 구매 모달 -->
     <div class="quick-modal-backdrop" id="instantBuyModal">
         <div class="quick-modal-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h3 style="font-size:1.18rem; font-weight:900; color:#0f172a;">⚡ 라이브 특가 즉시 주문/결제</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="font-size:1.16rem; font-weight:900; color:#0f172a;">⚡ 빠른 바로구매 주문서 <span style="font-size:0.78rem; color:#e11d48; font-weight:800;">(비회원·회원 공용)</span></h3>
                 <button type="button" onclick="closeInstantBuyModal()" style="border:none; background:#f1f5f9; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">✕</button>
             </div>
-            <div id="instantBuyItemSummary" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px; margin-bottom:16px; display:flex; gap:12px; align-items:center;">
+            {% if not current_mall_user %}
+            <div style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:10px; padding:8px 12px; font-size:0.78rem; font-weight:800; margin-bottom:12px;">
+                ✅ 비회원 바로구매 진행 중 — 회원가입 없이 수령인 정보와 조회용 비밀번호만 입력하시면 즉시 주문됩니다!
+            </div>
+            {% endif %}
+            <div id="instantBuyItemSummary" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px; margin-bottom:12px; display:flex; gap:12px; align-items:center;">
+            </div>
+            <div id="ibOptionQtyRow" style="display:none; grid-template-columns:1fr 100px; gap:10px; margin-bottom:12px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px;">
+                <div>
+                    <label class="form-label" style="margin-bottom:4px;">옵션 (색상 / 사이즈)</label>
+                    <select id="ibOptionSelect" class="form-input" style="padding:8px 10px; font-weight:800;" onchange="onChangeInstantBuyOptionQty()"></select>
+                </div>
+                <div>
+                    <label class="form-label" style="margin-bottom:4px;">수량</label>
+                    <input type="number" id="ibQtyInput" class="form-input" value="1" min="1" max="99" style="padding:8px 10px; font-weight:800;" onchange="onChangeInstantBuyOptionQty()">
+                </div>
             </div>
             <form id="instantBuyForm" onsubmit="submitInstantBuyOrder(event)">
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
@@ -572,8 +587,9 @@
             }, 2800);
         }
 
-        function openInstantBuyModal(item, sourcePage = 'LIVE') {
-            pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
+        function renderInstantBuySummary() {
+            if (!pendingInstantBuyItem) return;
+            const item = pendingInstantBuyItem;
             const sumEl = document.getElementById('instantBuyItemSummary');
             const subtotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
             const ship = 4000;
@@ -585,13 +601,52 @@
                 sumEl.innerHTML = `
                     ${imgHtml}
                     <div style="flex:1;">
-                        <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 특가 상품</div>
+                        <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 상품 바로구매</div>
                         <div style="font-size:0.96rem; font-weight:900; color:#0f172a;">${item.name}</div>
                         <div style="font-size:0.82rem; color:#475569; margin-top:2px;">옵션: <strong>${item.color} / ${item.size}</strong> • 수량: <strong>${item.quantity}개</strong></div>
                         <div style="font-size:0.95rem; font-weight:900; color:#e11d48; margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:#475569; font-weight:700;">(상품 ${subtotal.toLocaleString()}원 + 택배비 4,000원)</span></div>
                     </div>
                 `;
             }
+        }
+
+        function onChangeInstantBuyOptionQty() {
+            if (!pendingInstantBuyItem) return;
+            const selEl = document.getElementById('ibOptionSelect');
+            const qtyEl = document.getElementById('ibQtyInput');
+            if (selEl && Array.isArray(pendingInstantBuyItem.options) && pendingInstantBuyItem.options.length > 0) {
+                const opt = pendingInstantBuyItem.options[Number(selEl.value) || 0] || pendingInstantBuyItem.options[0];
+                if (opt) {
+                    pendingInstantBuyItem.color = opt.color;
+                    pendingInstantBuyItem.size = opt.size;
+                }
+            }
+            if (qtyEl) {
+                pendingInstantBuyItem.quantity = Math.max(1, Math.min(99, Number(qtyEl.value) || 1));
+            }
+            renderInstantBuySummary();
+        }
+
+        function openInstantBuyModal(item, sourcePage = 'LIVE') {
+            pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
+            const optRow = document.getElementById('ibOptionQtyRow');
+            const selEl = document.getElementById('ibOptionSelect');
+            const qtyEl = document.getElementById('ibQtyInput');
+            if (optRow && selEl && qtyEl) {
+                const opts = Array.isArray(item.options) && item.options.length > 0
+                    ? item.options
+                    : [{ color: item.color || '기본', size: item.size || 'FREE', stock: 99 }];
+                pendingInstantBuyItem.options = opts;
+                selEl.innerHTML = opts.map((o, idx) => {
+                    const isSelected = (o.color === item.color && o.size === item.size);
+                    const disabled = Number(o.stock) <= 0 ? 'disabled' : '';
+                    const stockTxt = Number(o.stock) <= 0 ? ' - 품절' : ` (잔여 ${o.stock}개)`;
+                    return `<option value="${idx}" ${isSelected ? 'selected' : ''} ${disabled}>${o.color} / ${o.size}${stockTxt}</option>`;
+                }).join('');
+                qtyEl.value = String(Math.max(1, Number(item.quantity) || 1));
+                optRow.style.display = 'grid';
+            }
+            renderInstantBuySummary();
             try {
                 if (!window.__MALL_USER_LOGGED_IN__) {
                     const savedBuyer = JSON.parse(localStorage.getItem('mall_last_buyer_v1') || '{}');

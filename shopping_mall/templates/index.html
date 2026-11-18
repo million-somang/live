@@ -212,14 +212,19 @@
                     <span style="font-size:0.82rem; color:#94a3b8; text-decoration:line-through;">{{ "{:,}".format(p.consumer_price) }}원</span>
                     {% endif %}
                 </div>
-                <div style="display:flex; gap:8px;">
-                    <a href="/product/{{ p.num }}" style="flex:1; text-align:center; padding:10px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.84rem; font-weight:800; color:#334155;">
-                        상세보기
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <a href="/product/{{ p.num }}" style="flex:0.8; text-align:center; padding:10px 8px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:800; color:#334155; white-space:nowrap;">
+                        상세
                     </a>
                     <button type="button"
                             onclick='quickCartFromHome({{ p | tojson }})'
-                            style="flex:1; padding:10px; border-radius:10px; border:none; background:#0f172a; color:#fff; font-size:0.84rem; font-weight:800; cursor:pointer;">
+                            style="flex:0.9; padding:10px 8px; border-radius:10px; border:1.5px solid #0f172a; background:#fff; color:#0f172a; font-size:0.8rem; font-weight:800; cursor:pointer; white-space:nowrap;">
                         🛒 담기
+                    </button>
+                    <button type="button"
+                            onclick='quickBuyFromHome({{ p | tojson }})'
+                            style="flex:1.25; padding:10px 10px; border-radius:10px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.82rem; font-weight:900; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(225,29,72,0.25);">
+                        ⚡ 바로구매
                     </button>
                 </div>
             </div>
@@ -253,6 +258,25 @@
             size: firstOpt.size,
             quantity: 1
         });
+    }
+
+    function quickBuyFromHome(prod) {
+        if (!prod) return;
+        const opts = (Array.isArray(prod.options) && prod.options.length > 0)
+            ? prod.options
+            : [{ color: '기본', size: 'FREE', stock: 10 }];
+        const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
+        openInstantBuyModal({
+            num: prod.num,
+            name: prod.name,
+            price: prod.price,
+            consumer_price: prod.consumer_price,
+            image_url: prod.image_url,
+            color: firstOpt.color,
+            size: firstOpt.size,
+            quantity: 1,
+            options: opts
+        }, 'MALL_HOME');
     }
 </script>
 {% endblock %}

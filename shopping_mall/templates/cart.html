@@ -23,8 +23,13 @@
             <span id="cartTotalText" style="font-size:1.5rem; font-weight:900; color:#e11d48;">0원</span>
         </div>
         <a href="/checkout" id="btnGoCheckout" style="display:block; text-align:center; padding:16px; border-radius:14px; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-weight:900; font-size:1rem; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
-            전체 상품 주문하기 ➔
+            전체 상품 주문하기 (비회원/회원) ➔
         </a>
+        {% if not current_mall_user %}
+        <div style="margin-top:10px; font-size:0.8rem; color:#059669; font-weight:800; text-align:center;">
+            ✅ 회원가입·로그인 없이 비회원으로도 바로 주문 가능합니다!
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

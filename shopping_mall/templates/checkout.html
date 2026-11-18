@@ -2,7 +2,14 @@
 {% block title %}💳 주문/결제 — 골라방 LIVE 몰{% endblock %}
 
 {% block content %}
-<h1 style="font-size:1.65rem; font-weight:900; margin-bottom:20px;">💳 주문서 작성 및 결제</h1>
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+    <h1 style="font-size:1.65rem; font-weight:900;">💳 주문서 작성 및 결제</h1>
+    {% if not current_mall_user %}
+    <span style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; padding:7px 14px; border-radius:999px; font-size:0.84rem; font-weight:900;">
+        ✅ 비회원 주문 진행 중 (로그인 없이 전 상품 구매 가능)
+    </span>
+    {% endif %}
+</div>
 
 <form id="checkoutForm" onsubmit="submitCheckoutForm(event)" style="display:grid; grid-template-columns:1fr 380px; gap:24px; align-items:start;">
     <div style="background:#fff; border-radius:20px; padding:26px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
