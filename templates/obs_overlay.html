@@ -609,7 +609,8 @@
         }
 
         /* 배경 모드별 클래스 (단, 스튜디오 내부 모니터 iframe에서는 부모 창의 #monitorStreamImg 카메라 영상을 가리지 않도록 항상 투명 유지) */
-        body.bg-transparent { background: transparent !important; }
+        html.monitor-mode,
+        body.bg-transparent { background: transparent !important; background-color: transparent !important; }
         body.bg-chromakey { background: #00ff00 !important; }
         body.bg-dark { background: #000000 !important; }
         body.bg-screen { background: #000000 !important; }
@@ -618,6 +619,7 @@
         body.monitor-mode.bg-dark,
         body.monitor-mode.bg-chromakey {
             background: transparent !important;
+            background-color: transparent !important;
         }
 
         /* 소개 상품 핀 카드 위치 변형 */
@@ -1787,7 +1789,10 @@
             const body = document.getElementById('overlayBody');
             body.classList.remove('bg-transparent', 'bg-chromakey', 'bg-dark', 'bg-screen');
             if (new URLSearchParams(window.location.search).get('mode') === 'monitor') {
+                document.documentElement.classList.add('monitor-mode');
                 body.classList.add('monitor-mode', 'bg-transparent');
+                body.style.setProperty('background', 'transparent', 'important');
+                body.style.setProperty('background-color', 'transparent', 'important');
                 return;
             }
             body.classList.add(`bg-${mode || 'transparent'}`);

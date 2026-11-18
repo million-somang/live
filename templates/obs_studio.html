@@ -4193,7 +4193,8 @@
         let lastCam2ActiveState = false;
         let lastObservedFrameSeq = 0;
         async function syncMobileCameraAutoConnect() {
-            // 웹캠이나 화면공유가 이미 켜져 있는 경우에는 자동 전환 생략
+            cleanupDeadLocalWebcamStreams();
+            // 살아있는 웹캠이나 화면공유가 이미 켜져 있는 경우에는 자동 전환 생략
             if (webcamStream || screenStream) return;
             try {
                 const res = await fetch('/api/camera/host-info');
@@ -4249,21 +4250,25 @@
                         if (currentBgMode === 'transparent') {
                             changeBgMode('screen');
                         }
-                        // WebRTC 실제 비디오 프레임(videoWidth > 0)이 없을 때는 항상 MJPEG 스트림(#monitorStreamImg)을 표시하여 검은 화면 방지
+                        // WebRTC 실제 비디오 프레임(videoWidth > 0)이 없을 때는 항상 최신 프레임(#monitorStreamImg)을 표시하여 검은 화면 방지
                         const video = document.getElementById('monitorVideo');
                         const img = document.getElementById('monitorStreamImg');
                         ensureMobileStreamImgHandlers(img);
                         const isVdoConnected = !!(data.vdo_connected || (vdoNinjaConfig && vdoNinjaConfig.receiver && vdoNinjaConfig.receiver.connected));
-                        const hasVideo = !isVdoConnected && video && video.srcObject && video.style.display !== 'none' && video.readyState >= 2 && video.videoWidth > 0;
+                        const hasVideo = !isVdoConnected && video && video.srcObject && video.style.display !== 'none' && video.readyState >= 2 && video.videoWidth > 0 && _isMediaStreamLive(video.srcObject);
                         if (!hasVideo && img) {
                             if (video && video.style.display !== 'none') {
                                 video.style.display = 'none';
                             }
                             const mainSlot = Number((data.switcher && data.switcher.active_main_cam) || camSwitcherState.active_main_cam || 1);
-                            const rawStreamUrl = `/api/camera/stream?cam=${mainSlot}&t=${Date.now()}`;
-                            const targetMainUrl = (typeof window.resolveStudioCameraUrl === 'function') ? window.resolveStudioCameraUrl(rawStreamUrl, mainSlot) : rawStreamUrl;
-                            if (!img.src || !img.src.includes('/api/camera/stream') || img.style.display === 'none' || (img.complete && img.naturalWidth === 0)) {
-                                img.src = targetMainUrl;
+                            const mvImg = document.getElementById(mainSlot === 1 ? 'cam1MultiviewImg' : 'cam2MultiviewImg');
+                            if (mvImg && mvImg.src && mvImg.complete && mvImg.naturalWidth > 0) {
+                                if (!img.src || img.complete && img.naturalWidth === 0) {
+                                    img.src = mvImg.src;
+                                }
+                            } else if (!img.src || (img.complete && img.naturalWidth === 0)) {
+                                const rawStreamUrl = `/api/camera/latest-frame?cam=${mainSlot}&t=${Date.now()}`;
+                                img.src = (typeof window.resolveStudioCameraUrl === 'function') ? window.resolveStudioCameraUrl(rawStreamUrl, mainSlot) : rawStreamUrl;
                             }
                             img.style.display = 'block';
                         }
@@ -4308,6 +4313,8 @@
 
         async function switchMainCamera(camId) {
             const targetCam = Number(camId) === 2 ? 2 : 1;
+            isMobileActive = true;
+            userManuallyDisabledMobileCam = false;
             try {
                 const res = await fetch('/api/camera/switcher', {
                     method: 'POST',
@@ -4317,7 +4324,7 @@
                 const data = await res.json();
                 if (data.switcher) {
                     applyDualCameraSwitcherUI(data.switcher, data.cameras || null);
-                    syncMainMonitorVideoSource();
+                    syncMainMonitorVideoSource(true);
                     syncChannel.postMessage({ type: 'CAMERA_SWITCHER_UPDATE', switcher: data.switcher });
                     if (isYouTubeRtmpActive) captureAndSendCompositeFrame();
                     showToast(targetCam === 1
@@ -4448,7 +4455,37 @@
             }
         }
 
+        function _isMediaStreamLive(stream) {
+            if (!stream || typeof stream.getVideoTracks !== 'function') return false;
+            const tracks = stream.getVideoTracks();
+            return tracks.length > 0 && tracks.some(t => t && t.readyState === 'live' && t.enabled !== false);
+        }
+
+        function cleanupDeadLocalWebcamStreams() {
+            if (webcamStream && !_isMediaStreamLive(webcamStream)) {
+                webcamStream = null;
+            }
+            if (cam1LocalWebcamStream && !_isMediaStreamLive(cam1LocalWebcamStream)) {
+                cam1LocalWebcamStream = null;
+                const v1 = document.getElementById('cam1MultiviewVideo');
+                const i1 = document.getElementById('cam1MultiviewImg');
+                if (v1) { v1.srcObject = null; v1.style.display = 'none'; }
+                if (i1) i1.style.display = 'block';
+            }
+            if (cam2LocalWebcamStream && !_isMediaStreamLive(cam2LocalWebcamStream)) {
+                cam2LocalWebcamStream = null;
+                const v2 = document.getElementById('cam2MultiviewVideo');
+                const i2 = document.getElementById('cam2MultiviewImg');
+                if (v2) { v2.srcObject = null; v2.style.display = 'none'; }
+                if (i2) i2.style.display = 'block';
+            }
+            if (screenStream && !_isMediaStreamLive(screenStream)) {
+                screenStream = null;
+            }
+        }
+
         function syncMainMonitorVideoSource(forceReload = false) {
+            cleanupDeadLocalWebcamStreams();
             const activeCam = Number(camSwitcherState.active_main_cam || 1);
             const subCam = activeCam === 1 ? 2 : 1;
             const layout = camSwitcherState.layout_mode || 'single';
@@ -4483,20 +4520,25 @@
                     el.style.objectFit = (layout === 'split_v' || layout === 'split_h') ? 'cover' : 'contain';
                 });
 
-                if (topWebcam) {
+                if (topWebcam && _isMediaStreamLive(topWebcam)) {
                     if (mainVideo.srcObject !== topWebcam) mainVideo.srcObject = topWebcam;
                     mainVideo.style.display = 'block';
                     mainImg.style.display = 'none';
-                } else if (isMobileActive || layout !== 'single') {
-                    mainVideo.style.display = 'none';
-                    const rawDesired = `/api/camera/stream?cam=${topCamId}&t=${Date.now()}`;
-                    const desiredStream = (typeof window.resolveStudioCameraUrl === 'function')
-                        ? window.resolveStudioCameraUrl(rawDesired, topCamId)
-                        : rawDesired;
-                    if (forceReload || !mainImg.src || !mainImg.src.includes(`cam=${topCamId}`)) {
-                        mainImg.src = desiredStream;
+                } else {
+                    const hasLiveWebRtc = mainVideo.srcObject && !topWebcam && mainVideo.readyState >= 2 && mainVideo.videoWidth > 0 && _isMediaStreamLive(mainVideo.srcObject);
+                    if (!hasLiveWebRtc) {
+                        mainVideo.style.display = 'none';
+                        const mvImg = document.getElementById(topCamId === 1 ? 'cam1MultiviewImg' : 'cam2MultiviewImg');
+                        if (mvImg && mvImg.src && mvImg.complete && mvImg.naturalWidth > 0) {
+                            mainImg.src = mvImg.src;
+                        } else {
+                            const rawDesired = `/api/camera/latest-frame?cam=${topCamId}&t=${Date.now()}`;
+                            mainImg.src = (typeof window.resolveStudioCameraUrl === 'function')
+                                ? window.resolveStudioCameraUrl(rawDesired, topCamId)
+                                : rawDesired;
+                        }
+                        mainImg.style.display = 'block';
                     }
-                    mainImg.style.display = 'block';
                 }
             }
 
@@ -4724,8 +4766,9 @@
                 if (!imgEl) return;
                 let loading = false;
                 const tick = () => {
+                    cleanupDeadLocalWebcamStreams();
                     const localWc = camSlot === 1 ? cam1LocalWebcamStream : cam2LocalWebcamStream;
-                    if (!isDualCamPreviewCollapsed && !localWc && !loading && document.visibilityState !== 'hidden') {
+                    if (!localWc && !loading && document.visibilityState !== 'hidden') {
                         loading = true;
                         const rawUrl = `/api/camera/latest-frame?cam=${camSlot}&t=${Date.now()}`;
                         const nextUrl = (typeof window.resolveStudioCameraUrl === 'function')
@@ -4734,6 +4777,37 @@
                         const pre = new Image();
                         pre.onload = () => {
                             imgEl.src = nextUrl;
+                            // 좌측 멀티뷰에서 검증된 실시간 프레임을 우측 메인 송출 모니터(#monitorStreamImg) 및 서브 모니터(#subMonitorStreamImg)에도 즉시 미러링하여 검은 화면 원천 방지
+                            try {
+                                if (!screenStream) {
+                                    const activeCam = Number(camSwitcherState.active_main_cam || 1);
+                                    const layout = camSwitcherState.layout_mode || 'single';
+                                    const topCamId = (layout === 'split_v' || layout === 'split_h') ? 1 : activeCam;
+                                    const secondCamId = (layout === 'split_v' || layout === 'split_h') ? 2 : (activeCam === 1 ? 2 : 1);
+                                    const topWc = topCamId === 1 ? (cam1LocalWebcamStream || webcamStream) : cam2LocalWebcamStream;
+                                    const secondWc = secondCamId === 1 ? (cam1LocalWebcamStream || webcamStream) : cam2LocalWebcamStream;
+
+                                    if (camSlot === topCamId && !topWc) {
+                                        const mainVideo = document.getElementById('monitorVideo');
+                                        const mainImg = document.getElementById('monitorStreamImg');
+                                        const hasLiveWebRtc = mainVideo && mainVideo.srcObject && mainVideo.style.display !== 'none' && mainVideo.readyState >= 2 && mainVideo.videoWidth > 0 && _isMediaStreamLive(mainVideo.srcObject);
+                                        if (!hasLiveWebRtc && mainImg) {
+                                            if (mainVideo && mainVideo.style.display !== 'none') mainVideo.style.display = 'none';
+                                            mainImg.src = nextUrl;
+                                            if (mainImg.style.display !== 'block') mainImg.style.display = 'block';
+                                        }
+                                    }
+                                    if (layout !== 'single' && camSlot === secondCamId && !secondWc) {
+                                        const subImg = document.getElementById('subMonitorStreamImg');
+                                        const subVideo = document.getElementById('subMonitorVideo');
+                                        if (subImg) {
+                                            if (subVideo && subVideo.style.display !== 'none') subVideo.style.display = 'none';
+                                            subImg.src = nextUrl;
+                                            if (subImg.style.display !== 'block') subImg.style.display = 'block';
+                                        }
+                                    }
+                                }
+                            } catch (err) {}
                             loading = false;
                         };
                         pre.onerror = () => {
@@ -4741,7 +4815,7 @@
                         };
                         pre.src = nextUrl;
                     }
-                    setTimeout(tick, 110);
+                    setTimeout(tick, 95);
                 };
                 tick();
             }
@@ -7525,12 +7599,18 @@
                 const getActiveMainSource = () => {
                     if (videoEl && videoEl.style.display !== 'none' && videoEl.readyState >= 2 && videoEl.videoWidth > 0) return videoEl;
                     if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) return imgEl;
+                    const activeCam = Number((camSwitcherState && camSwitcherState.active_main_cam) || 1);
+                    const topCamId = (layoutMode === 'split_v' || layoutMode === 'split_h') ? 1 : activeCam;
+                    const mvImg = document.getElementById(topCamId === 1 ? 'cam1MultiviewImg' : 'cam2MultiviewImg');
+                    if (mvImg && mvImg.complete && mvImg.naturalWidth > 0) return mvImg;
                     return null;
                 };
                 const getActiveSubSource = () => {
                     if (subVideoEl && subVideoEl.style.display !== 'none' && subVideoEl.readyState >= 2 && subVideoEl.videoWidth > 0) return subVideoEl;
                     if (subImgEl && subImgEl.complete && subImgEl.naturalWidth > 0) return subImgEl;
-                    const c2Img = document.getElementById('cam2MultiviewImg');
+                    const activeCam = Number((camSwitcherState && camSwitcherState.active_main_cam) || 1);
+                    const secondCamId = (layoutMode === 'split_v' || layoutMode === 'split_h') ? 2 : (activeCam === 1 ? 2 : 1);
+                    const c2Img = document.getElementById(secondCamId === 1 ? 'cam1MultiviewImg' : 'cam2MultiviewImg');
                     if (c2Img && c2Img.complete && c2Img.naturalWidth > 0) return c2Img;
                     return null;
                 };
