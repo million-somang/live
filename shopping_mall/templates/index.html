@@ -203,15 +203,31 @@
                 {{ p.name }}
             </a>
             <div style="margin-top:auto;">
-                <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:12px;">
-                    {% if p.discount_rate > 0 %}
-                    <span style="font-size:1.15rem; font-weight:900; color:#e11d48;">{{ p.discount_rate }}%</span>
+                {% set is_now_live = live_state and live_state.is_live %}
+                {% set p_live_price = p.live_price or p.price %}
+                {% set active_price = p_live_price if is_now_live else p.price %}
+                {% set active_disc = (p.live_discount_rate if p.live_discount_rate is defined else p.discount_rate) if is_now_live else p.discount_rate %}
+                <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                    {% if is_now_live %}
+                    <span style="background:#e11d48; color:#fff; font-size:0.7rem; font-weight:900; padding:2px 7px; border-radius:999px;">🔴 LIVE가</span>
                     {% endif %}
-                    <span style="font-size:1.22rem; font-weight:900; color:#0f172a;">{{ "{:,}".format(p.price) }}원</span>
-                    {% if p.consumer_price > p.price %}
+                    {% if active_disc > 0 %}
+                    <span style="font-size:1.15rem; font-weight:900; color:#e11d48;">{{ active_disc }}%</span>
+                    {% endif %}
+                    <span style="font-size:1.22rem; font-weight:900; color:{% if is_now_live %}#e11d48{% else %}#0f172a{% endif %};">{{ "{:,}".format(active_price) }}원</span>
+                    {% if is_now_live and p.price > active_price %}
+                    <span style="font-size:0.8rem; color:#64748b; text-decoration:line-through;">판매가 {{ "{:,}".format(p.price) }}원</span>
+                    {% elif p.consumer_price > active_price %}
                     <span style="font-size:0.82rem; color:#94a3b8; text-decoration:line-through;">{{ "{:,}".format(p.consumer_price) }}원</span>
                     {% endif %}
                 </div>
+                {% if not is_now_live and p_live_price < p.price %}
+                <div style="font-size:0.76rem; font-weight:800; color:#be123c; margin-bottom:8px;">
+                    ⚡ 라이브 방송 시 특가: <strong>{{ "{:,}".format(p_live_price) }}원</strong>
+                </div>
+                {% else %}
+                <div style="margin-bottom:6px;"></div>
+                {% endif %}
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                     <a href="/product/{{ p.num }}" style="flex:0.8; text-align:center; padding:10px 8px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:800; color:#334155; white-space:nowrap;">
                         상세
@@ -243,15 +259,18 @@
 
 {% block extra_scripts %}
 <script>
+    const __HOME_IS_LIVE__ = {{ (True if live_state and live_state.is_live else False) | tojson }};
     function quickCartFromHome(prod) {
         if (!prod) return;
         const firstOpt = (Array.isArray(prod.options) && prod.options.length > 0)
             ? prod.options.find(o => Number(o.stock) > 0) || prod.options[0]
             : { color: '기본', size: 'FREE', stock: 1 };
+        const effPrice = __HOME_IS_LIVE__ ? Number(prod.live_price || prod.price || 0) : Number(prod.price || 0);
         addItemToMallCart({
             num: prod.num,
             name: prod.name,
-            price: prod.price,
+            price: effPrice,
+            live_price: Number(prod.live_price || prod.price || 0),
             consumer_price: prod.consumer_price,
             image_url: prod.image_url,
             color: firstOpt.color,
@@ -266,17 +285,19 @@
             ? prod.options
             : [{ color: '기본', size: 'FREE', stock: 10 }];
         const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
+        const effPrice = __HOME_IS_LIVE__ ? Number(prod.live_price || prod.price || 0) : Number(prod.price || 0);
         openInstantBuyModal({
             num: prod.num,
             name: prod.name,
-            price: prod.price,
+            price: effPrice,
+            live_price: Number(prod.live_price || prod.price || 0),
             consumer_price: prod.consumer_price,
             image_url: prod.image_url,
             color: firstOpt.color,
             size: firstOpt.size,
             quantity: 1,
             options: opts
-        }, 'MALL_HOME');
+        }, __HOME_IS_LIVE__ ? 'LIVE' : 'MALL_HOME');
     }
 </script>
 {% endblock %}

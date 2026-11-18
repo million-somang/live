@@ -893,21 +893,24 @@
                                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:4px;">
                                     {% if item.consumer_price and item.consumer_price > item.price %}
                                         <div style="font-size:0.84rem; color:var(--text-muted); text-decoration:line-through;" title="소비자가 (정가)">
-                                            정가: {{ "{:,}".format(item.consumer_price) }}원
+                                            소비자가: {{ "{:,}".format(item.consumer_price) }}원
                                         </div>
                                     {% endif %}
-                                    <div class="product-price" style="font-size:1.1rem; font-weight:800; color:#0284c7;">
+                                    <div class="product-price" style="font-size:1.05rem; font-weight:800; color:#0284c7;">
                                         판매가: {{ "{:,}".format(item.price) }}원
                                     </div>
-                                    <div style="font-size:0.85rem; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:6px;" title="공급 원가 (사입가)">
-                                        원가: <strong style="color:#d97706;">{{ "{:,}".format(item.cost_price) }}원</strong>
+                                    <div style="font-size:1.02rem; font-weight:900; color:#e11d48; background:#fff1f2; border:1px solid #fecdd3; padding:2px 9px; border-radius:6px;" title="라이브 방송 시 표시·적용되는 라이브 특가">
+                                        🔴 라이브가격: {{ "{:,}".format(item.live_price or item.price) }}원
                                     </div>
-                                    <div style="font-size:0.85rem; font-weight:700; color:#047857; background:#ecfdf5; border:1px solid #a7f3d0; padding:2px 8px; border-radius:6px;" title="개당 순이익 = 판매가 - 원가">
-                                        개당 이익: +{{ "{:,}".format(item.margin_unit) }}원 ({{ item.margin_rate }}%)
+                                    <div style="font-size:0.85rem; color:#334155; background:#f8fafc; border:1px solid #e2e8f0; padding:2px 8px; border-radius:6px;" title="공급 원가 (매입가)">
+                                        매입가: <strong style="color:#d97706;">{{ "{:,}".format(item.cost_price) }}원</strong>
+                                    </div>
+                                    <div style="font-size:0.85rem; font-weight:700; color:#047857; background:#ecfdf5; border:1px solid #a7f3d0; padding:2px 8px; border-radius:6px;" title="개당 순이익 = 라이브가격 - 매입가">
+                                        라이브 이익: +{{ "{:,}".format(item.live_margin_unit if item.live_margin_unit is defined else item.margin_unit) }}원 ({{ item.live_margin_rate if item.live_margin_rate is defined else item.margin_rate }}%)
                                     </div>
                                     {% if item.total_stock > 0 and item.potential_profit > 0 %}
                                         <div style="font-size:0.82rem; color:#3730a3; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 8px; border-radius:6px;" title="잔여 재고 {{ item.total_stock }}개 완판 시 총 예상 순이익">
-                                            완판 시 예상 이익: <strong>+{{ "{:,}".format(item.potential_profit) }}원</strong>
+                                            완판 예상 이익: <strong>+{{ "{:,}".format(item.potential_profit) }}원</strong>
                                         </div>
                                     {% endif %}
                                 </div>
@@ -1011,8 +1014,8 @@
                     </div>
                 </div>
 
-                <!-- 1-1. 가격 및 원가 3열 그리드 (소비자가 / 라이브 판매가 / 공급 원가) -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                <!-- 1-1. 가격 및 원가 4열 그리드 (소비자가 / 판매가 / 라이브 가격 / 매입가) -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px;">
                     <div class="form-group">
                         <label class="form-label">
                             <span>소비자가 (정가)</span>
@@ -1022,14 +1025,21 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">
-                            <span>방송 특가 (판매가) <span class="req">*</span></span>
-                            <span style="font-size:0.75rem; color:#0284c7; font-weight:800;">실판매</span>
+                            <span>판매가 <span class="req">*</span></span>
+                            <span style="font-size:0.75rem; color:#0284c7; font-weight:800;">일반몰가</span>
                         </label>
                         <input type="number" id="prodPrice" class="form-input" placeholder="예: 39000" min="0" step="1000" oninput="calcModalMargin()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">
-                            <span>공급 원가 (사입가) <span class="req">*</span></span>
+                            <span>🔴 라이브 가격 <span class="req">*</span></span>
+                            <span style="font-size:0.75rem; color:#e11d48; font-weight:800;">방송특가</span>
+                        </label>
+                        <input type="number" id="prodLivePrice" class="form-input" placeholder="예: 29000 (라이브 시 표시)" min="0" step="1000" style="border-color:#fda4af; background:#fff1f2;" oninput="calcModalMargin()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <span>매입가 (원가) <span class="req">*</span></span>
                             <span style="font-size:0.75rem; color:#d97706; font-weight:800;">사입비</span>
                         </label>
                         <input type="number" id="prodCostPrice" class="form-input" placeholder="예: 18000" min="0" step="1000" oninput="calcModalMargin()">
@@ -1038,22 +1048,22 @@
 
                 <!-- 1-2. 실시간 이익 및 마진율 계산 프리뷰 카드 -->
                 <div id="modalMarginPreviewCard" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
-                    <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
                         <div>
-                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">개당 순이익 (마진)</span>
-                            <strong id="previewMarginUnit" style="font-size: 1.15rem; color: #059669;">+0원</strong>
+                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">판매가 마진 (일반)</span>
+                            <strong id="previewMarginUnit" style="font-size: 1.05rem; color: #059669;">+0원 (0.0%)</strong>
                         </div>
-                        <div style="border-left: 1px solid #cbd5e1; padding-left: 16px;">
-                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">마진율 (이익률)</span>
-                            <strong id="previewMarginRate" style="font-size: 1.15rem; color: #0284c7;">0.0%</strong>
+                        <div style="border-left: 1px solid #cbd5e1; padding-left: 14px;">
+                            <span style="font-size: 0.78rem; color: #be123c; font-weight: 700; display: block;">🔴 라이브 가격 마진</span>
+                            <strong id="previewLiveMarginUnit" style="font-size: 1.1rem; color: #e11d48;">+0원 (0.0%)</strong>
                         </div>
-                        <div style="border-left: 1px solid #cbd5e1; padding-left: 16px;">
-                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">정가 대비 할인율</span>
-                            <strong id="previewDiscountRate" style="font-size: 1.15rem; color: #e11d48;">0%</strong>
+                        <div style="border-left: 1px solid #cbd5e1; padding-left: 14px;">
+                            <span style="font-size: 0.78rem; color: #475569; font-weight: 600; display: block;">소비자가 대비 라이브 할인율</span>
+                            <strong id="previewDiscountRate" style="font-size: 1.1rem; color: #0284c7;">0%</strong>
                         </div>
                     </div>
                     <div style="font-size: 0.8rem; font-weight: 700; color: #3730a3; background: #eef2ff; border: 1px solid #c7d2fe; padding: 5px 12px; border-radius: 6px;">
-                        💡 원가 대비 마진 실시간 계산
+                        💡 라이브 시 라이브 가격이 자동 표시됩니다
                     </div>
                 </div>
 
@@ -1150,23 +1160,30 @@
         function calcModalMargin() {
             const cPrice = parseInt(document.getElementById('prodConsumerPrice').value, 10) || 0;
             const sPrice = parseInt(document.getElementById('prodPrice').value, 10) || 0;
+            const lPriceRaw = parseInt(document.getElementById('prodLivePrice')?.value, 10) || 0;
             const costPrice = parseInt(document.getElementById('prodCostPrice').value, 10) || 0;
 
             const effSellPrice = sPrice > 0 ? sPrice : cPrice;
+            const effLivePrice = lPriceRaw > 0 ? lPriceRaw : effSellPrice;
+
             const margin = Math.max(0, effSellPrice - costPrice);
             const marginRate = effSellPrice > 0 ? ((margin / effSellPrice) * 100).toFixed(1) : 0;
 
+            const liveMargin = Math.max(0, effLivePrice - costPrice);
+            const liveMarginRate = effLivePrice > 0 ? ((liveMargin / effLivePrice) * 100).toFixed(1) : 0;
+
+            const baseCompare = cPrice > 0 ? cPrice : effSellPrice;
             let discountRate = 0;
-            if (cPrice > 0 && sPrice > 0 && cPrice > sPrice) {
-                discountRate = Math.round(((cPrice - sPrice) / cPrice) * 100);
+            if (baseCompare > 0 && effLivePrice > 0 && baseCompare > effLivePrice) {
+                discountRate = Math.round(((baseCompare - effLivePrice) / baseCompare) * 100);
             }
 
             const marginEl = document.getElementById('previewMarginUnit');
-            const rateEl = document.getElementById('previewMarginRate');
+            const liveMarginEl = document.getElementById('previewLiveMarginUnit');
             const discEl = document.getElementById('previewDiscountRate');
 
-            if (marginEl) marginEl.innerText = `+${margin.toLocaleString()}원`;
-            if (rateEl) rateEl.innerText = `${marginRate}%`;
+            if (marginEl) marginEl.innerText = `+${margin.toLocaleString()}원 (${marginRate}%)`;
+            if (liveMarginEl) liveMarginEl.innerText = `+${liveMargin.toLocaleString()}원 (${liveMarginRate}%)`;
             if (discEl) discEl.innerText = `${discountRate}%`;
         }
 
@@ -1182,6 +1199,7 @@
             document.getElementById('prodNum').value = nextNum;
             document.getElementById('prodName').value = '';
             document.getElementById('prodPrice').value = '';
+            if (document.getElementById('prodLivePrice')) document.getElementById('prodLivePrice').value = '';
             document.getElementById('prodConsumerPrice').value = '';
             document.getElementById('prodCostPrice').value = '';
             document.getElementById('prodImageUrl').value = '';
@@ -1211,6 +1229,9 @@
             document.getElementById('prodNum').value = product.num;
             document.getElementById('prodName').value = product.name;
             document.getElementById('prodPrice').value = product.price;
+            if (document.getElementById('prodLivePrice')) {
+                document.getElementById('prodLivePrice').value = product.live_price || product.price;
+            }
             document.getElementById('prodConsumerPrice').value = product.consumer_price || product.price;
             document.getElementById('prodCostPrice').value = product.cost_price || 0;
             document.getElementById('prodImageUrl').value = product.image_url || '';
@@ -1343,13 +1364,14 @@
             const num = parseInt(document.getElementById('prodNum').value, 10);
             const name = document.getElementById('prodName').value.trim();
             const price = parseInt(document.getElementById('prodPrice').value, 10);
+            const livePrice = parseInt(document.getElementById('prodLivePrice')?.value, 10) || price;
             const consumerPrice = parseInt(document.getElementById('prodConsumerPrice').value, 10) || price;
             const costPrice = parseInt(document.getElementById('prodCostPrice').value, 10) || 0;
             const imageUrl = document.getElementById('prodImageUrl').value.trim();
             const specs = document.getElementById('prodSpecs').value.trim();
 
             if (!num || !name || isNaN(price)) {
-                alert('방송 번호, 상품명, 가격을 모두 올바르게 입력해주세요!');
+                alert('방송 번호, 상품명, 판매가를 모두 올바르게 입력해주세요!');
                 return;
             }
 
@@ -1374,6 +1396,7 @@
                 num: num,
                 name: name,
                 price: price,
+                live_price: livePrice,
                 consumer_price: consumerPrice,
                 cost_price: costPrice,
                 image_url: imageUrl,
@@ -1725,7 +1748,8 @@
                     }
 
                     const priceStr = Number(item.price || 0).toLocaleString();
-                    const marginRateStr = item.margin_rate !== undefined ? `${item.margin_rate}%` : '-';
+                    const livePriceStr = Number(item.live_price || item.price || 0).toLocaleString();
+                    const marginRateStr = item.live_margin_rate !== undefined ? `${item.live_margin_rate}%` : (item.margin_rate !== undefined ? `${item.margin_rate}%` : '-');
 
                     rowsHtml += `
                         <tr>
@@ -1738,8 +1762,8 @@
                                 </a>
                             </td>
                             <td>
-                                <div style="color: #0284c7; font-weight: 800;">${priceStr}원</div>
-                                <div style="font-size: 0.74rem; color: #059669; font-weight: 700;">마진 ${marginRateStr}</div>
+                                <div style="color: #e11d48; font-weight: 900;">🔴 라이브: ${livePriceStr}원</div>
+                                <div style="font-size: 0.74rem; color: #0284c7; font-weight: 700;">판매가: ${priceStr}원 (마진 ${marginRateStr})</div>
                             </td>
                             <td>
                                 <div style="display: flex; flex-wrap: wrap; align-items: center;">

@@ -45,7 +45,7 @@
                 <div style="flex:1;">
                     <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#{{ p.num }}번 ({{ p.category }})</div>
                     <div style="font-size:0.94rem; font-weight:900;">{{ p.name }}</div>
-                    <div style="font-size:0.82rem; color:#64748b;">판매가 {{ "{:,}".format(p.price) }}원 • 총 재고 {{ p.total_stock }}개</div>
+                    <div style="font-size:0.82rem; color:#64748b;">판매가 {{ "{:,}".format(p.price) }}원 • <strong style="color:#e11d48;">🔴 라이브가 {{ "{:,}".format(p.live_price or p.price) }}원</strong> • 총 재고 {{ p.total_stock }}개</div>
                 </div>
                 {% if live_state and live_state.selected_product and live_state.selected_product.num == p.num %}
                 <span style="background:#ffe4e6; color:#e11d48; padding:4px 9px; border-radius:8px; font-size:0.75rem; font-weight:900;">📌 현재 선택됨</span>

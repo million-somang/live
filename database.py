@@ -58,6 +58,7 @@ def init_db(reset=False):
                     num INTEGER UNIQUE NOT NULL,
                     name TEXT NOT NULL,
                     price INTEGER NOT NULL DEFAULT 0,
+                    live_price INTEGER NOT NULL DEFAULT 0,
                     consumer_price INTEGER NOT NULL DEFAULT 0,
                     cost_price INTEGER NOT NULL DEFAULT 0,
                     image_url TEXT DEFAULT '',
@@ -105,6 +106,7 @@ def init_db(reset=False):
 
             # 기존 DB 호환성 보장: products, orders, chats 컬럼 자동 마이그레이션
             migrations = [
+                ("products", "live_price", "INTEGER DEFAULT 0"),
                 ("products", "consumer_price", "INTEGER DEFAULT 0"),
                 ("products", "cost_price", "INTEGER DEFAULT 0"),
                 ("orders", "confirmed_at", "TEXT DEFAULT ''"),
@@ -306,20 +308,24 @@ def add_product(product_data):
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sell_price = int(product_data.get("price", 0))
             cons_price = int(product_data.get("consumer_price", 0))
+            live_price = int(product_data.get("live_price", 0))
             cost_price = int(product_data.get("cost_price", 0))
 
             if sell_price <= 0 and cons_price > 0:
                 sell_price = cons_price
             if cons_price <= 0 and sell_price > 0:
                 cons_price = sell_price
+            if live_price <= 0:
+                live_price = sell_price
 
             cursor.execute("""
-                INSERT INTO products (num, name, price, consumer_price, cost_price, image_url, specs, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO products (num, name, price, live_price, consumer_price, cost_price, image_url, specs, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 num,
                 product_data.get("name", "신규 상품"),
                 sell_price,
+                live_price,
                 cons_price,
                 cost_price,
                 product_data.get("image_url", ""),
@@ -379,6 +385,7 @@ def get_all_products():
                     })
 
                 sell_p = prow["price"]
+                live_p = prow["live_price"] if "live_price" in prow.keys() and prow["live_price"] is not None and int(prow["live_price"]) > 0 else sell_p
                 cons_p = prow["consumer_price"] if "consumer_price" in prow.keys() and prow["consumer_price"] is not None else sell_p
                 cost_p = prow["cost_price"] if "cost_price" in prow.keys() and prow["cost_price"] is not None else 0
                 if cons_p <= 0:
@@ -386,6 +393,8 @@ def get_all_products():
 
                 margin_unit = max(0, sell_p - cost_p) if cost_p > 0 else sell_p
                 margin_rate = round((margin_unit / sell_p * 100), 1) if sell_p > 0 else 0
+                live_margin_unit = max(0, live_p - cost_p) if cost_p > 0 else live_p
+                live_margin_rate = round((live_margin_unit / live_p * 100), 1) if live_p > 0 else 0
                 potential_profit = margin_unit * total_stock
 
                 products.append({
@@ -394,10 +403,13 @@ def get_all_products():
                     "num": prow["num"],
                     "name": prow["name"],
                     "price": sell_p,
+                    "live_price": live_p,
                     "consumer_price": cons_p,
                     "cost_price": cost_p,
                     "margin_unit": margin_unit,
                     "margin_rate": margin_rate,
+                    "live_margin_unit": live_margin_unit,
+                    "live_margin_rate": live_margin_rate,
                     "potential_profit": potential_profit,
                     "image_url": prow["image_url"],
                     "specs": prow["specs"],
@@ -428,6 +440,7 @@ def get_product_by_id(product_id):
             total_stock = sum(o["stock"] for o in options)
 
             sell_p = prow["price"]
+            live_p = prow["live_price"] if "live_price" in prow.keys() and prow["live_price"] is not None and int(prow["live_price"]) > 0 else sell_p
             cons_p = prow["consumer_price"] if "consumer_price" in prow.keys() and prow["consumer_price"] is not None else sell_p
             cost_p = prow["cost_price"] if "cost_price" in prow.keys() and prow["cost_price"] is not None else 0
             if cons_p <= 0:
@@ -435,6 +448,8 @@ def get_product_by_id(product_id):
 
             margin_unit = max(0, sell_p - cost_p) if cost_p > 0 else sell_p
             margin_rate = round((margin_unit / sell_p * 100), 1) if sell_p > 0 else 0
+            live_margin_unit = max(0, live_p - cost_p) if cost_p > 0 else live_p
+            live_margin_rate = round((live_margin_unit / live_p * 100), 1) if live_p > 0 else 0
             potential_profit = margin_unit * total_stock
 
             return {
@@ -443,10 +458,13 @@ def get_product_by_id(product_id):
                 "num": prow["num"],
                 "name": prow["name"],
                 "price": sell_p,
+                "live_price": live_p,
                 "consumer_price": cons_p,
                 "cost_price": cost_p,
                 "margin_unit": margin_unit,
                 "margin_rate": margin_rate,
+                "live_margin_unit": live_margin_unit,
+                "live_margin_rate": live_margin_rate,
                 "potential_profit": potential_profit,
                 "image_url": prow["image_url"],
                 "specs": prow["specs"],
@@ -474,6 +492,9 @@ def update_product(product_id, update_data):
             if "price" in update_data:
                 fields.append("price = ?")
                 vals.append(int(update_data["price"]))
+            if "live_price" in update_data:
+                fields.append("live_price = ?")
+                vals.append(int(update_data["live_price"] or update_data.get("price") or 0))
             if "consumer_price" in update_data:
                 fields.append("consumer_price = ?")
                 vals.append(int(update_data["consumer_price"]))
@@ -715,7 +736,9 @@ def get_catalog_text():
     for p in products:
         num = p.get("num", "-")
         name = p.get("name", "상품")
-        price = f"{p.get('price', 0):,}원"
+        live_p = int(p.get("live_price") or p.get("price") or 0)
+        sell_p = int(p.get("price") or 0)
+        price_str = f"라이브특가 {live_p:,}원 (일반판매가 {sell_p:,}원)" if live_p != sell_p and sell_p > 0 else f"{live_p:,}원"
         specs = p.get("specs", "")
         opts = p.get("options", [])
         total_stk = p.get("total_stock", 0)
@@ -732,7 +755,7 @@ def get_catalog_text():
 
         opt_str = f"옵션: {', '.join(opt_items)}" if opt_items else "옵션 정보 없음"
         spec_str = f" / 사양: {specs}" if specs else ""
-        lines.append(f"{num}번: {sold_out_prefix}{name} (가격: {price} / {opt_str}{spec_str})")
+        lines.append(f"{num}번: {sold_out_prefix}{name} (가격: {price_str} / {opt_str}{spec_str})")
     return "\n".join(lines)
 
 
@@ -763,7 +786,7 @@ def create_order(order_data):
                 for p in products:
                     if f"{p['num']}번" in item_name or p['name'] in item_name:
                         if unit_price <= 0:
-                            unit_price = p['price']
+                            unit_price = int(p.get('live_price') or p.get('price') or 0)
                         if unit_cost <= 0:
                             unit_cost = p.get('cost_price', 0)
                         product_id = p['db_id']

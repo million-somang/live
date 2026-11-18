@@ -4933,8 +4933,9 @@
                 }
             }
             document.getElementById('stockCardName').innerText = `${product.num}번. ${product.name}`;
-            document.getElementById('stockCardPrice').innerText = `${Number(product.price).toLocaleString()}원`;
-            document.getElementById('stockCardConsumerPrice').innerText = `정가: ${Number(product.consumer_price || product.price).toLocaleString()}원`;
+            const liveOrSell = Number(product.live_price || product.price || 0);
+            document.getElementById('stockCardPrice').innerText = `라이브가: ${liveOrSell.toLocaleString()}원`;
+            document.getElementById('stockCardConsumerPrice').innerText = `판매가: ${Number(product.price || liveOrSell).toLocaleString()}원 / 정가: ${Number(product.consumer_price || product.price || liveOrSell).toLocaleString()}원`;
 
             const total = product.total_stock !== undefined ? product.total_stock : 0;
             const tag = document.getElementById('stockCardTotalTag');
@@ -7832,8 +7833,8 @@
                     }
 
                     // 우측 하단(2·3행 옆): ⚡ 라이브 특가 강조 박스 (2줄)
-                    const sellPrice = Number(p.price || 0);
-                    const consPrice = Number(p.consumer_price || 0);
+                    const sellPrice = Number(p.live_price || p.price || 0);
+                    const consPrice = Number(p.consumer_price || p.price || 0);
                     const priceText = `${sellPrice.toLocaleString()}원`;
                     const priceFont = Math.round((isVert ? 24 : 23) * pScale);
                     ctx.font = `900 ${priceFont}px Pretendard, sans-serif`;

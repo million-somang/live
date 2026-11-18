@@ -239,7 +239,7 @@ def run_security_tests():
     # 도메인 2 (회원제 독립 쇼핑몰 + 비회원 구매 허용 라이브커머스) 검증
     # =========================================================================
     with mall_app.app.test_client() as mclient:
-        # 테스트용 상품 동기화
+        # 테스트용 상품 동기화 (소비자가 120,000원 / 일반 판매가 89,000원 / 라이브 가격 69,000원)
         r_sync = mclient.post(
             "/api/sync/from-obs",
             headers={"X-Mall-Sync-Secret": "sec-sync-key-2026"},
@@ -247,15 +247,15 @@ def run_security_tests():
                 "action": "bulk_sync",
                 "products": [{
                     "id": 1, "num": 1, "name": "보안검증 캐시미어 코트",
-                    "category": "OUTER", "consumer_price": 120000, "price": 89000,
+                    "category": "OUTER", "consumer_price": 120000, "price": 89000, "live_price": 69000,
                     "options": [{"color": "블랙", "size": "M", "stock": 20}]
                 }],
-                "live_state": {"is_live": True, "pinned_product_num": 1}
+                "live_state": {"is_live": False, "pinned_product_num": 1}
             }
         )
         assert r_sync.status_code == 200
 
-        # 6. 일반 쇼핑몰(/checkout, source_page='MALL'/'PRODUCT_DETAIL'/'CART_CHECKOUT')에서도 비회원 구매 허용 검증
+        # 6. 일반 쇼핑몰(평상시 비방송 상태, /checkout, source_page='PRODUCT_DETAIL') 비회원 구매 시 일반 판매가(89,000원) + 택배비(4,000원) 적용 검증
         assert mclient.get("/checkout").status_code == 200
         r_mall_guest_ord = mclient.post(
             "/api/orders/create",
@@ -272,9 +272,9 @@ def run_security_tests():
         mall_guest_json = r_mall_guest_ord.get_json()["order"]
         assert mall_guest_json["shipping_fee"] == 4000
         assert mall_guest_json["total_amount"] == 89000 + 4000
-        print("✅ [7/10] 일반 쇼핑몰(/checkout, 상품상세) 비회원 즉시 구매 허용 및 택배비 4,000원 합산 확인 완료")
+        print("✅ [7/10] 일반 쇼핑몰(평상시) 비회원 즉시 구매 허용 및 일반 판매가(89,000원)+택배비(4,000원) 합산 확인 완료")
 
-        # 7. 라이브커머스(/live)에서는 비회원도 바로구매 허용 + 위조 토큰 차단 검증
+        # 7. 라이브커머스(/live)에서는 비회원 구매 시 라이브 가격(69,000원) + 택배비(4,000원) 적용 + 위조 토큰 차단 검증
         r_forged_live = mclient.post(
             "/api/orders/create",
             json={
@@ -303,8 +303,10 @@ def run_security_tests():
             }
         )
         assert r_live_guest_ok.status_code == 200, r_live_guest_ok.get_data(as_text=True)
-        guest_order_code = r_live_guest_ok.get_json()["order"]["order_code"]
-        print(f"✅ [8/10] 라이브커머스(/live) 비회원 즉시 구매 성공({guest_order_code}) 및 위조 토큰 차단(403) 확인 완료")
+        live_ord_json = r_live_guest_ok.get_json()["order"]
+        assert live_ord_json["total_amount"] == 69000 + 4000
+        guest_order_code = live_ord_json["order_code"]
+        print(f"✅ [8/10] 라이브커머스(/live) 비회원 즉시 구매 성공({guest_order_code}, 라이브가 69,000원+택배비 4,000원) 및 위조 토큰 차단(403) 확인 완료")
 
         # 8. 주문 조회 개인정보 보호 검증 (무조건 조회 시 0건, 비밀번호 오입력 시 0건, 3중 일치 시에만 1건 반환)
         r_lookup_empty = mclient.get("/api/orders/lookup").get_json()

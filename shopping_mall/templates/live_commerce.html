@@ -447,7 +447,7 @@
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:0.74rem; color:#e11d48; font-weight:800;">#{{ p.num }}번 상품</div>
                         <div style="font-size:0.84rem; font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</div>
-                        <div style="font-size:0.8rem; font-weight:900; color:#2563eb;">{{ "{:,}".format(p.price) }}원</div>
+                        <div style="font-size:0.8rem; font-weight:900; color:#e11d48;">🔴 라이브가 {{ "{:,}".format(p.live_price or p.price) }}원</div>
                     </div>
                 </div>
                 {% endfor %}
@@ -495,14 +495,22 @@
                     </h1>
 
                     <div class="price-row">
-                        {% if selected_product.discount_rate > 0 %}
-                        <span class="discount-pct" id="detailDiscountPct">{{ selected_product.discount_rate }}%</span>
+                        <span style="background:#e11d48; color:#fff; font-size:0.78rem; font-weight:900; padding:4px 10px; border-radius:999px;">🔴 LIVE 특가</span>
+                        {% set disp_live_p = selected_product.live_price or selected_product.price %}
+                        {% set disp_disc = selected_product.live_discount_rate if selected_product.live_discount_rate is defined else selected_product.discount_rate %}
+                        {% if disp_disc > 0 %}
+                        <span class="discount-pct" id="detailDiscountPct">{{ disp_disc }}%</span>
                         {% else %}
                         <span class="discount-pct" id="detailDiscountPct" style="display:none;"></span>
                         {% endif %}
-                        <span class="sell-price" id="detailSellPrice">{{ "{:,}".format(selected_product.price) }}원</span>
-                        {% if selected_product.consumer_price > selected_product.price %}
-                        <span class="consumer-price" id="detailConsumerPrice">{{ "{:,}".format(selected_product.consumer_price) }}원</span>
+                        <span class="sell-price" id="detailSellPrice" style="color:#e11d48;">{{ "{:,}".format(disp_live_p) }}원</span>
+                        {% if selected_product.price > disp_live_p %}
+                        <span class="consumer-price" id="detailRegularPrice" style="color:#64748b; text-decoration:line-through;">판매가 {{ "{:,}".format(selected_product.price) }}원</span>
+                        {% else %}
+                        <span class="consumer-price" id="detailRegularPrice" style="display:none;"></span>
+                        {% endif %}
+                        {% if selected_product.consumer_price > disp_live_p %}
+                        <span class="consumer-price" id="detailConsumerPrice">정가 {{ "{:,}".format(selected_product.consumer_price) }}원</span>
                         {% else %}
                         <span class="consumer-price" id="detailConsumerPrice" style="display:none;"></span>
                         {% endif %}
@@ -533,9 +541,9 @@
                             </div>
                         </div>
                         <div style="text-align:right; white-space:nowrap;">
-                            <div style="font-size:0.76rem; color:#9f1239; font-weight:700;">총 상품 금액</div>
+                            <div style="font-size:0.76rem; color:#9f1239; font-weight:700;">총 라이브 특가 상품 금액</div>
                             <div id="detailTotalAmount" style="font-size:1.45rem; font-weight:900; color:#e11d48;">
-                                {{ "{:,}".format(selected_product.price) }}원
+                                {{ "{:,}".format(selected_product.live_price or selected_product.price) }}원
                             </div>
                         </div>
                     </div>
@@ -677,23 +685,38 @@
             }
         }
 
-        // 가격 및 할인율 교체
+        // 가격 및 할인율 교체 (라이브에서는 항상 live_price 우선 표시)
+        const livePriceVal = Number(product.live_price || product.price || 0);
+        const regularPriceVal = Number(product.price || livePriceVal);
+        const consPriceVal = Number(product.consumer_price || regularPriceVal);
+        const liveDiscRate = Number(product.live_discount_rate !== undefined ? product.live_discount_rate : (product.discount_rate || 0));
+
         const discEl = document.getElementById('detailDiscountPct');
         if (discEl) {
-            if (Number(product.discount_rate) > 0) {
-                discEl.innerText = `${product.discount_rate}%`;
+            if (liveDiscRate > 0) {
+                discEl.innerText = `${liveDiscRate}%`;
                 discEl.style.display = 'inline';
             } else {
                 discEl.style.display = 'none';
             }
         }
         const sellEl = document.getElementById('detailSellPrice');
-        if (sellEl) sellEl.innerText = `${Number(product.price || 0).toLocaleString()}원`;
+        if (sellEl) sellEl.innerText = `${livePriceVal.toLocaleString()}원`;
+
+        const regEl = document.getElementById('detailRegularPrice');
+        if (regEl) {
+            if (regularPriceVal > livePriceVal) {
+                regEl.innerText = `판매가 ${regularPriceVal.toLocaleString()}원`;
+                regEl.style.display = 'inline';
+            } else {
+                regEl.style.display = 'none';
+            }
+        }
 
         const consEl = document.getElementById('detailConsumerPrice');
         if (consEl) {
-            if (Number(product.consumer_price) > Number(product.price)) {
-                consEl.innerText = `${Number(product.consumer_price).toLocaleString()}원`;
+            if (consPriceVal > livePriceVal) {
+                consEl.innerText = `정가 ${consPriceVal.toLocaleString()}원`;
                 consEl.style.display = 'inline';
             } else {
                 consEl.style.display = 'none';
@@ -803,7 +826,8 @@
         if (!currentDisplayedProduct) return;
         const input = document.getElementById('detailQtyInput');
         const qty = Math.max(1, Number(input ? input.value : 1) || 1);
-        const total = (Number(currentDisplayedProduct.price) || 0) * qty;
+        const unitP = Number(currentDisplayedProduct.live_price || currentDisplayedProduct.price || 0);
+        const total = unitP * qty;
         const el = document.getElementById('detailTotalAmount');
         if (el) el.innerText = `${total.toLocaleString()}원`;
     }
@@ -824,10 +848,12 @@
             alert(`해당 옵션(${opt.color}/${opt.size})의 잔여 재고는 ${opt.stock}개입니다.`);
             return null;
         }
+        const liveUnitPrice = Number(currentDisplayedProduct.live_price || currentDisplayedProduct.price || 0);
         return {
             num: currentDisplayedProduct.num,
             name: currentDisplayedProduct.name,
-            price: currentDisplayedProduct.price,
+            price: liveUnitPrice,
+            live_price: liveUnitPrice,
             consumer_price: currentDisplayedProduct.consumer_price,
             image_url: currentDisplayedProduct.image_url,
             color: opt.color,

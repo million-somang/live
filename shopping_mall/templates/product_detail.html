@@ -26,15 +26,30 @@
 
             <h1 style="font-size:1.75rem; font-weight:900; color:#0f172a; margin-bottom:14px;">{{ product.name }}</h1>
 
-            <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:18px; border-bottom:1px solid #f1f5f9; margin-bottom:18px;">
-                {% if product.discount_rate > 0 %}
-                <span style="font-size:1.85rem; font-weight:900; color:#e11d48;">{{ product.discount_rate }}%</span>
+            {% set is_now_live = live_state and live_state.is_live %}
+            {% set pd_live_price = product.live_price or product.price %}
+            {% set active_price = pd_live_price if is_now_live else product.price %}
+            {% set active_disc = (product.live_discount_rate if product.live_discount_rate is defined else product.discount_rate) if is_now_live else product.discount_rate %}
+            <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:18px; border-bottom:1px solid #f1f5f9; margin-bottom:18px; flex-wrap:wrap;">
+                {% if is_now_live %}
+                <span style="background:#e11d48; color:#fff; font-size:0.82rem; font-weight:900; padding:4px 10px; border-radius:999px;">🔴 LIVE 방송특가</span>
                 {% endif %}
-                <span style="font-size:1.95rem; font-weight:900; color:#0f172a;">{{ "{:,}".format(product.price) }}원</span>
-                {% if product.consumer_price > product.price %}
-                <span style="font-size:1rem; color:#94a3b8; text-decoration:line-through;">{{ "{:,}".format(product.consumer_price) }}원</span>
+                {% if active_disc > 0 %}
+                <span style="font-size:1.85rem; font-weight:900; color:#e11d48;">{{ active_disc }}%</span>
+                {% endif %}
+                <span style="font-size:1.95rem; font-weight:900; color:{% if is_now_live %}#e11d48{% else %}#0f172a{% endif %};">{{ "{:,}".format(active_price) }}원</span>
+                {% if is_now_live and product.price > active_price %}
+                <span style="font-size:1rem; color:#64748b; text-decoration:line-through;">일반 판매가 {{ "{:,}".format(product.price) }}원</span>
+                {% endif %}
+                {% if product.consumer_price > active_price %}
+                <span style="font-size:1rem; color:#94a3b8; text-decoration:line-through;">정가 {{ "{:,}".format(product.consumer_price) }}원</span>
                 {% endif %}
             </div>
+            {% if not is_now_live and pd_live_price < product.price %}
+            <div style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; padding:10px 14px; border-radius:12px; font-size:0.86rem; font-weight:800; margin-bottom:14px;">
+                🔴 라이브 방송 시 적용 특가: <strong>{{ "{:,}".format(pd_live_price) }}원</strong> (일반 판매가 {{ "{:,}".format(product.price) }}원)
+            </div>
+            {% endif %}
 
             <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px 16px; margin-bottom:18px; white-space:pre-line; font-size:0.9rem; color:#334155; line-height:1.6;">{{ product.specs or '라이브 방송 특가 정품 상품입니다.' }}</div>
 
@@ -70,6 +85,7 @@
 {% block extra_scripts %}
 <script>
     const pdProduct = {{ product | tojson }};
+    const pdIsLive = {{ (True if live_state and live_state.is_live else False) | tojson }};
     function getPdSelection() {
         const opts = (pdProduct.options && pdProduct.options.length > 0)
             ? pdProduct.options
@@ -78,10 +94,12 @@
         const idx = selEl ? Number(selEl.value) || 0 : 0;
         const opt = opts[idx] || opts[0];
         const qty = Math.max(1, Number(document.getElementById('pdQtyInput').value) || 1);
+        const effPrice = pdIsLive ? Number(pdProduct.live_price || pdProduct.price || 0) : Number(pdProduct.price || 0);
         return {
             num: pdProduct.num,
             name: pdProduct.name,
-            price: pdProduct.price,
+            price: effPrice,
+            live_price: Number(pdProduct.live_price || pdProduct.price || 0),
             consumer_price: pdProduct.consumer_price,
             image_url: pdProduct.image_url,
             color: opt.color,

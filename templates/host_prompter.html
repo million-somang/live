@@ -1983,10 +1983,10 @@
 
             document.getElementById('prodNum').innerText = `${p.num}번 상품 (현재 소개 중)`;
             document.getElementById('prodName').innerText = p.name;
-            const sellPrice = Number(p.price || 0);
-            document.getElementById('prodPrice').innerText = `${sellPrice.toLocaleString()}원`;
+            const sellPrice = Number(p.live_price || p.price || 0);
+            document.getElementById('prodPrice').innerText = `라이브가 ${sellPrice.toLocaleString()}원`;
 
-            const cons = Number(p.consumer_price || 0);
+            const cons = Number(p.consumer_price || p.price || 0);
             const consElem = document.getElementById('prodConsPrice');
             if (cons > sellPrice && sellPrice > 0) {
                 consElem.style.display = 'inline';

@@ -81,6 +81,7 @@ def init_mall_db():
                     name TEXT NOT NULL,
                     category TEXT NOT NULL DEFAULT 'ALL',
                     price INTEGER NOT NULL DEFAULT 0,
+                    live_price INTEGER NOT NULL DEFAULT 0,
                     consumer_price INTEGER NOT NULL DEFAULT 0,
                     image_url TEXT DEFAULT '',
                     specs TEXT DEFAULT '',
@@ -183,7 +184,11 @@ def init_mall_db():
                 )
             """)
 
-            # 기존 mall_orders 호환성 마이그레이션 (회원 ID, 비회원 여부, 비회원 주문조회 비밀번호 해시)
+            # 기존 mall_products 및 mall_orders 호환성 마이그레이션
+            try:
+                cur.execute("ALTER TABLE mall_products ADD COLUMN live_price INTEGER NOT NULL DEFAULT 0")
+            except Exception:
+                pass
             for col_name, col_def in [
                 ("user_id", "INTEGER DEFAULT NULL"),
                 ("is_guest", "INTEGER NOT NULL DEFAULT 0"),
@@ -243,10 +248,14 @@ def _format_product_row(prow, opt_rows):
             sizes.append(s)
 
     sell_p = int(prow["price"] or 0)
+    live_p = int(prow["live_price"] or 0) if "live_price" in prow.keys() and prow["live_price"] is not None else 0
+    if live_p <= 0:
+        live_p = sell_p
     cons_p = int(prow["consumer_price"] or sell_p)
     if cons_p < sell_p:
         cons_p = sell_p
     discount_rate = round((cons_p - sell_p) / cons_p * 100) if cons_p > sell_p and cons_p > 0 else 0
+    live_discount_rate = round((cons_p - live_p) / cons_p * 100) if cons_p > live_p and cons_p > 0 else discount_rate
 
     img_url = str(prow["image_url"] or "").strip()
 
@@ -257,8 +266,10 @@ def _format_product_row(prow, opt_rows):
         "name": prow["name"],
         "category": prow["category"] or "TOP",
         "price": sell_p,
+        "live_price": live_p,
         "consumer_price": cons_p,
         "discount_rate": discount_rate,
+        "live_discount_rate": live_discount_rate,
         "image_url": img_url,
         "specs": prow["specs"] or "",
         "is_featured": bool(prow["is_featured"]),
@@ -283,6 +294,9 @@ def upsert_product_from_obs(prod_data):
     obs_id = int(str(prod_data.get("db_id") or prod_data.get("id") or 0).replace("item-", "") or 0)
     name = str(prod_data.get("name") or f"상품 #{num}").strip()
     price = max(0, int(prod_data.get("price") or 0))
+    live_price = max(0, int(prod_data.get("live_price") or price))
+    if live_price <= 0:
+        live_price = price
     consumer_price = max(price, int(prod_data.get("consumer_price") or price))
     image_url = str(prod_data.get("image_url") or "").strip()
     specs = str(prod_data.get("specs") or "").strip()
@@ -300,16 +314,16 @@ def upsert_product_from_obs(prod_data):
                 mall_pid = existing["id"]
                 cur.execute("""
                     UPDATE mall_products
-                    SET obs_product_id = ?, name = ?, category = ?, price = ?, consumer_price = ?,
+                    SET obs_product_id = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
                         image_url = ?, specs = ?, updated_at = ?
                     WHERE id = ?
-                """, (obs_id, name, category, price, consumer_price, image_url, specs, now_str, mall_pid))
+                """, (obs_id, name, category, price, live_price, consumer_price, image_url, specs, now_str, mall_pid))
             else:
                 cur.execute("""
                     INSERT INTO mall_products
-                    (obs_product_id, num, name, category, price, consumer_price, image_url, specs, is_featured, updated_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                """, (obs_id, num, name, category, price, consumer_price, image_url, specs, now_str, created_at))
+                    (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs, is_featured, updated_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (obs_id, num, name, category, price, live_price, consumer_price, image_url, specs, now_str, created_at))
                 mall_pid = cur.lastrowid
 
             if "options" in prod_data and isinstance(prod_data["options"], list):
@@ -684,7 +698,7 @@ def get_lite_live_state():
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT p.num, p.price, COALESCE(SUM(o.stock), 0) AS total_stock
+                SELECT p.num, p.price, p.live_price, COALESCE(SUM(o.stock), 0) AS total_stock
                 FROM mall_products p
                 LEFT JOIN mall_product_options o ON o.product_id = p.id
                 GROUP BY p.id
@@ -693,9 +707,12 @@ def get_lite_live_state():
             for r in cur.fetchall():
                 if first_num is None:
                     first_num = r["num"]
+                sell_p = int(r["price"] or 0)
+                live_p = int(r["live_price"] or 0) if "live_price" in r.keys() and r["live_price"] is not None and int(r["live_price"]) > 0 else sell_p
                 product_stocks[str(r["num"])] = {
                     "total_stock": int(r["total_stock"] or 0),
-                    "price": int(r["price"] or 0)
+                    "price": sell_p,
+                    "live_price": live_p
                 }
         finally:
             conn.close()
@@ -784,6 +801,18 @@ def create_mall_order(order_data):
             resolved_items = []
             subtotal = 0
 
+            # 현재 라이브 방송 중인지 확인 (라이브커머스 페이지 주문이거나 방송 중일 때는 라이브 가격 적용)
+            cur.execute("SELECT value FROM mall_live_state WHERE key = 'is_live'")
+            live_row = cur.fetchone()
+            is_currently_live = False
+            if live_row:
+                try:
+                    is_currently_live = bool(json.loads(live_row["value"]))
+                except Exception:
+                    is_currently_live = str(live_row["value"]).lower() in ("true", "1")
+
+            use_live_pricing = (source_page == "LIVE") or is_currently_live
+
             for it in items_req:
                 p_num = int(it.get("num"))
                 color = str(it.get("color") or "-").strip() or "-"
@@ -824,7 +853,9 @@ def create_mall_order(order_data):
                             (int(any_opt["stock"]) - qty, any_opt["id"])
                         )
 
-                unit_price = int(p_row["price"] or 0)
+                sell_price = int(p_row["price"] or 0)
+                live_price = int(p_row["live_price"] or 0) if "live_price" in p_row.keys() and p_row["live_price"] is not None and int(p_row["live_price"]) > 0 else sell_price
+                unit_price = live_price if use_live_pricing else sell_price
                 line_total = unit_price * qty
                 subtotal += line_total
                 resolved_items.append({

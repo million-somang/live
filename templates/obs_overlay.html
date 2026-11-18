@@ -1372,11 +1372,11 @@
             }
             card.style.display = 'block';
             const pNum = product.num || product.db_id || 1;
+            const sellPrice = Number(product.live_price || product.price || 0);
+            const consPrice = Number(product.consumer_price || product.price || 0);
             document.getElementById('pinnedName').innerText = `${pNum}번. ${product.name}`;
-            document.getElementById('pinnedPrice').innerText = `${Number(product.price || 0).toLocaleString()}원`;
+            document.getElementById('pinnedPrice').innerText = `${sellPrice.toLocaleString()}원`;
 
-            const consPrice = Number(product.consumer_price || 0);
-            const sellPrice = Number(product.price || 0);
             const consElem = document.getElementById('pinnedConsumerPrice');
             const discElem = document.getElementById('pinnedDiscount');
 
