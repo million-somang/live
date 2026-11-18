@@ -255,21 +255,24 @@ def run_security_tests():
         )
         assert r_sync.status_code == 200
 
-        # 6. 비회원의 일반 쇼핑몰 결제(/checkout, source_page='MALL') 차단 검증
-        assert mclient.get("/checkout").status_code == 302
+        # 6. 일반 쇼핑몰(/checkout, source_page='MALL'/'PRODUCT_DETAIL'/'CART_CHECKOUT')에서도 비회원 구매 허용 검증
+        assert mclient.get("/checkout").status_code == 200
         r_mall_guest_ord = mclient.post(
             "/api/orders/create",
             json={
-                "buyer_name": "비회원일반구매시도",
+                "buyer_name": "비회원일반구매고객",
                 "buyer_phone": "010-2222-3333",
                 "address": "서울시 강남구",
-                "source_page": "MALL",
+                "guest_password": "guest4455",
+                "source_page": "PRODUCT_DETAIL",
                 "items": [{"num": 1, "color": "블랙", "size": "M", "quantity": 1}]
             }
         )
-        assert r_mall_guest_ord.status_code == 401
-        assert r_mall_guest_ord.get_json()["code"] == "AUTH_REQUIRED"
-        print("✅ [7/10] 일반 쇼핑몰 비회원 결제 차단(401 AUTH_REQUIRED & /checkout 로그인 리다이렉트) 확인 완료")
+        assert r_mall_guest_ord.status_code == 200
+        mall_guest_json = r_mall_guest_ord.get_json()["order"]
+        assert mall_guest_json["shipping_fee"] == 4000
+        assert mall_guest_json["total_amount"] == 89000 + 4000
+        print("✅ [7/10] 일반 쇼핑몰(/checkout, 상품상세) 비회원 즉시 구매 허용 및 택배비 4,000원 합산 확인 완료")
 
         # 7. 라이브커머스(/live)에서는 비회원도 바로구매 허용 + 위조 토큰 차단 검증
         r_forged_live = mclient.post(

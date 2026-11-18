@@ -535,9 +535,7 @@ def mall_auth_logout():
 
 @app.route("/checkout", methods=["GET"])
 def mall_checkout():
-    """주문/결제 작성 페이지 (일반 쇼핑몰 구매는 회원 전용)"""
-    if not get_current_mall_user():
-        return redirect(url_for("mall_auth_login", next="/checkout"))
+    """주문/결제 작성 페이지 (회원 및 비회원 모두 구매 가능)"""
     live_state = mall_database.get_full_live_state()
     return render_template("checkout.html", live_state=live_state, active_nav="cart")
 
@@ -562,7 +560,10 @@ def mall_orders_view():
         if not allowed:
             lookup_error = f"조회 시도가 너무 많습니다. {retry_sec}초 후 다시 시도해 주세요."
         elif not (order_code and buyer_phone and guest_password):
-            lookup_error = "비회원 주문 조회를 위해 주문번호, 휴대폰 번호, 주문조회 비밀번호 3가지를 모두 입력해 주세요."
+            if user and request.method == "GET" and not (buyer_phone or guest_password):
+                orders = mall_database.get_mall_orders_by_user(user["id"], limit=50)
+            else:
+                lookup_error = "비회원 주문 조회를 위해 주문번호, 휴대폰 번호, 주문조회 비밀번호 3가지를 모두 입력해 주세요."
         else:
             orders = mall_database.lookup_guest_mall_order(order_code, buyer_phone, guest_password)
             if not orders:
@@ -839,46 +840,36 @@ def api_mall_product_detail(num):
 @app.route("/api/orders/create", methods=["POST"])
 def api_mall_create_order():
     """
-    쇼핑몰 장바구니 또는 라이브 커머스(/live) 바로구매 모달에서 주문을 생성합니다.
-    - 일반 쇼핑몰 주문(source_page != 'LIVE'): 로그인한 쇼핑몰 회원(mall_user) 필수!
-    - 라이브커머스 주문(source_page == 'LIVE'): 비회원도 주문 허용 (비회원 주문 비밀번호 설정 및 서명 토큰 검증)
+    쇼핑몰 장바구니(/checkout), 상품 상세(/product/<num>), 또는 라이브 커머스(/live) 바로구매 모달에서 주문을 생성합니다.
+    - 회원 및 비회원 모두 모든 경로(MALL, PRODUCT_DETAIL, CART_CHECKOUT, LIVE)에서 주문 가능
+    - 비회원 주문 시 주문 조회용 비밀번호(4자 이상) 설정 및 저장 (미입력 시 연락처 뒷 4자리 자동 폴백)
     """
     data = dict(request.get_json(silent=True) or {})
     source_page = str(data.get("source_page") or "MALL").strip().upper()
     user = get_current_mall_user()
 
-    if source_page != "LIVE":
-        if not user:
-            return jsonify({
-                "status": "error",
-                "code": "AUTH_REQUIRED",
-                "message": "일반 쇼핑몰 상품 구매는 회원 로그인 후 이용 가능합니다. (라이브커머스 /live 특가 상품은 비회원 구매 가능)"
-            }), 401
-        if not mall_security.verify_csrf_token(session, request):
+    # 라이브커머스(/live) 주문: live_order_token이 전달된 경우 서명 무결성 검증 (위조 토큰 차단)
+    live_tok = str(data.get("live_order_token") or "").strip()
+    if live_tok and mall_security.verify_signed_token(app.secret_key, "live_order", live_tok) is None:
+        return jsonify({"status": "error", "code": "INVALID_LIVE_TOKEN", "message": "유효하지 않은 라이브 주문 보안 토큰입니다."}), 403
+
+    if user:
+        if source_page != "LIVE" and not mall_security.verify_csrf_token(session, request):
             return jsonify({"status": "error", "code": "CSRF_INVALID", "message": "CSRF 보안 토큰 검증에 실패했습니다."}), 403
         data["user_id"] = user["id"]
         data["is_guest"] = False
     else:
-        # 라이브커머스(/live) 주문: live_order_token이 전달된 경우 서명 무결성 검증 (위조 토큰 차단)
-        live_tok = str(data.get("live_order_token") or "").strip()
-        if live_tok and mall_security.verify_signed_token(app.secret_key, "live_order", live_tok) is None:
-            return jsonify({"status": "error", "code": "INVALID_LIVE_TOKEN", "message": "유효하지 않은 라이브 주문 보안 토큰입니다."}), 403
-
-        if user:
-            data["user_id"] = user["id"]
-            data["is_guest"] = False
+        data["user_id"] = None
+        data["is_guest"] = True
+        guest_pw = str(data.get("guest_password") or "").strip()
+        if guest_pw:
+            valid_gpw, gpw_msg = mall_security.validate_guest_password_policy(guest_pw, min_len=4)
+            if not valid_gpw:
+                return jsonify({"status": "error", "message": gpw_msg}), 400
         else:
-            data["user_id"] = None
-            data["is_guest"] = True
-            guest_pw = str(data.get("guest_password") or "").strip()
-            if guest_pw:
-                valid_gpw, gpw_msg = mall_security.validate_guest_password_policy(guest_pw, min_len=4)
-                if not valid_gpw:
-                    return jsonify({"status": "error", "message": gpw_msg}), 400
-            else:
-                # 하위호환 폴백: 휴대폰 번호 뒷 4자리를 초기 조회 비밀번호로 자동 설정
-                digits = "".join(ch for ch in str(data.get("buyer_phone") or "") if ch.isdigit())
-                data["guest_password"] = digits[-4:] if len(digits) >= 4 else "0000"
+            # 하위호환 폴백: 휴대폰 번호 뒷 4자리를 초기 조회 비밀번호로 자동 설정
+            digits = "".join(ch for ch in str(data.get("buyer_phone") or "") if ch.isdigit())
+            data["guest_password"] = digits[-4:] if len(digits) >= 4 else "0000"
 
     res = mall_database.create_mall_order(data)
     if not res.get("ok"):

@@ -573,11 +573,6 @@
         }
 
         function openInstantBuyModal(item, sourcePage = 'LIVE') {
-            if (String(sourcePage || 'LIVE').toUpperCase() !== 'LIVE' && !window.__MALL_USER_LOGGED_IN__) {
-                alert('일반 쇼핑몰 상품 구매는 회원 로그인 후 이용하실 수 있습니다.\n(라이브커머스 전용관 /live 에서는 비회원도 바로구매 가능합니다!)');
-                window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
-                return;
-            }
             pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
             const sumEl = document.getElementById('instantBuyItemSummary');
             const subtotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
@@ -590,7 +585,7 @@
                 sumEl.innerHTML = `
                     ${imgHtml}
                     <div style="flex:1;">
-                        <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 방송 특가 상품</div>
+                        <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 특가 상품</div>
                         <div style="font-size:0.96rem; font-weight:900; color:#0f172a;">${item.name}</div>
                         <div style="font-size:0.82rem; color:#475569; margin-top:2px;">옵션: <strong>${item.color} / ${item.size}</strong> • 수량: <strong>${item.quantity}개</strong></div>
                         <div style="font-size:0.95rem; font-weight:900; color:#e11d48; margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:#475569; font-weight:700;">(상품 ${subtotal.toLocaleString()}원 + 택배비 4,000원)</span></div>
@@ -681,10 +676,24 @@
                     alert(data.message || '주문에 실패했습니다.');
                     return;
                 }
+                const orderSrc = String(pendingInstantBuyItem.source_page || 'LIVE').toUpperCase();
                 closeInstantBuyModal();
+                try {
+                    if (!window.__MALL_USER_LOGGED_IN__) {
+                        sessionStorage.setItem('mall_last_guest_lookup_v1', JSON.stringify({
+                            order_code: data.order.order_code,
+                            buyer_phone: buyer_phone,
+                            guest_password: guest_password
+                        }));
+                    }
+                } catch (e) {}
                 showMallToast(`🎉 주문 완료! 주문번호 [${data.order.order_code}] • 총 ${data.order.total_amount.toLocaleString()}원 (카카오뱅크 3333 233 094904 박창현)`);
                 if (typeof onLiveOrderCompleted === 'function') {
                     onLiveOrderCompleted(data.order);
+                } else if (orderSrc !== 'LIVE') {
+                    setTimeout(() => {
+                        window.location.href = '/orders';
+                    }, 900);
                 }
             } catch (err) {
                 alert('주문 요청 중 오류가 발생했습니다: ' + err.message);

@@ -4,7 +4,7 @@
 {% block content %}
 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
     <h1 style="font-size:1.65rem; font-weight:900;">
-        📦 {% if current_mall_user %}{{ current_mall_user.name }}님의 주문 / 배송 내역{% else %}비회원 라이브 주문 / 배송 조회{% endif %}
+        📦 {% if current_mall_user %}{{ current_mall_user.name }}님의 주문 / 배송 내역{% else %}비회원 주문 / 배송 조회{% endif %}
     </h1>
     {% if not current_mall_user %}
     <a href="/auth/login?next=/orders" style="padding:9px 16px; border-radius:10px; background:#4f46e5; color:#fff; font-size:0.86rem; font-weight:800;">
@@ -14,11 +14,11 @@
 </div>
 
 <!-- 비회원 3중 검증 조회 폼 (주문번호 + 연락처 + 비회원 주문 비밀번호) -->
-<form method="POST" action="/orders" style="background:#fff; border-radius:18px; padding:20px; border:1px solid var(--border); margin-bottom:24px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+<form id="guestOrderLookupForm" method="POST" action="/orders" style="background:#fff; border-radius:18px; padding:20px; border:1px solid var(--border); margin-bottom:24px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="text" name="order_code" value="{{ order_code }}" class="form-input" placeholder="주문번호 (예: ORD-20261115-...)" style="width:240px;" required>
-    <input type="text" name="buyer_phone" value="{{ buyer_phone }}" class="form-input" placeholder="수령인 휴대폰 번호 전체" style="width:200px;" required>
-    <input type="password" name="guest_password" class="form-input" placeholder="비회원 주문조회 비밀번호" style="width:210px;" required>
+    <input type="text" id="lookupOrderCode" name="order_code" value="{{ order_code }}" class="form-input" placeholder="주문번호 (예: ORD-20261115-...)" style="width:240px;" required>
+    <input type="text" id="lookupBuyerPhone" name="buyer_phone" value="{{ buyer_phone }}" class="form-input" placeholder="수령인 휴대폰 번호 전체" style="width:200px;" required>
+    <input type="password" id="lookupGuestPassword" name="guest_password" class="form-input" placeholder="비회원 주문조회 비밀번호" style="width:210px;" required>
     <button type="submit" style="padding:11px 22px; border-radius:10px; border:none; background:#0f172a; color:#fff; font-weight:900; cursor:pointer;">🔍 안전 조회하기</button>
     {% if current_mall_user %}
     <a href="/orders" style="padding:11px 16px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.86rem; font-weight:700;">내 회원 주문 보기</a>
@@ -76,4 +76,30 @@
     {% endif %}
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function autoLookupRecentGuestOrder() {
+        const hasRenderedOrders = {{ (True if orders else False) | tojson }};
+        if (hasRenderedOrders || window.__MALL_USER_LOGGED_IN__) return;
+        try {
+            const raw = sessionStorage.getItem('mall_last_guest_lookup_v1');
+            if (!raw) return;
+            const saved = JSON.parse(raw);
+            sessionStorage.removeItem('mall_last_guest_lookup_v1');
+            if (!saved || !saved.order_code || !saved.buyer_phone || !saved.guest_password) return;
+            const codeEl = document.getElementById('lookupOrderCode');
+            const phoneEl = document.getElementById('lookupBuyerPhone');
+            const pwEl = document.getElementById('lookupGuestPassword');
+            const formEl = document.getElementById('guestOrderLookupForm');
+            if (codeEl && phoneEl && pwEl && formEl) {
+                codeEl.value = saved.order_code;
+                phoneEl.value = saved.buyer_phone;
+                pwEl.value = saved.guest_password;
+                formEl.submit();
+            }
+        } catch (e) {}
+    })();
+</script>
 {% endblock %}
