@@ -154,6 +154,7 @@ def _has_valid_cam_access() -> bool:
     if _is_direct_loopback_request() and (
         request.args.get("agent_bridge") == "1"
         or request.headers.get("X-Local-Agent-Bridge") == "1"
+        or request.args.get("vdo") == "1"
     ):
         return True
     tok = (
@@ -345,10 +346,14 @@ def _studio_security_gateway():
         if path == "/api/camera/renew-url" or (path == "/api/camera/switcher" and request.method == "POST"):
             pass  # 아래 스튜디오 인증으로 진행
         else:
-            if _has_valid_cam_access() or (
-                request.method == "GET"
-                and path in ("/api/camera/host-info", "/api/camera/stream", "/api/camera/latest-frame", "/api/camera/audio/pull")
-                and session.get("overlay_paired") is True
+            if (
+                path == "/api/camera/mic-worklet.js"
+                or _has_valid_cam_access()
+                or (
+                    request.method == "GET"
+                    and path in ("/api/camera/host-info", "/api/camera/stream", "/api/camera/latest-frame", "/api/camera/audio/pull")
+                    and session.get("overlay_paired") is True
+                )
             ):
                 return None
             if path.startswith("/api/"):
@@ -4148,6 +4153,12 @@ def api_remote_cam_upload_frame():
     return api_camera_upload_frame()
 
 
+@app.route('/api/remote-cam/audio', methods=['POST'])
+def api_remote_cam_upload_audio():
+    """방식 2: 다른 네트워크 원격 카메라 페이지(/remote-cam)에서 올라온 48kHz PCM 오디오 청크 수신"""
+    return api_camera_upload_audio()
+
+
 @app.route('/api/remote-cam/latest-frame', methods=['GET'])
 def api_remote_cam_latest_frame():
     """방식 2: 스튜디오 또는 로컬 에이전트가 원격 카메라 페이지(/remote-cam)의 최신 프레임을 가져오는(Pull) 엔드포인트"""
@@ -4817,12 +4828,15 @@ class VdoNinjaDirectReceiver:
                 const rawBuf = payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
                 const seq = ++audioSeq;
 
-                // 1순위: 로컬 루프백 바이너리 직통 POST (Playwright 단일 스레드 IPC 병목 완전 우회)
-                fetch('http://127.0.0.1:5000/api/camera/audio?src=mobile&vdo=1&seq=' + seq, {
+                // 1순위: 로컬 루프백 바이너리 직통 POST (Playwright 단일 스레드 IPC 병목 완전 우회 + CORS/보안토큰 정식 통과)
+                fetch('http://127.0.0.1:5000/api/camera/audio?src=mobile&vdo=1&agent_bridge=1&seq=' + seq, {
                     method: 'POST',
                     body: rawBuf,
-                    mode: 'no-cors',
-                    keepalive: true
+                    headers: { 'Content-Type': 'application/octet-stream' }
+                }).then((r) => {
+                    if (!r || !r.ok) {
+                        throw new Error('vdo_audio_http_' + (r ? r.status : 0));
+                    }
                 }).catch(() => {
                     if (typeof window.pyPushVdoAudio === 'function') {
                         const b64 = arrayBufferToBase64(rawBuf);
@@ -5617,13 +5631,19 @@ def api_camera_upload_audio():
         src = (request.args.get('src') or 'mobile').strip().lower()
         seq = request.args.get('seq', type=int)
         is_vdo = (request.args.get('vdo') == '1')
+        explicit_subsrc = (request.args.get('subsrc') or '').strip().lower()
         if is_vdo:
             with vdo_ninja_receiver.lock:
                 vdo_ninja_receiver.audio_packets_received += 1
                 vdo_ninja_receiver.last_audio_at = time.time()
                 if seq is None:
                     seq = vdo_ninja_receiver.audio_packets_received
-        subsrc = "vdo_ninja" if is_vdo else ("pc_mic" if src == "pc" else "mobile_cam")
+        if is_vdo:
+            subsrc = "vdo_ninja"
+        elif explicit_subsrc in ("cloud_bridge", "webrtc_mobile", "mobile_cam", "pc_mic"):
+            subsrc = explicit_subsrc
+        else:
+            subsrc = "pc_mic" if src == "pc" else "mobile_cam"
         youtube_direct_streamer.push_audio_pcm(pcm_data, source=src, seq=seq, subsource=subsrc)
         return jsonify({"status": "ok"}), 200
     return jsonify({"status": "error", "message": "no audio"}), 400
@@ -5641,7 +5661,10 @@ def api_camera_pull_monitor_audio():
         resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         return resp
     after_seq = request.args.get('after_seq', default=0, type=int)
-    pcm_bytes, latest_seq = youtube_direct_streamer.pull_monitor_audio(after_seq)
+    if request.args.get('raw') == '1':
+        pcm_bytes, latest_seq = youtube_direct_streamer.pull_raw_mobile_audio(after_seq)
+    else:
+        pcm_bytes, latest_seq = youtube_direct_streamer.pull_monitor_audio(after_seq)
     resp = Response(pcm_bytes, status=200, mimetype='application/octet-stream')
     resp.headers['X-Audio-Seq'] = str(latest_seq)
     resp.headers['X-Audio-Sample-Rate'] = '48000'
@@ -7251,6 +7274,9 @@ class YouTubeDirectStreamer:
         self._mon_dsp_state = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0]
         self._monitor_audio_ring = []
         self._monitor_audio_seq = 0
+        self._raw_mobile_audio_ring = []
+        self._raw_mobile_audio_seq = 0
+        self._last_direct_mobile_audio_ts = 0.0
         self._video_sync_queue = []
         self._transcode_ready_event = threading.Event()
         self._stream_clock_t0 = None
@@ -7741,9 +7767,16 @@ class YouTubeDirectStreamer:
                 eff_sub = subsource or "mobile_cam"
                 if eff_sub == "vdo_ninja":
                     self._last_vdo_audio_ts = now_a
+                    self._last_direct_mobile_audio_ts = now_a
                     self._last_mob_subsource = "vdo_ninja"
+                elif eff_sub in ("webrtc_mobile", "cloud_bridge"):
+                    # 이미 직접 유입(VDO.Ninja 또는 /cam Worklet) 오디오가 활성 중이면 브릿지/WebRTC 중복 오디오 차단
+                    if (now_a - self._last_vdo_audio_ts) < 2.0 or (now_a - self._last_cam_audio_ts) < 2.0:
+                        return
+                    self._last_mob_subsource = eff_sub
                 else:
                     self._last_cam_audio_ts = now_a
+                    self._last_direct_mobile_audio_ts = now_a
                     # VDO.Ninja 오디오가 활성(최근 2.0초 이내 수신) 중일 때 내장 /cam 오디오가 동시에 들어오면
                     # 단일 버퍼에 두 마이크 스트림이 섞여 목소리가 뭉개지는 현상을 자동 차단!
                     if (now_a - self._last_vdo_audio_ts) < 2.0:
@@ -7757,6 +7790,12 @@ class YouTubeDirectStreamer:
                         )
                         return
                     self._last_mob_subsource = "mobile_cam"
+
+                if eff_sub not in ("cloud_bridge", "webrtc_mobile"):
+                    self._raw_mobile_audio_seq += 1
+                    self._raw_mobile_audio_ring.append((self._raw_mobile_audio_seq, now_a, bytes(pcm_slice)))
+                    if len(self._raw_mobile_audio_ring) > 60:
+                        del self._raw_mobile_audio_ring[:-45]
 
                 if self.last_mobile_audio_ts > 0:
                     dt_ms = (now_a - self.last_mobile_audio_ts) * 1000.0
@@ -7837,6 +7876,20 @@ class YouTubeDirectStreamer:
                 recent = [b for s, ts, b in self._monitor_audio_ring[-3:] if (now_t - ts) < 0.4]
                 return b"".join(recent), cur_seq
             chunks = [b for s, ts, b in self._monitor_audio_ring if s > after_seq and (now_t - ts) < 0.6]
+            return b"".join(chunks), cur_seq
+
+    def pull_raw_mobile_audio(self, after_seq=0):
+        """로컬 PC ↔ 클라우드 스튜디오 간 양방향 오디오 브릿지를 위한 48kHz 원음(무증폭) PCM 청크 반환"""
+        now_t = time.time()
+        with self._audio_lock:
+            cur_seq = getattr(self, "_raw_mobile_audio_seq", 0)
+            ring = getattr(self, "_raw_mobile_audio_ring", None)
+            if not ring or cur_seq == 0:
+                return b"", cur_seq
+            if after_seq <= 0 or (cur_seq - after_seq) > 16:
+                recent = [b for s, ts, b in ring[-3:] if (now_t - ts) < 0.4]
+                return b"".join(recent), cur_seq
+            chunks = [b for s, ts, b in ring if s > after_seq and (now_t - ts) < 0.6]
             return b"".join(chunks), cur_seq
 
     def get_ffmpeg_exe(self):
@@ -11007,6 +11060,9 @@ class TikTokDirectStreamer(YouTubeDirectStreamer):
         self._mon_dsp_state = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0]
         self._monitor_audio_ring = []
         self._monitor_audio_seq = 0
+        self._raw_mobile_audio_ring = []
+        self._raw_mobile_audio_seq = 0
+        self._last_direct_mobile_audio_ts = 0.0
         self._video_sync_queue = []
         self._transcode_ready_event = threading.Event()
         self._stream_clock_t0 = None
@@ -11681,6 +11737,9 @@ class InstagramDirectStreamer(YouTubeDirectStreamer):
         self._mon_dsp_state = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0]
         self._monitor_audio_ring = []
         self._monitor_audio_seq = 0
+        self._raw_mobile_audio_ring = []
+        self._raw_mobile_audio_seq = 0
+        self._last_direct_mobile_audio_ts = 0.0
         self._video_sync_queue = []
         self._transcode_ready_event = threading.Event()
         self._stream_clock_t0 = None
@@ -14920,6 +14979,9 @@ def run_local_to_cloud_camera_bridge():
 
     last_sync_ts = 0.0
     last_forwarded_seq = {1: 0, 2: 0}
+    last_forwarded_audio_seq = 0
+    last_pulled_cloud_audio_seq = 0
+    last_cloud_audio_pull_ts = 0.0
     cloud_cam_tok = ""
     conn = None
 
@@ -15016,7 +15078,59 @@ def run_local_to_cloud_camera_bridge():
                     except Exception:
                         reset_conn()
 
-            time.sleep(0.025 if forwarded_any else 0.15)
+            # 3) 로컬 PC에 새로 들어온 스마트폰 오디오(48kHz PCM)가 있으면 즉시 클라우드 스튜디오로 전달
+            pcm_out, cur_a_seq = youtube_direct_streamer.pull_raw_mobile_audio(last_forwarded_audio_seq)
+            if pcm_out and cur_a_seq > last_forwarded_audio_seq:
+                last_forwarded_audio_seq = cur_a_seq
+                tok_use = cloud_cam_tok or get_studio_cam_token()
+                try:
+                    c = get_conn()
+                    c.request(
+                        "POST",
+                        f"/api/camera/audio?sr=48000&src=mobile&subsrc=cloud_bridge&seq={cur_a_seq}&cam_token={tok_use}",
+                        body=pcm_out,
+                        headers={
+                            "Content-Type": "application/octet-stream",
+                            "X-Cam-Token": tok_use,
+                            "Connection": "keep-alive",
+                        },
+                    )
+                    r_a = c.getresponse()
+                    r_a.read()
+                    forwarded_any = True
+                except Exception:
+                    reset_conn()
+            elif (now - getattr(youtube_direct_streamer, "_last_direct_mobile_audio_ts", 0.0)) > 2.0 and (now - last_cloud_audio_pull_ts) >= 0.04:
+                # 4) 반대로 스마트폰이 클라우드 서버(/remote-cam 등)에 연결되어 오디오를 보내는 경우 로컬 PC로 가져와 RTMP 송출기에 공급
+                last_cloud_audio_pull_ts = now
+                tok_use = cloud_cam_tok or get_studio_cam_token()
+                try:
+                    c = get_conn()
+                    c.request(
+                        "GET",
+                        f"/api/camera/audio/pull?after_seq={last_pulled_cloud_audio_seq}&v=2&raw=1&cam_token={tok_use}",
+                        headers={
+                            "X-Cam-Token": tok_use,
+                            "Connection": "keep-alive",
+                        },
+                    )
+                    r_p = c.getresponse()
+                    seq_hdr = int(r_p.getheader("X-Audio-Seq") or "0")
+                    pcm_in = r_p.read()
+                    if seq_hdr > 0:
+                        last_pulled_cloud_audio_seq = seq_hdr
+                    if r_p.status == 200 and pcm_in and len(pcm_in) >= 4:
+                        youtube_direct_streamer.push_audio_pcm(
+                            pcm_in,
+                            source="mobile",
+                            seq=last_pulled_cloud_audio_seq,
+                            subsource="cloud_bridge",
+                        )
+                        forwarded_any = True
+                except Exception:
+                    reset_conn()
+
+            time.sleep(0.025 if forwarded_any else 0.08)
         except Exception:
             reset_conn()
             time.sleep(1.5)

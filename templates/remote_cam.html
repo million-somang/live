@@ -160,7 +160,7 @@
         }
         .ctrl-row {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 6px;
         }
         .ctrl-btn {
@@ -235,10 +235,11 @@
     <!-- 하단 컨트롤 바 -->
     <div class="bottom-controls">
         <div class="ctrl-row">
-            <button type="button" class="ctrl-btn" onclick="switchFacingMode()">🔄 전/후면 전환</button>
+            <button type="button" class="ctrl-btn" onclick="switchFacingMode()">🔄 전/후면</button>
+            <button type="button" class="ctrl-btn active" id="btnRemoteMicToggle" onclick="toggleRemoteMicMute()">🎤 마이크 ON</button>
             <button type="button" class="ctrl-btn" id="btnMirrorToggle" onclick="toggleRemoteMirror()">🪞 좌우반전</button>
             <button type="button" class="ctrl-btn active" id="btnQualityToggle" onclick="toggleRemoteQuality()">📐 화질: 720p</button>
-            <button type="button" class="ctrl-btn" id="btnSlotToggle" onclick="switchRemoteCamSlot()">🎥 채널: CAM {{ cam_id }}</button>
+            <button type="button" class="ctrl-btn" id="btnSlotToggle" onclick="switchRemoteCamSlot()">🎥 CAM {{ cam_id }}</button>
         </div>
     </div>
 
@@ -255,6 +256,27 @@
         let sentFramesInSec = 0;
         let peerConnection = null;
 
+        // 🎤 원격 카메라 실시간 마이크 오디오(48kHz 16-bit Mono PCM) 캡처 및 전송 상태
+        let isMicMuted = false;
+        try {
+            const savedMute = localStorage.getItem(`remote_cam_mic_muted_cam${currentCamSlot}`);
+            if (savedMute === '1') isMicMuted = true;
+        } catch (e) {}
+        let hasAudioTrack = false;
+        let audioCtx = null;
+        let audioSourceNode = null;
+        let audioProcessorNode = null;
+        let audioGainNode = null;
+        let keepAliveAudioEl = null;
+        let audioWorkletReady = false;
+        let audioInFlightCount = 0;
+        const MAX_AUDIO_IN_FLIGHT = 1;
+        let audioSeq = 0;
+        let pendingPcmChunks = [];
+        let pendingPcmSamples = 0;
+        const TARGET_AUDIO_SAMPLE_RATE = 48000;
+        const AUDIO_PACKET_SAMPLES = 1920; // 40ms @ 48kHz
+
         const videoEl = document.getElementById('remoteCamVideo');
         const canvasEl = document.getElementById('remoteCaptureCanvas');
         const ctx = canvasEl.getContext('2d', { alpha: false });
@@ -268,6 +290,281 @@
         function buildApiUrl(path) {
             const sep = path.includes('?') ? '&' : '?';
             return `${path}${sep}cam=${currentCamSlot}&cam_token=${encodeURIComponent(CAM_TOKEN)}`;
+        }
+
+        function updateRemoteMicButtonUi() {
+            const btn = document.getElementById('btnRemoteMicToggle');
+            if (!btn) return;
+            if (!hasAudioTrack && isStreaming) {
+                btn.classList.remove('active');
+                btn.classList.add('danger');
+                btn.innerText = isMicMuted ? '🔇 마이크 OFF' : '🔇 권한없음';
+            } else if (isMicMuted) {
+                btn.classList.remove('active');
+                btn.classList.add('danger');
+                btn.innerText = '🔇 마이크 OFF';
+            } else {
+                btn.classList.remove('danger');
+                btn.classList.add('active');
+                btn.innerText = '🎤 마이크 ON';
+            }
+        }
+
+        async function toggleRemoteMicMute() {
+            isMicMuted = !isMicMuted;
+            try { localStorage.setItem(`remote_cam_mic_muted_cam${currentCamSlot}`, isMicMuted ? '1' : '0'); } catch (e) {}
+            if (!isMicMuted && !hasAudioTrack && isStreaming) {
+                await startRemoteCameraStreaming();
+                return;
+            }
+            if (mediaStream) {
+                mediaStream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted && isStreaming; });
+            }
+            if (audioCtx && audioCtx.state === 'suspended' && !isMicMuted) {
+                audioCtx.resume().catch(() => {});
+            }
+            updateRemoteMicButtonUi();
+        }
+
+        async function flushRemoteAudioPcmChunks() {
+            if (audioInFlightCount >= MAX_AUDIO_IN_FLIGHT || pendingPcmChunks.length === 0) return;
+            audioInFlightCount++;
+            const myAudioSeq = ++audioSeq;
+            try {
+                const chunks = pendingPcmChunks;
+                const totalSamples = pendingPcmSamples;
+                pendingPcmChunks = [];
+                pendingPcmSamples = 0;
+
+                const merged = new Int16Array(totalSamples);
+                let offset = 0;
+                for (const c of chunks) {
+                    merged.set(c, offset);
+                    offset += c.length;
+                }
+                const payload = totalSamples > 18000 ? merged.subarray(totalSamples - 18000) : merged;
+
+                await fetch(buildApiUrl(`/api/camera/audio?sr=48000&src=mobile&seq=${myAudioSeq}`), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
+                });
+            } catch (e) {
+            } finally {
+                audioInFlightCount = Math.max(0, audioInFlightCount - 1);
+                if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                    flushRemoteAudioPcmChunks();
+                }
+            }
+        }
+
+        function attachRemoteScriptProcessorFallback(inRate) {
+            if (!audioCtx || !audioSourceNode || !audioGainNode) return;
+            try {
+                if (audioProcessorNode) {
+                    try { audioProcessorNode.disconnect(); } catch (e) {}
+                }
+                audioProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+                const effRate = inRate || audioCtx.sampleRate || 48000;
+                audioProcessorNode.onaudioprocess = (event) => {
+                    if (!isStreaming || isMicMuted || !hasAudioTrack) return;
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    if (!inputData || inputData.length === 0) return;
+
+                    const outLength = Math.max(1, Math.floor(inputData.length / (effRate / TARGET_AUDIO_SAMPLE_RATE)));
+                    const ratio = inputData.length / outLength;
+                    const pcm16 = new Int16Array(outLength);
+                    const inLen = inputData.length;
+                    for (let i = 0; i < outLength; i++) {
+                        const startF = i * ratio;
+                        const endF = startF + ratio;
+                        const startIdx = Math.min(inLen - 1, Math.floor(startF));
+                        const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
+                        let sum = 0;
+                        let cnt = 0;
+                        for (let j = startIdx; j < endIdx; j++) {
+                            sum += inputData[j];
+                            cnt++;
+                        }
+                        let sample = (cnt > 0 ? (sum / cnt) : inputData[startIdx]);
+                        if (sample > 0.98) sample = 0.98;
+                        else if (sample < -0.98) sample = -0.98;
+                        pcm16[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
+                    }
+
+                    pendingPcmChunks.push(pcm16);
+                    pendingPcmSamples += pcm16.length;
+                    if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                        flushRemoteAudioPcmChunks();
+                    }
+                };
+                audioSourceNode.connect(audioProcessorNode);
+                audioProcessorNode.connect(audioGainNode);
+                audioGainNode.connect(audioCtx.destination);
+            } catch (e) {}
+        }
+
+        async function setupRemoteAudioCapture(stream) {
+            try {
+                const audioTracks = stream ? stream.getAudioTracks() : [];
+                hasAudioTrack = audioTracks.length > 0;
+                if (!hasAudioTrack) {
+                    updateRemoteMicButtonUi();
+                    return;
+                }
+                audioTracks.forEach(t => { t.enabled = !isMicMuted && isStreaming; });
+                updateRemoteMicButtonUi();
+
+                if (audioProcessorNode) {
+                    try { audioProcessorNode.disconnect(); } catch (e) {}
+                    audioProcessorNode = null;
+                }
+                if (audioSourceNode) {
+                    try { audioSourceNode.disconnect(); } catch (e) {}
+                    audioSourceNode = null;
+                }
+
+                // 모바일 브라우저가 MediaStream 오디오 트랙 디코딩을 중단하지 않도록 비가청 싱크 유지
+                try {
+                    if (!keepAliveAudioEl) {
+                        keepAliveAudioEl = document.createElement('audio');
+                        keepAliveAudioEl.autoplay = true;
+                        keepAliveAudioEl.playsInline = true;
+                        keepAliveAudioEl.muted = false;
+                        keepAliveAudioEl.volume = 0.0001;
+                        keepAliveAudioEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+                        document.body.appendChild(keepAliveAudioEl);
+                    }
+                    keepAliveAudioEl.srcObject = new MediaStream([audioTracks[0]]);
+                    keepAliveAudioEl.play().catch(() => {});
+                } catch (e) {}
+
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+                if (!audioCtx) {
+                    try {
+                        audioCtx = new AudioContextClass({ sampleRate: 48000 });
+                    } catch (e) {
+                        audioCtx = new AudioContextClass();
+                    }
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(() => {});
+                }
+
+                const dedicatedAudioStream = new MediaStream([audioTracks[0]]);
+                audioSourceNode = audioCtx.createMediaStreamSource(dedicatedAudioStream);
+                audioGainNode = audioCtx.createGain();
+                audioGainNode.gain.value = 0;
+
+                const inRate = audioCtx.sampleRate || 48000;
+                if (audioCtx.audioWorklet && window.AudioWorkletNode) {
+                    try {
+                        if (!audioWorkletReady) {
+                            try {
+                                await audioCtx.audioWorklet.addModule(buildApiUrl('/api/camera/mic-worklet.js'));
+                                audioWorkletReady = true;
+                            } catch (modErr) {
+                                const workletCode = `
+                                    class MicPcmWorklet extends AudioWorkletProcessor {
+                                        constructor() {
+                                            super();
+                                            this.outBuf = new Int16Array(1920);
+                                            this.outIdx = 0;
+                                            this.srcPos = 0;
+                                            this.dcX = 0;
+                                            this.dcY = 0;
+                                            this.prevSample = 0;
+                                            this.hasPrev = false;
+                                            this.filteredBuf = new Float32Array(256);
+                                        }
+                                        process(inputs) {
+                                            const input = inputs[0];
+                                            if (!input || !input[0] || input[0].length === 0) return true;
+                                            const ch = input[0];
+                                            const inLen = ch.length;
+                                            if (this.filteredBuf.length < inLen) {
+                                                this.filteredBuf = new Float32Array(inLen);
+                                            }
+                                            let dcX = this.dcX, dcY = this.dcY;
+                                            for (let i = 0; i < inLen; i++) {
+                                                const x = ch[i];
+                                                dcY = x - dcX + 0.995 * dcY;
+                                                dcX = x;
+                                                this.filteredBuf[i] = dcY;
+                                            }
+                                            this.dcX = dcX;
+                                            this.dcY = dcY;
+                                            const ratio = sampleRate / 48000;
+                                            const fBuf = this.filteredBuf;
+                                            while (this.srcPos < inLen) {
+                                                const idx = Math.floor(this.srcPos);
+                                                const frac = this.srcPos - idx;
+                                                let s0, s1;
+                                                if (idx < 0) {
+                                                    s0 = this.hasPrev ? this.prevSample : fBuf[0];
+                                                    s1 = fBuf[0];
+                                                } else if (idx >= inLen - 1) {
+                                                    s0 = fBuf[inLen - 1];
+                                                    s1 = fBuf[inLen - 1];
+                                                } else {
+                                                    s0 = fBuf[idx];
+                                                    s1 = fBuf[idx + 1];
+                                                }
+                                                let s = (s0 * (1 - frac) + s1 * frac);
+                                                if (s > 0.98) s = 0.98;
+                                                else if (s < -0.98) s = -0.98;
+                                                this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                                                if (this.outIdx >= 1920) {
+                                                    this.port.postMessage(this.outBuf.slice(0));
+                                                    this.outIdx = 0;
+                                                }
+                                                this.srcPos += ratio;
+                                            }
+                                            this.prevSample = fBuf[inLen - 1];
+                                            this.hasPrev = true;
+                                            this.srcPos -= inLen;
+                                            return true;
+                                        }
+                                    }
+                                    registerProcessor('mic-pcm-worklet', MicPcmWorklet);
+                                `;
+                                const blob = new Blob([workletCode], { type: 'application/javascript' });
+                                const url = URL.createObjectURL(blob);
+                                await audioCtx.audioWorklet.addModule(url);
+                                audioWorkletReady = true;
+                            }
+                        }
+                        let workletDeliveries = 0;
+                        const workletNode = new AudioWorkletNode(audioCtx, 'mic-pcm-worklet');
+                        audioProcessorNode = workletNode;
+                        workletNode.port.onmessage = (ev) => {
+                            workletDeliveries++;
+                            if (!isStreaming || isMicMuted || !hasAudioTrack) return;
+                            const pcm16 = ev.data;
+                            if (!pcm16 || !pcm16.length) return;
+                            pendingPcmChunks.push(pcm16);
+                            pendingPcmSamples += pcm16.length;
+                            if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                                flushRemoteAudioPcmChunks();
+                            }
+                        };
+                        audioSourceNode.connect(workletNode);
+                        workletNode.connect(audioGainNode);
+                        audioGainNode.connect(audioCtx.destination);
+
+                        // 1.2초 내 AudioWorklet 콜백 미발생 시 ScriptProcessorNode로 자동 전환
+                        setTimeout(() => {
+                            if (isStreaming && !isMicMuted && hasAudioTrack && workletDeliveries === 0 && audioProcessorNode === workletNode) {
+                                attachRemoteScriptProcessorFallback(inRate);
+                            }
+                        }, 1200);
+                        return;
+                    } catch (wErr) {}
+                }
+
+                attachRemoteScriptProcessorFallback(inRate);
+            } catch (e) {}
         }
 
         async function reportClientState(state, message) {
@@ -296,33 +593,83 @@
             }
 
             try {
-                await reportClientState('requesting_camera', '원격 카메라 권한 요청 중');
+                await reportClientState('requesting_camera', '원격 카메라 및 마이크 권한 요청 중');
                 if (mediaStream) {
                     mediaStream.getTracks().forEach(t => t.stop());
+                    mediaStream = null;
                 }
 
                 const targetW = isHighQuality ? 1280 : 854;
                 const targetH = isHighQuality ? 720 : 480;
+                const audioConstraints = {
+                    echoCancellation: false,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    channelCount: { ideal: 1 },
+                    sampleRate: { ideal: 48000 }
+                };
+                const videoConstraints = {
+                    facingMode: { ideal: currentFacingMode },
+                    width: { ideal: targetW },
+                    height: { ideal: targetH },
+                    frameRate: { ideal: 24, max: 30 }
+                };
 
-                mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: currentFacingMode },
-                        width: { ideal: targetW },
-                        height: { ideal: targetH },
-                        frameRate: { ideal: 24, max: 30 }
-                    },
-                    audio: false
-                });
+                const candidates = isMicMuted
+                    ? [
+                        { video: videoConstraints, audio: false },
+                        { video: { facingMode: currentFacingMode }, audio: false },
+                        { video: true, audio: false }
+                    ]
+                    : [
+                        { video: videoConstraints, audio: audioConstraints },
+                        { video: { facingMode: currentFacingMode }, audio: audioConstraints },
+                        { video: videoConstraints, audio: true },
+                        { video: true, audio: true },
+                        { video: videoConstraints, audio: false },
+                        { video: true, audio: false }
+                    ];
 
+                let lastErr = null;
+                for (const c of candidates) {
+                    try {
+                        mediaStream = await navigator.mediaDevices.getUserMedia(c);
+                        if (mediaStream) break;
+                    } catch (err) {
+                        lastErr = err;
+                    }
+                }
+                if (!mediaStream) {
+                    throw lastErr || new Error('카메라 스트림을 열 수 없습니다.');
+                }
+
+                // 비디오만 열린 경우 마이크 트랙 별도 결합 시도
+                if (!isMicMuted && mediaStream.getAudioTracks().length === 0) {
+                    try {
+                        const aStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false })
+                            .catch(() => navigator.mediaDevices.getUserMedia({ audio: true, video: false }));
+                        if (aStream && aStream.getAudioTracks().length > 0) {
+                            mediaStream.addTrack(aStream.getAudioTracks()[0]);
+                        }
+                    } catch (aErr) {}
+                }
+
+                videoEl.muted = true;
                 videoEl.srcObject = mediaStream;
-                await videoEl.play();
+                try {
+                    const p = videoEl.play();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (e) {}
 
                 document.getElementById('startOverlay').style.display = 'none';
                 document.getElementById('topLiveDot').classList.add('live');
-                document.getElementById('topStatusLabel').innerText = '스튜디오로 실시간 전송 중';
-
                 isStreaming = true;
-                await reportClientState('streaming_started', '원격 네트워크 카메라 실시간 송출 시작');
+
+                await setupRemoteAudioCapture(mediaStream);
+                const micTag = (hasAudioTrack && !isMicMuted) ? ' (🎤음성ON)' : '';
+                document.getElementById('topStatusLabel').innerText = `스튜디오로 실시간 전송 중${micTag}`;
+
+                await reportClientState('streaming_started', `원격 네트워크 카메라 실시간 송출 시작${micTag}`);
                 startFrameUploadLoop();
                 startWebRtcOfferPolling();
             } catch (err) {
@@ -331,8 +678,13 @@
             }
         }
 
+        let frameLoopRunning = false;
+        let webrtcPollRunning = false;
+
         // 1) 원격 프레임 전송 루프 (모든 NAT/방화벽 100% 통과 보장)
         async function startFrameUploadLoop() {
+            if (frameLoopRunning) return;
+            frameLoopRunning = true;
             let busy = false;
             setInterval(() => {
                 if (!isStreaming || busy || !videoEl.videoWidth || !videoEl.videoHeight) return;
@@ -370,8 +722,7 @@
                         await fetch(buildApiUrl(`/api/remote-cam/frame?seq=${seq}&src=remote_cam_${currentCamSlot}`), {
                             method: 'POST',
                             body: blob,
-                            headers: { 'Content-Type': 'image/jpeg' },
-                            keepalive: true
+                            headers: { 'Content-Type': 'image/jpeg' }
                         });
                         sentFramesInSec++;
                     } catch (e) {
@@ -384,6 +735,8 @@
 
         // 2) WebRTC P2P Offer 폴링 & Answer 응답 (P2P 직접 연결 지원 시 초저지연 스트리밍)
         function startWebRtcOfferPolling() {
+            if (webrtcPollRunning) return;
+            webrtcPollRunning = true;
             setInterval(async () => {
                 if (!isStreaming || !mediaStream || !window.RTCPeerConnection) return;
                 try {
@@ -473,9 +826,18 @@
             const btn = document.getElementById('btnSlotToggle');
             badge.innerText = `🌐 원격 CAM ${currentCamSlot}`;
             badge.classList.toggle('cam2', currentCamSlot === 2);
-            btn.innerText = `🎥 채널: CAM ${currentCamSlot}`;
+            btn.innerText = `🎥 CAM ${currentCamSlot}`;
         }
 
+        ['touchend', 'pointerup', 'click'].forEach(evtName => {
+            window.addEventListener(evtName, () => {
+                if (audioCtx && audioCtx.state === 'suspended' && !isMicMuted) {
+                    audioCtx.resume().catch(() => {});
+                }
+            }, { passive: true });
+        });
+
+        updateRemoteMicButtonUi();
         reportClientState('page_loaded', '원격 카메라 페이지(/remote-cam) 열림');
     </script>
 </body>

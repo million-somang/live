@@ -70,12 +70,20 @@
     // 1. 로컬 에이전트로 직결 라우팅할 RTMP/오디오 전용 경로 판별
     function isLocalAgentExclusivePath(pathStr) {
         if (!pathStr) return false;
+        if (
+            pathStr.startsWith('/api/camera/audio') &&
+            (bridgeState.camSourceServer[1] === 'local' || bridgeState.camSourceServer[2] === 'local')
+        ) {
+            return true;
+        }
         return (
             pathStr.startsWith('/api/audio/') ||
             pathStr.startsWith('/api/youtube/rtmp/') ||
             pathStr.startsWith('/api/tiktok/rtmp/') ||
             pathStr.startsWith('/api/instagram/rtmp/') ||
-            pathStr.startsWith('/api/youtube/video-diagnostics')
+            pathStr.startsWith('/api/youtube/video-diagnostics') ||
+            pathStr.startsWith('/api/youtube/audio-diagnostics') ||
+            pathStr.startsWith('/api/youtube/audio-gain')
         );
     }
 
@@ -84,7 +92,9 @@
         if (!pathStr || String(method || 'GET').toUpperCase() === 'GET') return false;
         return (
             pathStr.startsWith('/api/overlay/') ||
-            pathStr === '/api/camera/switcher'
+            pathStr === '/api/camera/switcher' ||
+            pathStr === '/api/youtube/audio-gain' ||
+            pathStr === '/api/youtube/config'
         );
     }
 

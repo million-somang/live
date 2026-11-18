@@ -10662,7 +10662,7 @@
         let extAudioChunks = [];
         let extAudioSamples = 0;
 
-        async function connectExternalAudioStreamToRtmp(mediaStream, sourceLabel = 'VDO.Ninja 오디오') {
+        async function connectExternalAudioStreamToRtmp(mediaStream, sourceLabel = 'VDO.Ninja 오디오', sourceType = 'mobile') {
             try {
                 if (!mediaStream || !mediaStream.getAudioTracks || mediaStream.getAudioTracks().length === 0) return;
                 if (extAudioProc) {
@@ -10680,6 +10680,8 @@
 
                 const inRate = extAudioCtx.sampleRate || 48000;
                 const targetRate = 48000;
+                const effSrc = (sourceType === 'pc') ? 'pc' : 'mobile';
+                const effSub = (effSrc === 'mobile') ? 'webrtc_mobile' : 'pc_mic';
                 const flushExtAudio = () => {
                     if (extAudioSendInFlight || extAudioChunks.length === 0) return;
                     extAudioSendInFlight = true;
@@ -10692,7 +10694,7 @@
                     let off = 0;
                     for (const c of chunks) { merged.set(c, off); off += c.length; }
                     const payload = total > 24000 ? merged.subarray(total - 24000) : merged;
-                    fetch(`/api/camera/audio?sr=48000&src=pc&seq=${mySeq}`, {
+                    fetch(`/api/camera/audio?sr=48000&src=${effSrc}&subsrc=${effSub}&seq=${mySeq}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/octet-stream' },
                         body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)

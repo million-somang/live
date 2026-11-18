@@ -536,7 +536,7 @@
             }
         }
 
-        function selectCamChannel(camNum) {
+        async function selectCamChannel(camNum) {
             currentCamId = (Number(camNum) === 2) ? 2 : 1;
             frameSeq = 0;
             try {
@@ -544,7 +544,23 @@
                 url.searchParams.set('cam', String(currentCamId));
                 window.history.replaceState({}, '', url.toString());
             } catch (e) {}
+            try {
+                const savedMicMute = localStorage.getItem(`live_cam_mic_muted_cam${currentCamId}`);
+                if (currentCamId === 2) {
+                    isMicMuted = (savedMicMute === '0') ? false : true;
+                } else {
+                    isMicMuted = (savedMicMute === '1') ? true : false;
+                }
+            } catch (e) {}
             updateCamChannelButtons();
+            if (currentStream) {
+                if (!isMicMuted && !hasAudioTrack) {
+                    await startCamera(currentFacing, true);
+                    return;
+                }
+                currentStream.getAudioTracks().forEach(t => { t.enabled = !isMicMuted && isStreaming; });
+            }
+            updateMicButtonUi();
             updateStatusDisplay();
         }
 
@@ -781,6 +797,10 @@
                 btn.style.borderColor = 'rgba(245, 158, 11, 0.6)';
                 btn.style.background = 'rgba(245, 158, 11, 0.22)';
                 btn.innerHTML = '🔇 <span id="micStatusText">마이크 꺼짐</span>';
+            } else if (audioCtx && audioCtx.state === 'suspended') {
+                btn.style.borderColor = 'rgba(250, 204, 21, 0.85)';
+                btn.style.background = 'rgba(234, 179, 8, 0.28)';
+                btn.innerHTML = '🔊 <span id="micStatusText">터치시 음성ON</span>';
             } else {
                 btn.style.borderColor = 'rgba(56, 189, 248, 0.75)';
                 btn.style.background = 'rgba(14, 165, 233, 0.32)';
@@ -789,6 +809,12 @@
         }
 
         async function toggleMicMute() {
+            if (!isMicMuted && hasAudioTrack && audioCtx && audioCtx.state === 'suspended') {
+                try { await audioCtx.resume(); } catch (e) {}
+                updateMicButtonUi();
+                updateStatusDisplay();
+                return;
+            }
             isMicMuted = !isMicMuted;
             try { localStorage.setItem(`live_cam_mic_muted_cam${currentCamId}`, isMicMuted ? '1' : '0'); } catch (e) {}
             if (!isMicMuted && !hasAudioTrack && currentStream) {
@@ -896,6 +922,58 @@
         // 🎤 스마트폰 마이크 실시간 PCM 오디오 캡처 & 서버(유튜브 RTMP) 송출
         // ==========================================
         let audioWorkletReady = false;
+        let keepAliveAudioEl = null;
+
+        function attachScriptProcessorFallback(inRate) {
+            if (!audioCtx || !audioSourceNode || !audioGainNode) return;
+            try {
+                if (audioProcessorNode) {
+                    try { audioProcessorNode.disconnect(); } catch (e) {}
+                }
+                audioProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+                const effRate = inRate || audioCtx.sampleRate || 48000;
+                audioProcessorNode.onaudioprocess = (event) => {
+                    if (!isStreaming || isMicMuted || !hasAudioTrack) return;
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    if (!inputData || inputData.length === 0) return;
+
+                    // effRate(44.1kHz/48kHz) -> 48000Hz 16-bit Signed Mono PCM 변환
+                    const outLength = Math.max(1, Math.floor(inputData.length / (effRate / TARGET_AUDIO_SAMPLE_RATE)));
+                    const ratio = inputData.length / outLength;
+
+                    const pcm16 = new Int16Array(outLength);
+                    const inLen = inputData.length;
+                    for (let i = 0; i < outLength; i++) {
+                        const startF = i * ratio;
+                        const endF = startF + ratio;
+                        const startIdx = Math.min(inLen - 1, Math.floor(startF));
+                        const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
+                        let sum = 0;
+                        let cnt = 0;
+                        for (let j = startIdx; j < endIdx; j++) {
+                            sum += inputData[j];
+                            cnt++;
+                        }
+                        let sample = (cnt > 0 ? (sum / cnt) : inputData[startIdx]);
+                        if (sample > 0.98) sample = 0.98;
+                        else if (sample < -0.98) sample = -0.98;
+                        pcm16[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
+                    }
+
+                    pendingPcmChunks.push(pcm16);
+                    pendingPcmSamples += pcm16.length;
+
+                    if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                        flushAudioPcmChunks();
+                    }
+                };
+
+                audioSourceNode.connect(audioProcessorNode);
+                audioProcessorNode.connect(audioGainNode);
+                audioGainNode.connect(audioCtx.destination);
+            } catch (e) {}
+        }
+
         async function setupAudioCapture(stream) {
             try {
                 const audioTracks = stream ? stream.getAudioTracks() : [];
@@ -909,30 +987,61 @@
 
                 if (audioProcessorNode) {
                     try { audioProcessorNode.disconnect(); } catch (e) {}
+                    audioProcessorNode = null;
                 }
                 if (audioSourceNode) {
                     try { audioSourceNode.disconnect(); } catch (e) {}
+                    audioSourceNode = null;
                 }
+
+                // 모바일 브라우저에서 음소거 <video>에 연결된 오디오 트랙이 슬립 모드로 빠지지 않도록 비가청 <audio> 싱크 유지
+                try {
+                    if (!keepAliveAudioEl) {
+                        keepAliveAudioEl = document.createElement('audio');
+                        keepAliveAudioEl.autoplay = true;
+                        keepAliveAudioEl.playsInline = true;
+                        keepAliveAudioEl.muted = false;
+                        keepAliveAudioEl.volume = 0.0001;
+                        keepAliveAudioEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
+                        document.body.appendChild(keepAliveAudioEl);
+                    }
+                    keepAliveAudioEl.srcObject = new MediaStream([audioTracks[0]]);
+                    keepAliveAudioEl.play().catch(() => {});
+                } catch (e) {}
 
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContextClass) return;
                 if (!audioCtx) {
-                    audioCtx = new AudioContextClass();
+                    try {
+                        audioCtx = new AudioContextClass({ sampleRate: 48000 });
+                    } catch (e) {
+                        audioCtx = new AudioContextClass();
+                    }
+                    audioCtx.onstatechange = () => {
+                        updateMicButtonUi();
+                        updateStatusDisplay();
+                    };
                 }
                 if (audioCtx.state === 'suspended') {
                     audioCtx.resume().catch(() => {});
                 }
 
-                audioSourceNode = audioCtx.createMediaStreamSource(stream);
+                const dedicatedAudioStream = new MediaStream([audioTracks[0]]);
+                audioSourceNode = audioCtx.createMediaStreamSource(dedicatedAudioStream);
                 audioGainNode = audioCtx.createGain();
                 audioGainNode.gain.value = 0; // 폰 스피커 하울링 방지 (무음 출력 노드)
+
+                const inRate = audioCtx.sampleRate || 48000;
 
                 // 1순위: 전용 실시간 오디오 스레드(AudioWorkletNode) 사용 -> 메인 스레드 캔버스 인코딩 부하와 무관하게 100% 무손실 캡처
                 if (audioCtx.audioWorklet && window.AudioWorkletNode) {
                     try {
                         if (!audioWorkletReady) {
                             try {
-                                await audioCtx.audioWorklet.addModule('/api/camera/mic-worklet.js');
+                                const workletUrl = CAM_TOKEN
+                                    ? `/api/camera/mic-worklet.js?cam_token=${encodeURIComponent(CAM_TOKEN)}`
+                                    : '/api/camera/mic-worklet.js';
+                                await audioCtx.audioWorklet.addModule(workletUrl);
                                 audioWorkletReady = true;
                             } catch (modErr) {
                                 const workletCode = `
@@ -1006,8 +1115,11 @@
                                 audioWorkletReady = true;
                             }
                         }
-                        audioProcessorNode = new AudioWorkletNode(audioCtx, 'mic-pcm-worklet');
-                        audioProcessorNode.port.onmessage = (ev) => {
+                        let workletDeliveries = 0;
+                        const workletNode = new AudioWorkletNode(audioCtx, 'mic-pcm-worklet');
+                        audioProcessorNode = workletNode;
+                        workletNode.port.onmessage = (ev) => {
+                            workletDeliveries++;
                             if (!isStreaming || isMicMuted || !hasAudioTrack) return;
                             const pcm16 = ev.data;
                             if (!pcm16 || !pcm16.length) return;
@@ -1017,9 +1129,16 @@
                                 flushAudioPcmChunks();
                             }
                         };
-                        audioSourceNode.connect(audioProcessorNode);
-                        audioProcessorNode.connect(audioGainNode);
+                        audioSourceNode.connect(workletNode);
+                        workletNode.connect(audioGainNode);
                         audioGainNode.connect(audioCtx.destination);
+
+                        // 1.2초 내 AudioWorklet에서 오디오 패킷이 생성되지 않으면 즉시 ScriptProcessorNode로 자동 폴백
+                        setTimeout(() => {
+                            if (isStreaming && !isMicMuted && hasAudioTrack && workletDeliveries === 0 && audioProcessorNode === workletNode) {
+                                attachScriptProcessorFallback(inRate);
+                            }
+                        }, 1200);
                         return;
                     } catch (wErr) {
                         // AudioWorklet 지원 불가 시 아래 ScriptProcessor로 즉시 폴백
@@ -1027,47 +1146,7 @@
                 }
 
                 // 폴백: 4096 샘플(85ms) 버퍼를 사용하여 메인스레드 JPEG 인코딩 중에도 버퍼 드롭 원천 차단
-                audioProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
-                const inRate = audioCtx.sampleRate || 48000;
-                audioProcessorNode.onaudioprocess = (event) => {
-                    if (!isStreaming || isMicMuted || !hasAudioTrack) return;
-                    const inputData = event.inputBuffer.getChannelData(0);
-                    if (!inputData || inputData.length === 0) return;
-
-                    // inRate(44.1kHz/48kHz) -> 24000Hz 16-bit Signed Mono PCM (타임 스트레칭 왜곡 없이 정배율 안티앨리어싱 변환)
-                    const outLength = Math.max(1, Math.floor(inputData.length / (inRate / TARGET_AUDIO_SAMPLE_RATE)));
-                    const ratio = inputData.length / outLength;
-
-                    const pcm16 = new Int16Array(outLength);
-                    const inLen = inputData.length;
-                    for (let i = 0; i < outLength; i++) {
-                        const startF = i * ratio;
-                        const endF = startF + ratio;
-                        const startIdx = Math.min(inLen - 1, Math.floor(startF));
-                        const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
-                        let sum = 0;
-                        let cnt = 0;
-                        for (let j = startIdx; j < endIdx; j++) {
-                            sum += inputData[j];
-                            cnt++;
-                        }
-                        let sample = (cnt > 0 ? (sum / cnt) : inputData[startIdx]);
-                        if (sample > 0.98) sample = 0.98;
-                        else if (sample < -0.98) sample = -0.98;
-                        pcm16[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
-                    }
-
-                    pendingPcmChunks.push(pcm16);
-                    pendingPcmSamples += pcm16.length;
-
-                    if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
-                        flushAudioPcmChunks();
-                    }
-                };
-
-                audioSourceNode.connect(audioProcessorNode);
-                audioProcessorNode.connect(audioGainNode);
-                audioGainNode.connect(audioCtx.destination);
+                attachScriptProcessorFallback(inRate);
             } catch (e) {}
         }
 
@@ -1090,7 +1169,7 @@
                 }
                 const payload = totalSamples > 18000 ? merged.subarray(totalSamples - 18000) : merged;
 
-                await fetch(`/api/camera/audio?sr=24000&src=mobile&seq=${myAudioSeq}`, {
+                await fetch(`/api/camera/audio?sr=48000&src=mobile&cam=${currentCamId}&seq=${myAudioSeq}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/octet-stream' },
                     body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
@@ -1153,6 +1232,27 @@
                         audio: audioConstraints
                     },
                     {
+                        video: { facingMode: facingMode },
+                        audio: audioConstraints
+                    },
+                    {
+                        video: {
+                            facingMode: { ideal: facingMode },
+                            width: { ideal: idealW },
+                            height: { ideal: targetResHeight },
+                            frameRate: { ideal: targetFps }
+                        },
+                        audio: true
+                    },
+                    {
+                        video: { facingMode: facingMode },
+                        audio: true
+                    },
+                    {
+                        video: true,
+                        audio: true
+                    },
+                    {
                         video: {
                             facingMode: { ideal: facingMode },
                             width: { ideal: idealW },
@@ -1160,10 +1260,6 @@
                             frameRate: { ideal: targetFps }
                         },
                         audio: false
-                    },
-                    {
-                        video: { facingMode: facingMode },
-                        audio: audioConstraints
                     },
                     {
                         video: { facingMode: facingMode },
@@ -1185,6 +1281,17 @@
                 } catch (err) {
                     lastErr = err;
                 }
+            }
+
+            // 비디오 단독 후보로 폴백되었으나 마이크가 필요한 경우, 오디오 트랙을 별도로 요청하여 결합 시도
+            if (currentStream && !preferVideoOnly && !isMicMuted && currentStream.getAudioTracks().length === 0) {
+                try {
+                    const auxAudio = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false })
+                        .catch(() => navigator.mediaDevices.getUserMedia({ audio: true, video: false }));
+                    if (auxAudio && auxAudio.getAudioTracks().length > 0) {
+                        currentStream.addTrack(auxAudio.getAudioTracks()[0]);
+                    }
+                } catch (auxErr) {}
             }
 
             if (!currentStream) {
@@ -1551,10 +1658,13 @@
         }
 
         // 모바일 브라우저 자동 재연결 후 화면 터치 시 AudioContext 즉시 활성화
-        ['touchstart', 'click'].forEach(evtName => {
+        ['touchend', 'pointerup', 'click', 'touchstart'].forEach(evtName => {
             window.addEventListener(evtName, () => {
                 if (audioCtx && audioCtx.state === 'suspended' && !isMicMuted) {
-                    audioCtx.resume().catch(() => {});
+                    audioCtx.resume().then(() => {
+                        updateMicButtonUi();
+                        updateStatusDisplay();
+                    }).catch(() => {});
                 }
             }, { passive: true });
         });
