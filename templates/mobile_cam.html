@@ -763,14 +763,15 @@
             document.querySelectorAll('#micModeChipsGroup .perf-chip').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.micmode === micPickupMode);
             });
+            const useDenoise = (micPickupMode === 'denoise');
             if (currentStream) {
                 const audioTrack = currentStream.getAudioTracks()[0];
                 if (audioTrack && audioTrack.applyConstraints) {
                     try {
                         await audioTrack.applyConstraints({
                             echoCancellation: false,
-                            noiseSuppression: true,
-                            autoGainControl: true
+                            noiseSuppression: useDenoise,
+                            autoGainControl: useDenoise
                         });
                         return;
                     } catch (e) {}
@@ -1376,11 +1377,13 @@
             }
 
             const idealW = Math.round(targetResHeight * (16 / 9));
-            // echoCancellation: true 설정 시 스마트폰 OS가 '근거리 통화(수화기) 모드'로 전환되어 50cm 밖 원거리 음성을 차단하므로 false로 설정하고, AGC로 원거리 음성을 수음합니다.
+            // 기본 방송 모드(broadcast)에서는 echoCancellation / noiseSuppression / autoGainControl을 모두 false로 해제하여
+            // 모바일 브라우저 소음억제기가 1.5~2초 이상 이어지는 목소리·음악을 배경 소음으로 오판해 주기적으로 먹통(Ducking)시키는 현상을 원천 차단합니다!
+            const useDenoise = (micPickupMode === 'denoise');
             const audioConstraints = {
                 echoCancellation: false,
-                noiseSuppression: true,
-                autoGainControl: true,
+                noiseSuppression: useDenoise,
+                autoGainControl: useDenoise,
                 channelCount: { ideal: 1 },
                 sampleRate: { ideal: 48000 }
             };

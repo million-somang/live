@@ -11282,10 +11282,13 @@
 
                 const now = ctx.currentTime;
                 let resetQueue = false;
-                // 모바일 네트워크 지터(180~350ms) 흡수 및 패킷 뭉침 시 중첩 재생 방지를 위해 280ms 안전 쿠션 및 1.2초 허용 폭 적용
-                if (phoneMonitorNextPlayTime < now) {
-                    phoneMonitorNextPlayTime = now + 0.28;
+                // 최초 시작이거나 600ms 이상 긴 공백 후 재개될 때만 240ms 초기 안전 쿠션을 확보하고,
+                // 연속 재생 중 미세 언더런(phoneMonitorNextPlayTime < now) 시에는 280ms 무음 점프 대신 12ms 즉시 이어붙이기로 끊김을 원천 제거합니다!
+                if (phoneMonitorNextPlayTime <= 0 || (now - phoneMonitorNextPlayTime) > 0.60) {
+                    phoneMonitorNextPlayTime = now + 0.24;
                     resetQueue = true;
+                } else if (phoneMonitorNextPlayTime < now) {
+                    phoneMonitorNextPlayTime = now + 0.012;
                 } else if (phoneMonitorNextPlayTime > now + 1.20) {
                     phoneMonitorNextPlayTime = now + 0.28;
                     resetQueue = true;
@@ -11301,11 +11304,16 @@
                     phoneMonitorLastSample = chData[sampleCount - 1];
                 }
 
+                // 스마트폰 유입 클럭과 PC 스피커 클럭의 미세 편차(43~48kHz)에 맞춰 재생 배속(0.93~1.04)을 부드럽게 서보 제어하여 버퍼 바닥 고갈 원천 차단
+                const leadSec = phoneMonitorNextPlayTime - now;
+                const playRate = Math.max(0.93, Math.min(1.04, 1.0 + (leadSec - 0.24) * 0.25));
+
                 const src = ctx.createBufferSource();
                 src.buffer = audioBuf;
+                src.playbackRate.value = playRate;
                 src.connect(phoneMonitorGainNode);
                 src.start(phoneMonitorNextPlayTime);
-                phoneMonitorNextPlayTime += audioBuf.duration;
+                phoneMonitorNextPlayTime += (audioBuf.duration / playRate);
             } catch (e) {
             } finally {
                 phoneMonitorInFlight = false;

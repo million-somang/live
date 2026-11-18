@@ -1997,14 +1997,14 @@
             const igMembers = (Array.isArray(igObj.members) ? igObj.members : []).map(m => ({ ...m, _platform: 'INSTAGRAM' }));
             const members = [...ytMembers, ...ttMembers, ...igMembers].sort((a, b) => (Number(b.last_seen_ts || 0) - Number(a.last_seen_ts || 0)));
 
-            const ytMemberCount = Number(ytObj.connected_member_count ?? ytMembers.length ?? 0);
-            const ttMemberCount = Number(ttObj.connected_member_count ?? ttMembers.length ?? 0);
-            const igMemberCount = Number(igObj.connected_member_count ?? igMembers.length ?? 0);
+            const ytMemberCount = Number(ytObj.online_member_count ?? ytObj.connected_member_count ?? 0);
+            const ttMemberCount = Number(ttObj.online_member_count ?? ttObj.connected_member_count ?? 0);
+            const igMemberCount = Number(igObj.online_member_count ?? igObj.connected_member_count ?? 0);
             const totalMemberCount = ytMemberCount + ttMemberCount + igMemberCount;
 
-            const ytConcurrent = Math.max(Number(ytObj.concurrent_viewers ?? 0), ytMemberCount);
-            const ttConcurrent = Math.max(Number(ttObj.concurrent_viewers ?? 0), ttMemberCount);
-            const igConcurrent = Math.max(Number(igObj.concurrent_viewers ?? 0), igMemberCount);
+            const ytConcurrent = Number(ytObj.concurrent_viewers ?? 0);
+            const ttConcurrent = Number(ttObj.concurrent_viewers ?? 0);
+            const igConcurrent = Number(igObj.concurrent_viewers ?? 0);
             const effectiveViewers = ytConcurrent + ttConcurrent + igConcurrent;
 
             setTextIfChanged('statYoutubeMembers', `${totalMemberCount}명`);
@@ -2135,12 +2135,12 @@
             const igMembers = (Array.isArray(igData.members) ? igData.members : []).map(m => ({ ...m, _platform: 'INSTAGRAM' }));
             const members = [...ytMembers, ...ttMembers, ...igMembers].sort((a, b) => (Number(b.last_seen_ts || 0) - Number(a.last_seen_ts || 0)));
 
-            const ytMemberCount = Number(ytData.connected_member_count ?? ytMembers.length ?? 0);
-            const ttMemberCount = Number(ttData.connected_member_count ?? ttMembers.length ?? 0);
-            const igMemberCount = Number(igData.connected_member_count ?? igMembers.length ?? 0);
-            const ytConcurrent = Math.max(Number(ytData.concurrent_viewers ?? 0), ytMemberCount);
-            const ttConcurrent = Math.max(Number(ttData.concurrent_viewers ?? 0), ttMemberCount);
-            const igConcurrent = Math.max(Number(igData.concurrent_viewers ?? 0), igMemberCount);
+            const ytMemberCount = Number(ytData.online_member_count ?? ytData.connected_member_count ?? 0);
+            const ttMemberCount = Number(ttData.online_member_count ?? ttData.connected_member_count ?? 0);
+            const igMemberCount = Number(igData.online_member_count ?? igData.connected_member_count ?? 0);
+            const ytConcurrent = Number(ytData.concurrent_viewers ?? 0);
+            const ttConcurrent = Number(ttData.concurrent_viewers ?? 0);
+            const igConcurrent = Number(igData.concurrent_viewers ?? 0);
             const effectiveViewers = ytConcurrent + ttConcurrent + igConcurrent;
 
             setTextIfChanged('bcModalMemberCount', `▶️ 유튜브 ${ytMemberCount}명`);
@@ -2170,7 +2170,7 @@
                         : `<span style="background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); font-size:0.7rem; font-weight:800; padding:2px 7px; border-radius:999px;">▶️ 유튜브</span>`);
                 const statusBadge = m.is_online
                     ? `<span style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); font-size:0.7rem; font-weight:800; padding:2px 7px; border-radius:999px;">🟢 실시간 접속</span>`
-                    : `<span style="background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.35); font-size:0.7rem; font-weight:800; padding:2px 7px; border-radius:999px;">🟡 방송 참여</span>`;
+                    : `<span style="background:rgba(148,163,184,0.18); color:#94a3b8; border:1px solid rgba(148,163,184,0.35); font-size:0.7rem; font-weight:800; padding:2px 7px; border-radius:999px;">⚪ 퇴장/비활성</span>`;
                 return `
                     <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:9px 12px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
                         <div onclick="filterBroadcastChatByUser('${escapeHtml(cleanId)}'); toggleBroadcastYtMembersModal(false);" style="display:flex; align-items:center; gap:8px; min-width:0; flex:1; cursor:pointer;">

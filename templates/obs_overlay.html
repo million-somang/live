@@ -2407,9 +2407,11 @@
                         }
                         const now = ovAudioCtx.currentTime;
                         let resetQueue = false;
-                        if (ovNextPlayTime < now) {
-                            ovNextPlayTime = now + 0.28;
+                        if (ovNextPlayTime <= 0 || (now - ovNextPlayTime) > 0.60) {
+                            ovNextPlayTime = now + 0.24;
                             resetQueue = true;
+                        } else if (ovNextPlayTime < now) {
+                            ovNextPlayTime = now + 0.012;
                         } else if (ovNextPlayTime > now + 1.20) {
                             ovNextPlayTime = now + 0.28;
                             resetQueue = true;
@@ -2423,11 +2425,14 @@
                         if (sampleCount > 0) {
                             ovLastSample = chData[sampleCount - 1];
                         }
+                        const leadSec = ovNextPlayTime - now;
+                        const playRate = Math.max(0.93, Math.min(1.04, 1.0 + (leadSec - 0.24) * 0.25));
                         const src = ovAudioCtx.createBufferSource();
                         src.buffer = audioBuf;
+                        src.playbackRate.value = playRate;
                         src.connect(ovGainNode);
                         src.start(ovNextPlayTime);
-                        ovNextPlayTime += audioBuf.duration;
+                        ovNextPlayTime += (audioBuf.duration / playRate);
                     } catch (e) {
                     } finally {
                         ovAudioBusy = false;

@@ -2131,14 +2131,14 @@
             const igMembers = (Array.isArray(igObj.members) ? igObj.members : []).map(m => ({ ...m, _platform: 'INSTAGRAM' }));
             const members = [...ytMembers, ...ttMembers, ...igMembers].sort((a, b) => (Number(b.last_seen_ts || 0) - Number(a.last_seen_ts || 0)));
 
-            const ytMemberCount = Number(ytObj.connected_member_count ?? ytMembers.length ?? 0);
-            const ttMemberCount = Number(ttObj.connected_member_count ?? ttMembers.length ?? 0);
-            const igMemberCount = Number(igObj.connected_member_count ?? igMembers.length ?? 0);
+            const ytMemberCount = Number(ytObj.online_member_count ?? ytObj.connected_member_count ?? 0);
+            const ttMemberCount = Number(ttObj.online_member_count ?? ttObj.connected_member_count ?? 0);
+            const igMemberCount = Number(igObj.online_member_count ?? igObj.connected_member_count ?? 0);
             const totalMemberCount = ytMemberCount + ttMemberCount + igMemberCount;
 
-            const ytConcurrent = Math.max(Number(ytObj.concurrent_viewers ?? 0), ytMemberCount);
-            const ttConcurrent = Math.max(Number(ttObj.concurrent_viewers ?? 0), ttMemberCount);
-            const igConcurrent = Math.max(Number(igObj.concurrent_viewers ?? 0), igMemberCount);
+            const ytConcurrent = Number(ytObj.concurrent_viewers ?? 0);
+            const ttConcurrent = Number(ttObj.concurrent_viewers ?? 0);
+            const igConcurrent = Number(igObj.concurrent_viewers ?? 0);
             const effectiveViewers = ytConcurrent + ttConcurrent + igConcurrent;
 
             const topMemberEl = document.getElementById('ytTopMemberCount');
@@ -2234,12 +2234,12 @@
             const igMembers = (Array.isArray(igData.members) ? igData.members : []).map(m => ({ ...m, _platform: 'INSTAGRAM' }));
             const members = [...ytMembers, ...ttMembers, ...igMembers].sort((a, b) => (Number(b.last_seen_ts || 0) - Number(a.last_seen_ts || 0)));
 
-            const ytMemberCount = Number(ytData.connected_member_count ?? ytMembers.length ?? 0);
-            const ttMemberCount = Number(ttData.connected_member_count ?? ttMembers.length ?? 0);
-            const igMemberCount = Number(igData.connected_member_count ?? igMembers.length ?? 0);
-            const ytConcurrent = Math.max(Number(ytData.concurrent_viewers ?? 0), ytMemberCount);
-            const ttConcurrent = Math.max(Number(ttData.concurrent_viewers ?? 0), ttMemberCount);
-            const igConcurrent = Math.max(Number(igData.concurrent_viewers ?? 0), igMemberCount);
+            const ytMemberCount = Number(ytData.online_member_count ?? ytData.connected_member_count ?? 0);
+            const ttMemberCount = Number(ttData.online_member_count ?? ttData.connected_member_count ?? 0);
+            const igMemberCount = Number(igData.online_member_count ?? igData.connected_member_count ?? 0);
+            const ytConcurrent = Number(ytData.concurrent_viewers ?? 0);
+            const ttConcurrent = Number(ttData.concurrent_viewers ?? 0);
+            const igConcurrent = Number(igData.concurrent_viewers ?? 0);
             const effectiveViewers = ytConcurrent + ttConcurrent + igConcurrent;
 
             const mCountBadge = document.getElementById('hostYtModalCountBadge');

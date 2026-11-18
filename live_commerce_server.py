@@ -776,12 +776,26 @@ class PlatformTracker:
                 raw_concurrent = 0
                 effective_viewers = 0
             else:
-                yt_connected_count = len(yt_members)
-                yt_active_count = sum(1 for m in yt_members if m["is_active"])
-                yt_online_count = sum(1 for m in yt_members if m["is_online"])
-                raw_concurrent = int(self.youtube_live_meta.get("concurrent_viewers") or 0)
-                # 유튜브 스트림 동시 시청자 수와 채팅/참여로 확인된 접속 회원 수 중 큰 값을 유효 접속자 지표로도 함께 제공
-                effective_viewers = max(raw_concurrent, yt_connected_count)
+                raw_concurrent = max(0, int(self.youtube_live_meta.get("concurrent_viewers") or 0))
+                # 실제 유튜브 동시 시청자 수(raw_concurrent)에 맞춰 이미 퇴장한 채팅 참여자의 온라인 상태를 즉시 해제합니다.
+                # - raw_concurrent == 0 이면 현재 방송을 보고 있는 시청자가 0명이므로 모든 과거 채팅자를 퇴장(is_online=False) 처리합니다.
+                # - raw_concurrent > 0 이더라도 최근 180초 내 활동자 중 최대 raw_concurrent명까지만 실시간 접속(ONLINE)으로 인정합니다.
+                online_assigned = 0
+                for m in yt_members:
+                    if raw_concurrent > 0 and m["seconds_ago"] <= 180 and online_assigned < raw_concurrent:
+                        m["is_online"] = True
+                        m["status"] = "ONLINE"
+                        online_assigned += 1
+                    else:
+                        m["is_online"] = False
+                        m["status"] = "ACTIVE" if (raw_concurrent > 0 and m["seconds_ago"] <= active_window_sec) else "LEFT"
+
+                yt_online_count = online_assigned
+                yt_active_count = sum(1 for m in yt_members if m["status"] in ("ONLINE", "ACTIVE"))
+                # 상단 배지(▶️ N명)에 표시되는 connected_member_count는 퇴장 인원을 제외한 '현재 실시간 접속 확인 회원 수'로 반환하여
+                # 시청자가 나가면 즉시 숫자가 줄어들도록 보장합니다 (누적 채팅 참여자 수는 total_chatted_count로 별도 제공).
+                yt_connected_count = yt_online_count
+                effective_viewers = raw_concurrent
             total_views = int(self.youtube_live_meta.get("view_count") or 0)
 
             return {
@@ -794,6 +808,7 @@ class PlatformTracker:
                 "concurrent_viewers": raw_concurrent,
                 "view_count": total_views,
                 "connected_member_count": yt_connected_count,
+                "total_chatted_count": len(yt_members),
                 "active_member_count": yt_active_count,
                 "online_member_count": yt_online_count,
                 "effective_viewer_count": effective_viewers,
@@ -873,13 +888,11 @@ class PlatformTracker:
             tt_members.sort(key=lambda x: (x["seconds_ago"], -x["order_count"], -x["chat_count"]))
             all_members.sort(key=lambda x: (x["seconds_ago"], -x["order_count"], -x["chat_count"]))
 
-            tt_connected_count = len(tt_members)
-            tt_active_count = sum(1 for m in tt_members if m["is_active"])
             tt_online_count = sum(1 for m in tt_members if m["is_online"])
-
             raw_concurrent = int(self.tiktok_live_meta.get("concurrent_viewers") or 0)
             total_views = int(self.tiktok_live_meta.get("view_count") or 0)
-            effective_viewers = max(raw_concurrent, tt_connected_count)
+            tt_connected_count = tt_online_count if raw_concurrent == 0 else min(len(tt_members), max(tt_online_count, raw_concurrent))
+            effective_viewers = raw_concurrent if self.tiktok_live_meta.get("is_live") else tt_online_count
 
             poller_info = {}
             if "tiktok_chat_poller" in globals():
@@ -977,13 +990,11 @@ class PlatformTracker:
             ig_members.sort(key=lambda x: (x["seconds_ago"], -x["order_count"], -x["chat_count"]))
             all_members.sort(key=lambda x: (x["seconds_ago"], -x["order_count"], -x["chat_count"]))
 
-            ig_connected_count = len(ig_members)
-            ig_active_count = sum(1 for m in ig_members if m["is_active"])
             ig_online_count = sum(1 for m in ig_members if m["is_online"])
-
             raw_concurrent = int(self.instagram_live_meta.get("concurrent_viewers") or 0)
             total_views = int(self.instagram_live_meta.get("view_count") or 0)
-            effective_viewers = max(raw_concurrent, ig_connected_count)
+            ig_connected_count = ig_online_count if raw_concurrent == 0 else min(len(ig_members), max(ig_online_count, raw_concurrent))
+            effective_viewers = raw_concurrent if self.instagram_live_meta.get("is_live") else ig_online_count
 
             poller_info = {}
             if "instagram_chat_poller" in globals():
@@ -7044,7 +7055,11 @@ class YouTubeDirectChatPoller:
             }
 
     def _extract_viewers_from_html(self, html_text):
-        """유튜브 watch 또는 /live 페이지 HTML에서 실시간 동시 시청자 수를 추출합니다."""
+        """
+        유튜브 watch 또는 /live 페이지 HTML에서 '현재 실시간 동시 시청자 수(concurrent viewers)'만 정확히 추출합니다.
+        - 주의: videoDetails.viewCount는 실시간 동시 시청자 수가 아니라 '누적 총 조회수(total views)'이므로
+          시청자가 나가도 절대 줄어들지 않습니다. 따라서 동시 시청자 수 추출 시 절대 사용하지 않습니다!
+        """
         if not html_text:
             return None
         try:
@@ -7053,19 +7068,18 @@ class YouTubeDirectChatPoller:
                 return int(m_orig.group(1))
             m_vcr = re.search(r'"videoViewCountRenderer":\{"viewCount":(\{.*?\})(?:,"isLive":true|\})', html_text)
             if m_vcr:
-                digits = re.findall(r'\d[\d,]*', m_vcr.group(1))
+                vcr_str = m_vcr.group(1)
+                digits = re.findall(r'\d[\d,]*', vcr_str)
                 if digits:
                     return int(digits[0].replace(",", ""))
-            if '"isLive":true' in html_text or '"isLiveNow":true' in html_text:
-                m_vc = re.search(r'"videoDetails":\{[^}]*?"viewCount":"(\d+)"', html_text)
-                if m_vc:
-                    return int(m_vc.group(1))
+                if any(z_kw in vcr_str.lower() for z_kw in ("없음", "대기", "no ", "waiting", "0")):
+                    return 0
         except Exception:
             pass
         return None
 
     def _poll_updated_metadata(self, session, api_key, vid, context_obj):
-        """Innertube updated_metadata API를 통해 실시간 동시 시청자 수를 조회합니다."""
+        """Innertube updated_metadata API를 통해 실시간 동시 시청자 수를 조회합니다 (0명 퇴장 상태까지 정확히 감지)."""
         try:
             meta_url = f"https://www.youtube.com/youtubei/v1/updated_metadata?key={api_key}"
             r_m = session.post(meta_url, json={"context": context_obj, "videoId": vid}, timeout=5)
@@ -7084,6 +7098,8 @@ class YouTubeDirectChatPoller:
                 nums = re.findall(r'\d[\d,]*', str(txt))
                 if nums:
                     return int(nums[0].replace(",", ""))
+                # 숫자가 없는 텍스트("시청 중인 사용자 없음", "대기 중", "No watching now")인 경우 0명으로 정확히 반환
+                return 0
         except Exception:
             pass
         return None
@@ -7221,9 +7237,9 @@ class YouTubeDirectChatPoller:
                             "continuation": continuation
                         }
 
-                        # 12초 주기로 유튜브 실시간 동시 시청자 수(updated_metadata) 비블로킹 갱신
+                        # 5초 주기로 유튜브 실시간 동시 시청자 수(updated_metadata) 비블로킹 갱신 (입·퇴장 즉시 반영)
                         now_loop_t = time.time()
-                        if (now_loop_t - last_meta_ts) >= 12.0:
+                        if (now_loop_t - last_meta_ts) >= 5.0:
                             last_meta_ts = now_loop_t
                             live_v = self._poll_updated_metadata(session, api_key, vid, context_obj)
                             if live_v is not None:
@@ -7935,7 +7951,7 @@ class YouTubeDirectStreamer:
 
         # 클라우드 브릿지(pull_raw_mobile_audio) 등 다중 청크가 하나로 병합되어 시퀀스가 점프(last_seq + 2 이상)하는 소스는
         # 이미 내부적으로 순서가 보장되어 있으므로 reorder_map에 가두지 않고 즉시 방출합니다.
-        if allow_seq_jump or len(pcm_slice) > 3840:
+        if allow_seq_jump:
             if reorder_map:
                 for k in sorted(reorder_map.keys()):
                     if k > last_seq:
@@ -7951,7 +7967,7 @@ class YouTubeDirectStreamer:
 
         if reorder_map:
             oldest_ts = min(v[0] for v in reorder_map.values())
-            if (now_a - oldest_ts) > 0.06 or len(reorder_map) >= 2:
+            if (now_a - oldest_ts) > 0.14 or len(reorder_map) >= 4:
                 for k in sorted(reorder_map.keys()):
                     if k > last_seq:
                         emitted.extend(reorder_map[k][1])
@@ -7965,7 +7981,7 @@ class YouTubeDirectStreamer:
                 _, next_bytes = reorder_map.pop(last_seq + 1)
                 emitted.extend(next_bytes)
                 last_seq += 1
-        elif seq == last_seq + 2 and not reorder_map:
+        elif last_seq + 1 < seq <= last_seq + 4:
             reorder_map[seq] = (now_a, bytes(pcm_slice))
         else:
             reorder_map[seq] = (now_a, bytes(pcm_slice))
@@ -9743,9 +9759,11 @@ class YouTubeDirectStreamer:
                     if vd.get("title"):
                         youtube_chat_poller.broadcast_title = str(vd.get("title"))
             try:
+                # 주의: vd.get("viewCount")는 누적 조회수(Total Views)이므로 view_count에만 저장하고,
+                # 실시간 동시 시청자 수(concurrent_viewers)는 절대 덮어쓰지 않습니다!
                 raw_vc = int(vd.get("viewCount") or 0) if vd.get("viewCount") is not None else None
                 platform_tracker.update_youtube_live_meta(
-                    concurrent_viewers=raw_vc if is_live_now else None,
+                    concurrent_viewers=None if is_live_now else 0,
                     view_count=raw_vc,
                     is_live=is_live_now,
                     video_id=vid,
