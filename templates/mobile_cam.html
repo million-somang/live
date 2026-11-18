@@ -590,7 +590,7 @@
         let audioGainNode = null;
         let audioUploadWorker = null;
         let audioInFlightCount = 0;
-        const MAX_AUDIO_IN_FLIGHT = 1;
+        const MAX_AUDIO_IN_FLIGHT = 2;
         let audioSeq = 0;
         let pendingPcmChunks = [];
         let pendingPcmSamples = 0;
@@ -933,9 +933,9 @@
                 let uploadUrlBase = '';
                 let isActive = false;
                 let audioInFlightCount = 0;
-                const MAX_AUDIO_IN_FLIGHT = 1;
+                const MAX_AUDIO_IN_FLIGHT = 2;
                 const AUDIO_PACKET_SAMPLES = 3840;
-                const MAX_BUFFER_SAMPLES = 36000;
+                const MAX_BUFFER_SAMPLES = 48000;
                 let audioSeq = 0;
                 let pendingPcmChunks = [];
                 let pendingPcmSamples = 0;

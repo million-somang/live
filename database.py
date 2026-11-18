@@ -1118,19 +1118,53 @@ def get_analytics_summary():
 # 💬 실시간 채팅 및 CS 문의 관리 API
 # ==========================================
 
-def save_chat(platform, sender, message, category="CHAT", ai_reply=""):
-    """수신된 3사 라이브 채팅 원본 및 AI 분석/답변 결과를 chats 테이블에 저장합니다."""
+def save_chat(platform, sender, message, category="CHAT", ai_reply="", return_duplicate_flag=False, dedup_window_sec=5.0):
+    """
+    수신된 3사 라이브 채팅 원본 및 AI 분석/답변 결과를 chats 테이블에 저장합니다.
+    - 다중 채널/다중 워커 동시 인입 시에도 동일 작성자의 동일 메시지가 dedup_window_sec(기본 5초) 이내에
+      중복 INSERT되지 않도록 DB 락 내부에서 원자적으로 검사합니다.
+    """
+    plat_up = str(platform or "YOUTUBE").strip().upper()
+    norm_sender = str(sender or "시청자").strip()
+    norm_msg = str(message or "").strip()
+    now_dt = datetime.now()
+    now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
     with db_lock:
         conn = get_connection()
         try:
             cursor = conn.cursor()
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if dedup_window_sec and dedup_window_sec > 0:
+                cursor.execute("""
+                    SELECT id, chat_time, ai_reply
+                    FROM chats
+                    WHERE platform = ? AND sender = ? AND message = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (plat_up, norm_sender, norm_msg))
+                prev_row = cursor.fetchone()
+                if prev_row:
+                    try:
+                        prev_dt = datetime.strptime(str(prev_row["chat_time"]), "%Y-%m-%d %H:%M:%S")
+                        if abs((now_dt - prev_dt).total_seconds()) <= float(dedup_window_sec):
+                            existing_id = int(prev_row["id"])
+                            if ai_reply and not prev_row["ai_reply"]:
+                                cursor.execute(
+                                    "UPDATE chats SET category = ?, ai_reply = ? WHERE id = ?",
+                                    (category, ai_reply, existing_id)
+                                )
+                                conn.commit()
+                            return (existing_id, True) if return_duplicate_flag else existing_id
+                    except Exception:
+                        pass
+
             cursor.execute("""
                 INSERT INTO chats (chat_time, platform, sender, message, category, ai_reply)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (now_str, platform.upper(), sender, message, category, ai_reply))
+            """, (now_str, plat_up, norm_sender, norm_msg, category, ai_reply))
             conn.commit()
-            return cursor.lastrowid
+            new_id = int(cursor.lastrowid)
+            return (new_id, False) if return_duplicate_flag else new_id
         finally:
             conn.close()
 

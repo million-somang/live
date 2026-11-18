@@ -2674,7 +2674,7 @@
                             </div>
                             <div style="display:flex; justify-content:space-between; font-size:0.62rem; color:#94a3b8; margin-top:4px;">
                                 <span>🟢 초록 막대: 정상 음성 감도 (%)</span>
-                                <span>🟡 노란 막대: 패킷 갭(&gt;120ms) / 클리핑</span>
+                                <span>🟡 노란 막대: 패킷 갭(&gt;240ms) / 클리핑</span>
                                 <span>🔴 빨간 막대: 버퍼 끊김(Underrun) 발생 시점</span>
                             </div>
 
@@ -10233,7 +10233,7 @@
                 const padded = hist60.slice(-60);
                 chartEl.innerHTML = padded.map((pt) => {
                     const isUnder = Number(pt.underrun_1s || 0) > 0;
-                    const isWarn = !isUnder && (Number(pt.pkt_gap_max_ms || 0) >= 120 || Number(pt.clip_pct || 0) >= 1.5);
+                    const isWarn = !isUnder && (Number(pt.pkt_gap_max_ms || 0) >= 240 || Number(pt.clip_pct || 0) >= 1.5);
                     const lvl = Number(pt.level_pct || 0);
                     const hPct = isUnder ? 100 : Math.max(10, Math.min(100, Math.round(lvl > 0 ? lvl : 10)));
                     const barCol = isUnder

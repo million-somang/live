@@ -1097,6 +1097,24 @@ class PlatformTracker:
         with self.lock:
             p = str(platform_raw).strip().upper()
             now = datetime.now()
+
+            # 이미 동일한 DB chat_id로 등록된 채팅이 최근 목록에 존재하면 중복 추가 및 통계 중복 가산을 방지하고 기존 레코드를 갱신하여 반환
+            if chat_id is not None:
+                target_unique_id = f"db_{chat_id}"
+                for existing_chat in self.recent_chats:
+                    if existing_chat.get("db_id") == chat_id or existing_chat.get("id") == target_unique_id:
+                        if reply and not existing_chat.get("reply"):
+                            existing_chat["reply"] = reply
+                            existing_chat["ai_reply"] = reply
+                            existing_chat["reply_by"] = "AI"
+                        if category and existing_chat.get("category") == "CHAT" and category != "CHAT":
+                            existing_chat["category"] = category
+                        if order_id is not None:
+                            existing_chat["order_id"] = order_id
+                        if order_status is not None:
+                            existing_chat["order_status"] = order_status
+                        return existing_chat
+
             self.chat_seq += 1
 
             # 실시간 접속 회원(아이디) 자동 등록 및 최신화 (관제탑 공식/관리자/호스트 발신은 접속 시청자 수 집계에서 제외)
@@ -1964,36 +1982,39 @@ def process_chat_payload(data):
             "message": "🔒 한번 저장된 이전 방송 데이터는 수정할 수 없습니다. [🆕 새로운 방송 시작]으로 초기화한 후 이용해 주세요."
         }
 
-    # 다중 채널(Webhook + WebSocket CH 1~4 + YouTube Direct) 동시 유입 중복 방지 가드
-    # - 고유 메시지 ID(ext_id)가 서로 다른 정상 연속 댓글이나 시뮬레이터 테스트 댓글은 절대 차단하지 않음!
+    # 다중 채널(Webhook + WebSocket CH 1~4 + YouTube/TikTok/Instagram Direct + 다중 브라우저 탭) 동시 유입 중복 방지 가드
+    # - _recent_chat_fingerprints는 항상 float 타임스탬프만 저장하여 float-tuple TypeError를 원천 방지합니다.
+    # - 동일 플랫폼·동일 작성자·동일 내용의 메시지가 다중 경로(서로 다른 ext_id 또는 ext_id 없음)로 5초 이내 중복 유입되면 1건만 처리합니다.
+    # - 시뮬레이터(is_simulator=True)라도 동일한 ext_id 재전송이나 1.0초 이내 동일 내용 중복 호출은 차단합니다.
     now_ts = time.time()
     ext_id = str(inner.get("id") or "").strip()
     in_source = str(inner.get("source") or "").strip().lower()
     is_simulator = (in_source == "simulator") or bool(inner.get("is_test"))
-    content_key = f"{platform}|{user}|{message}"
-    with _dedup_lock:
-        # 만료된 키 정리
-        expired_keys = [k for k, ts in _recent_chat_fingerprints.items() if now_ts - ts > 30.0]
-        for k in expired_keys:
-            del _recent_chat_fingerprints[k]
+    norm_user = re.sub(r'\s+', ' ', user).strip().lower()
+    norm_msg = re.sub(r'\s+', ' ', message).strip()
+    content_key = f"content:{platform}:{norm_user}:{norm_msg}"
+    id_key = f"id:{platform}:{ext_id}" if ext_id else ""
 
-        if not is_simulator:
-            if ext_id:
-                if f"id:{ext_id}" in _recent_chat_fingerprints:
-                    return {"status": "duplicate_ignored"}
-                _recent_chat_fingerprints[f"id:{ext_id}"] = now_ts
-                # 서로 다른 채널(예: Ninja + YouTube Direct)에서 동일 채팅이 다른 ID 체계로 거의 동시에(0.45초 내) 들어온 경우만 차단
-                prev_src_info = _recent_chat_fingerprints.get(f"src:{content_key}")
-                if prev_src_info and isinstance(prev_src_info, tuple):
-                    prev_ts, prev_src = prev_src_info
-                    if prev_src and in_source and prev_src != in_source and (now_ts - prev_ts) < 0.6:
-                        return {"status": "duplicate_ignored"}
-                _recent_chat_fingerprints[f"src:{content_key}"] = (now_ts, in_source or "ext")
-            else:
-                # ext_id가 없는 웹훅 인입의 경우에만 0.45초 초단기 네트워크 재전송 중복 방지
-                if content_key in _recent_chat_fingerprints and (now_ts - _recent_chat_fingerprints[content_key]) < 0.45:
-                    return {"status": "duplicate_ignored"}
-                _recent_chat_fingerprints[content_key] = now_ts
+    with _dedup_lock:
+        # 만료된 키 정리 (tuple 등 비정상 값 방어 포함)
+        expired_keys = [
+            k for k, v in list(_recent_chat_fingerprints.items())
+            if not isinstance(v, (int, float)) or (now_ts - float(v)) > 60.0
+        ]
+        for k in expired_keys:
+            _recent_chat_fingerprints.pop(k, None)
+
+        if id_key and id_key in _recent_chat_fingerprints:
+            return {"status": "duplicate_ignored"}
+
+        dedup_window = 1.0 if is_simulator else 5.0
+        prev_content_ts = _recent_chat_fingerprints.get(content_key)
+        if isinstance(prev_content_ts, (int, float)) and (now_ts - float(prev_content_ts)) < dedup_window:
+            return {"status": "duplicate_ignored"}
+
+        if id_key:
+            _recent_chat_fingerprints[id_key] = now_ts
+        _recent_chat_fingerprints[content_key] = now_ts
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"💬 [{now}] [{platform}] {user}: {message}", flush=True)
@@ -2002,12 +2023,27 @@ def process_chat_payload(data):
     # 주의: <1번 블랙> 같은 일반 꺾쇠 텍스트가 지워지지 않도록 실제 HTML 태그만 제거
     plain_msg = re.sub(r'</?(?:img|span|div|a|br|p|b|i|strong|em|font|svg|path)\b[^>]*>', '', message, flags=re.IGNORECASE).strip()
     if len(plain_msg) < 2 and not re.search(r'\d', plain_msg):
-        db_chat_id = database.save_chat(platform, user, message, "CHAT", "")
+        db_chat_id, was_dup = database.save_chat(
+            platform, user, message, "CHAT", "",
+            return_duplicate_flag=True,
+            dedup_window_sec=1.0 if is_simulator else 5.0
+        )
+        if was_dup:
+            return {"status": "duplicate_ignored", "chat_id": db_chat_id}
         platform_tracker.record_chat(platform, user, message, "CHAT", "", chat_id=db_chat_id)
         return {
             "status": "saved_image_chat" if "<img" in message.lower() else "skipped_short",
             "chat_id": db_chat_id
         }
+
+    # DB 선저장(원자적 중복 가드)으로 다중 프로세스/워커 동시 유입 시 AI 분석 및 주문 생성 자체가 중복 실행되지 않도록 보장
+    db_chat_id, was_dup = database.save_chat(
+        platform, user, message, "CHAT", "",
+        return_duplicate_flag=True,
+        dedup_window_sec=1.0 if is_simulator else 5.0
+    )
+    if was_dup:
+        return {"status": "duplicate_ignored", "chat_id": db_chat_id}
 
     # AI 분석 및 주문/CS 연동 (어떤 예외가 발생해도 DB 및 실시간 관제탑 기록은 100% 보장!)
     category = "CHAT"
@@ -2053,8 +2089,9 @@ def process_chat_payload(data):
         print(f"⚠️ [채팅 AI/주문 처리 중 예외 발생 -> 채팅 원문 100% 보존] {ai_err}", flush=True)
 
     try:
-        # 💾 SQLite DB chats 테이블에 실시간 영속 1회 저장 후 고유 chat_id 획득 (누락 0% 보장)
-        db_chat_id = database.save_chat(platform, user, message, category, reply)
+        # AI 분류/답변이 산출된 경우 선저장된 DB 행에 반영
+        if category != "CHAT" or reply:
+            database.save_chat(platform, user, message, category, reply, dedup_window_sec=10.0)
         # 플랫폼 연결 상태 및 최근 채팅 실시간 1회 기록 (db_chat_id, order_id & order_status 연계)
         platform_tracker.record_chat(
             platform, user, message, category, reply,
@@ -2750,6 +2787,23 @@ def api_chat_send():
 
     created_chat = None
 
+    # 관제탑 실시간 채팅 입력창 연속 Enter / IME 중복 이벤트로 인한 2초 이내 동일 발송 중복 가드
+    now_ts = time.time()
+    send_dedup_key = f"send_api:{platform_raw}:{mode}:{sender.strip().lower()}:{re.sub(r'\\s+', ' ', message).strip()}"
+    with _dedup_lock:
+        prev_send_ts = _recent_chat_fingerprints.get(send_dedup_key)
+        if isinstance(prev_send_ts, (int, float)) and (now_ts - float(prev_send_ts)) < 2.0:
+            recent = platform_tracker.get_recent_chats(100)
+            return jsonify({
+                "status": "ok",
+                "duplicate_ignored": True,
+                "chat": recent[0] if recent else None,
+                "obs_reply": get_custom_live_ticker_message(),
+                "recent_chats": recent,
+                "stats": platform_tracker.get_stats()
+            }), 200
+        _recent_chat_fingerprints[send_dedup_key] = now_ts
+
     if mode == "VIEWER":
         # 일반 시청자/주문 연동 모드: 기존 AI 주문·문의 분류 파이프라인 실행
         process_chat_payload({
@@ -2763,7 +2817,10 @@ def api_chat_send():
         })
     else:
         # 관리자/쇼호스트 공식 실시간 채팅 모드: AI 봇 자동응답 없이 실시간 채팅 스트림에 즉시 반영
-        db_chat_id = database.save_chat(platform_raw, sender, message, "CHAT", "")
+        db_chat_id, was_dup = database.save_chat(
+            platform_raw, sender, message, "CHAT", "",
+            return_duplicate_flag=True, dedup_window_sec=2.0
+        )
         created_chat = platform_tracker.record_chat(
             platform_raw=platform_raw,
             user=sender,
@@ -4862,28 +4919,64 @@ class VdoNinjaDirectReceiver:
                         this.idx = 0;
                         this.dcX = 0.0;
                         this.dcY = 0.0;
+                        this.srcPos = 0.0;
+                        this.prevSample = 0.0;
+                        this.hasPrev = false;
+                        this.filteredBuf = new Float32Array(256);
+                    }
+                    emitSample(s) {
+                        if (s > 0.95) s = 0.95 + (s - 0.95) * 0.15;
+                        else if (s < -0.95) s = -0.95 + (s + 0.95) * 0.15;
+                        if (s > 0.99) s = 0.99;
+                        else if (s < -0.99) s = -0.99;
+                        this.buf[this.idx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                        if (this.idx >= 1920) {
+                            this.port.postMessage(this.buf.slice(0));
+                            this.idx = 0;
+                        }
                     }
                     process(inputs) {
                         const input = inputs[0];
                         if (!input || !input[0] || input[0].length === 0) return true;
                         const ch0 = input[0];
                         const ch1 = (input.length > 1 && input[1] && input[1].length === ch0.length) ? input[1] : null;
-                        for (let i = 0; i < ch0.length; i++) {
+                        const inLen = ch0.length;
+                        if (this.filteredBuf.length < inLen) {
+                            this.filteredBuf = new Float32Array(inLen);
+                        }
+                        for (let i = 0; i < inLen; i++) {
                             const raw = ch1 ? (ch0[i] + ch1[i]) * 0.5 : ch0[i];
                             // 32-bit Float 영역에서 DC 오프셋만 제거 (증폭 없음: 원음 1:1)
                             this.dcY = raw - this.dcX + 0.995 * this.dcY;
                             this.dcX = raw;
-                            let s = this.dcY;
-                            if (s > 0.95) s = 0.95 + (s - 0.95) * 0.15;
-                            else if (s < -0.95) s = -0.95 + (s + 0.95) * 0.15;
-                            if (s > 0.99) s = 0.99;
-                            else if (s < -0.99) s = -0.99;
-                            this.buf[this.idx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
-                            if (this.idx >= 1920) {
-                                this.port.postMessage(this.buf.slice(0));
-                                this.idx = 0;
-                            }
+                            this.filteredBuf[i] = this.dcY;
                         }
+                        const fBuf = this.filteredBuf;
+                        if (typeof sampleRate === 'undefined' || Math.abs(sampleRate - 48000) < 50) {
+                            for (let i = 0; i < inLen; i++) {
+                                this.emitSample(fBuf[i]);
+                            }
+                            this.prevSample = fBuf[inLen - 1];
+                            this.hasPrev = true;
+                            return true;
+                        }
+                        const ratio = sampleRate / 48000.0;
+                        if (!this.hasPrev) {
+                            this.prevSample = fBuf[0];
+                            this.hasPrev = true;
+                            this.srcPos = 0.0;
+                        }
+                        const limit = inLen - 1;
+                        while (this.srcPos < limit) {
+                            const idx = Math.floor(this.srcPos);
+                            const frac = this.srcPos - idx;
+                            const s0 = idx < 0 ? this.prevSample : fBuf[idx];
+                            const s1 = idx < 0 ? fBuf[0] : fBuf[idx + 1];
+                            this.emitSample(s0 * (1.0 - frac) + s1 * frac);
+                            this.srcPos += ratio;
+                        }
+                        this.prevSample = fBuf[inLen - 1];
+                        this.srcPos -= inLen;
                         return true;
                     }
                 }
@@ -5777,14 +5870,14 @@ registerProcessor('mic-pcm-worklet', MicPcmWorklet);
 
 @app.route('/api/camera/audio-worker.js', methods=['GET'])
 def api_camera_audio_worker_js():
-    """스마트폰 메인 스레드(캔버스 JPEG 인코딩)와 완전히 분리된 전용 Web Worker 오디오 업로더 (MAX_AUDIO_IN_FLIGHT=1 직렬 순서 보장)"""
+    """스마트폰 메인 스레드(캔버스 JPEG 인코딩)와 완전히 분리된 전용 Web Worker 오디오 업로더 (MAX_AUDIO_IN_FLIGHT=2 파이프라이닝 + 서버 시퀀스 재정렬)"""
     from flask import Response
     js_code = """let uploadUrlBase = '';
 let isActive = false;
 let audioInFlightCount = 0;
-const MAX_AUDIO_IN_FLIGHT = 1;
+const MAX_AUDIO_IN_FLIGHT = 2;
 const AUDIO_PACKET_SAMPLES = 3840;
-const MAX_BUFFER_SAMPLES = 36000;
+const MAX_BUFFER_SAMPLES = 48000;
 let audioSeq = 0;
 let pendingPcmChunks = [];
 let pendingPcmSamples = 0;
@@ -7813,8 +7906,8 @@ class YouTubeDirectStreamer:
         self._audio_bars = self._audio_bars[1:] + [round(self._env_level_pct, 1)]
         self._last_meter_update_ts = now_ts
 
-    def _append_ordered_pcm(self, buf, reorder_map, last_seq, pcm_slice, seq, last_ts, now_a, max_buf_bytes=153600):
-        """오디오 패킷을 시퀀스 순서대로 지터 버퍼에 적재 (역전 패킷 재정렬 및 뒤늦게 도착한 과거 패킷 역주행 원천 차단)"""
+    def _append_ordered_pcm(self, buf, reorder_map, last_seq, pcm_slice, seq, last_ts, now_a, max_buf_bytes=153600, allow_seq_jump=False):
+        """오디오 패킷을 시퀀스 순서대로 지터 버퍼에 적재 (역전 패킷 재정렬 및 클라우드 브릿지 병합 패킷 즉시 방출)"""
         emitted = bytearray()
         is_fresh_stream = (
             not seq
@@ -7840,9 +7933,25 @@ class YouTubeDirectStreamer:
             self._last_ordered_emitted = b""
             return last_seq
 
+        # 클라우드 브릿지(pull_raw_mobile_audio) 등 다중 청크가 하나로 병합되어 시퀀스가 점프(last_seq + 2 이상)하는 소스는
+        # 이미 내부적으로 순서가 보장되어 있으므로 reorder_map에 가두지 않고 즉시 방출합니다.
+        if allow_seq_jump or len(pcm_slice) > 3840:
+            if reorder_map:
+                for k in sorted(reorder_map.keys()):
+                    if k > last_seq:
+                        emitted.extend(reorder_map[k][1])
+                reorder_map.clear()
+            emitted.extend(pcm_slice)
+            last_seq = seq
+            buf.extend(emitted)
+            if len(buf) > max_buf_bytes:
+                del buf[:-max_buf_bytes]
+            self._last_ordered_emitted = bytes(emitted)
+            return last_seq
+
         if reorder_map:
             oldest_ts = min(v[0] for v in reorder_map.values())
-            if (now_a - oldest_ts) > 0.16 or len(reorder_map) >= 2:
+            if (now_a - oldest_ts) > 0.06 or len(reorder_map) >= 2:
                 for k in sorted(reorder_map.keys()):
                     if k > last_seq:
                         emitted.extend(reorder_map[k][1])
@@ -7874,17 +7983,17 @@ class YouTubeDirectStreamer:
         return last_seq
 
     def _update_rate_window(self, rate_win, current_ratio, nbytes, now_a):
-        """최근 2.2초 동안의 실제 수신 바이트 속도를 측정하여 48kHz(96,000 bytes/sec) 대비 비율(0.84 ~ 1.02)을 완만하게 추종"""
+        """최근 3.0초 동안의 실제 수신 바이트 속도를 측정하여 48kHz(96,000 bytes/sec) 대비 실효 유입 비율(0.78 ~ 1.04)을 정밀 추종"""
         rate_win.append((now_a, nbytes))
-        cutoff = now_a - 2.2
+        cutoff = now_a - 3.0
         while len(rate_win) > 1 and rate_win[0][0] < cutoff:
             rate_win.pop(0)
-        if len(rate_win) >= 3:
+        if len(rate_win) >= 4:
             dt = rate_win[-1][0] - rate_win[0][0]
-            if dt >= 0.35:
+            if dt >= 0.45:
                 total_b = sum(b for _, b in rate_win[1:])
-                inst_ratio = max(0.84, min(1.02, (total_b / dt) / 96000.0))
-                current_ratio = current_ratio * 0.82 + inst_ratio * 0.18
+                inst_ratio = max(0.78, min(1.04, (total_b / dt) / 96000.0))
+                current_ratio = current_ratio * 0.88 + inst_ratio * 0.12
         return current_ratio
 
     def push_audio_pcm(self, pcm_bytes, source="mobile", seq=None, subsource=None):
@@ -7990,7 +8099,8 @@ class YouTubeDirectStreamer:
                     seq,
                     self.last_mobile_audio_ts,
                     now_a,
-                    max_buf_bytes
+                    max_buf_bytes,
+                    allow_seq_jump=(eff_sub == "cloud_bridge")
                 )
                 ordered_pcm = getattr(self, "_last_ordered_emitted", pcm_slice)
                 if not self.active and len(self._audio_buffer) > 57600:
@@ -8000,10 +8110,13 @@ class YouTubeDirectStreamer:
                 if ordered_pcm and eff_sub not in ("cloud_bridge", "webrtc_mobile"):
                     self._raw_mobile_audio_seq += 1
                     self._raw_mobile_audio_ring.append((self._raw_mobile_audio_seq, now_a, bytes(ordered_pcm)))
-                    if len(self._raw_mobile_audio_ring) > 60:
-                        del self._raw_mobile_audio_ring[:-45]
+                    if len(self._raw_mobile_audio_ring) > 180:
+                        del self._raw_mobile_audio_ring[:-140]
 
-            self._audio_pkt_win.append((now_a, even_len))
+            if ordered_pcm:
+                self._audio_pkt_win.append((now_a, len(ordered_pcm)))
+            else:
+                self._audio_pkt_win.append((now_a, even_len))
             if len(self._audio_pkt_win) > 150:
                 del self._audio_pkt_win[:-120]
             self.last_audio_ts = now_a
@@ -8024,8 +8137,8 @@ class YouTubeDirectStreamer:
                 self._apply_gain_to_array(mon_arr, source="monitor")
                 self._monitor_audio_seq += 1
                 self._monitor_audio_ring.append((self._monitor_audio_seq, now_a, mon_arr.tobytes()))
-                if len(self._monitor_audio_ring) > 60:
-                    del self._monitor_audio_ring[:-45]
+                if len(self._monitor_audio_ring) > 180:
+                    del self._monitor_audio_ring[:-140]
             elif source == "pc" and (not self.active) and ordered_pcm:
                 in_arr = array.array("h")
                 in_arr.frombytes(ordered_pcm)
@@ -8045,11 +8158,11 @@ class YouTubeDirectStreamer:
             cur_seq = self._monitor_audio_seq
             if not self._monitor_audio_ring or cur_seq == 0:
                 return b"", cur_seq
-            # 최초 요청이거나 28청크 이상 뒤처진 경우 최신 3청크만 반환하여 끊김 및 딜레이 누적 방지
-            if after_seq <= 0 or (cur_seq - after_seq) > 28:
-                recent = [b for s, ts, b in self._monitor_audio_ring[-3:] if (now_t - ts) < 0.8]
+            # 최초 요청이거나 90청크 이상 뒤처진 경우 최신 4청크만 반환하여 끊김 및 딜레이 누적 방지
+            if after_seq <= 0 or (cur_seq - after_seq) > 90:
+                recent = [b for s, ts, b in self._monitor_audio_ring[-4:] if (now_t - ts) < 1.2]
                 return b"".join(recent), cur_seq
-            chunks = [b for s, ts, b in self._monitor_audio_ring if s > after_seq and (now_t - ts) < 1.2]
+            chunks = [b for s, ts, b in self._monitor_audio_ring if s > after_seq and (now_t - ts) < 2.5]
             return b"".join(chunks), cur_seq
 
     def pull_raw_mobile_audio(self, after_seq=0):
@@ -8060,10 +8173,10 @@ class YouTubeDirectStreamer:
             ring = getattr(self, "_raw_mobile_audio_ring", None)
             if not ring or cur_seq == 0:
                 return b"", cur_seq
-            if after_seq <= 0 or (cur_seq - after_seq) > 28:
-                recent = [b for s, ts, b in ring[-3:] if (now_t - ts) < 0.8]
+            if after_seq <= 0 or (cur_seq - after_seq) > 90:
+                recent = [b for s, ts, b in ring[-4:] if (now_t - ts) < 1.2]
                 return b"".join(recent), cur_seq
-            chunks = [b for s, ts, b in ring if s > after_seq and (now_t - ts) < 1.2]
+            chunks = [b for s, ts, b in ring if s > after_seq and (now_t - ts) < 2.5]
             return b"".join(chunks), cur_seq
 
     def get_ffmpeg_exe(self):
@@ -8839,16 +8952,40 @@ class YouTubeDirectStreamer:
 
         threading.Thread(target=_watchdog_worker, daemon=True).start()
 
-    def _resample_linear_int16(self, src_arr, out_samples=960):
-        """16-bit PCM 배열(src_arr)을 선형 보간(Linear Interpolation)하여 계단 노이즈 없이 out_samples 길이로 부드럽게 변환"""
+    def _resample_linear_int16(self, src_arr, out_samples=960, prev_sample=None):
+        """
+        16-bit PCM 배열(src_arr)을 위상 연속(Phase-Continuous) 선형 보간하여 20ms 청크 경계 단절('틱' 소리)을 0으로 제거:
+        - prev_sample(직전 청크의 마지막 샘플, t=0)부터 src_arr[-1](현재 청크의 마지막 샘플, t=20ms)까지 (in_len + 1)개 포인트를
+          연속 보간하여 out_arr[0]은 prev_sample에서 부드럽게 출발하고 out_arr[-1]은 정확히 src_arr[-1]로 끝납니다.
+        """
         import array
         in_len = len(src_arr)
         if in_len == out_samples:
             return src_arr
         if in_len <= 1:
-            v = src_arr[0] if in_len == 1 else 0
+            v = src_arr[0] if in_len == 1 else (int(prev_sample) if prev_sample is not None else 0)
             return array.array("h", [v] * out_samples)
         out_arr = array.array("h")
+        if prev_sample is not None:
+            p0 = int(prev_sample)
+            scale = float(in_len) / float(out_samples)
+            for i in range(1, out_samples + 1):
+                pos = i * scale
+                idx = int(pos)
+                if idx <= 0:
+                    s_left = p0
+                    s_right = src_arr[0]
+                    frac = pos
+                elif idx >= in_len:
+                    out_arr.append(src_arr[-1])
+                    continue
+                else:
+                    s_left = src_arr[idx - 1]
+                    s_right = src_arr[idx]
+                    frac = pos - idx
+                out_arr.append(int(s_left * (1.0 - frac) + s_right * frac))
+            return out_arr
+
         scale = (in_len - 1) / float(out_samples - 1)
         for i in range(out_samples):
             pos = i * scale
@@ -8863,20 +9000,26 @@ class YouTubeDirectStreamer:
 
     def _pull_jitter_chunk(self, buf, prebuffering, last_src_ts, empty_ticks, last_sample, rate_ratio=1.0, smooth_consume=960.0, chunk_samples=960):
         """
-        모바일 네트워크(LTE/5G/Wi-Fi) 지터(180~350ms)를 완벽 흡수하는 1:1 비트 무변조(Bit-Exact) 직결 지터 버퍼 (48kHz, 960 샘플 = 1,920 바이트 @ 20ms):
-        1) 가변 리샘플링 및 자투리 타임스트레칭 없이 48kHz 원본 PCM을 1:1 무변조로 직결 전달합니다.
-        2) 일시적 버퍼 소진 시 수위가 0ms 바닥에 고착되어 매 패킷마다 '틱-틱-틱' 단절음을 내는 현상을 방지하기 위해,
-           2틱(40ms) 이상 마르면 즉시 300ms 안전 쿠션을 재충전하고 재개 시 첫 64샘플 크로스페이드로 파형 단절을 0으로 만듭니다.
+        모바일 네트워크(LTE/5G/Wi-Fi) 지터 및 기기별 실효 샘플레이트 편차(42.0~48.0kHz)를 완벽 흡수하는
+        위상 연속(Phase-Continuous) 적응형 지터 버퍼 (48kHz 출력, 960 샘플 = 1,920 바이트 @ 20ms):
+        1) 입력 스트림이 정격 48kHz(rate_ratio ≈ 1.0)이고 버퍼 수위가 안정(240~440ms)일 때는 1:1 비트 무변조로 직결 전달합니다.
+        2) 스마트폰/브릿지 유입 속도가 42~45kHz(rate_ratio ≈ 0.88~0.94)로 낮거나 버퍼 수위가 낮아질 때는
+           실측 rate_ratio와 버퍼 수위 서보(PI)에 맞춰 추출 샘플 수(smooth_consume)를 미세 조절하고,
+           직전 청크 마지막 샘플(last_sample)과 연결된 위상 연속 보간으로 960 샘플을 생성하여
+           3초 주기 버퍼 고갈(언더런 끊김)과 청크 경계 '틱' 소리를 동시에 0으로 만듭니다.
+        3) 일시적 Wi-Fi 스파이크 발생 시 2틱(40ms) 만에 300ms 강제 무음(prebuffering)으로 잠그지 않고,
+           최대 6틱(120ms)까지 자연 감쇠 브릿지 후 패킷 도착 즉시 크로스페이드로 복구합니다.
         """
         import array
         chunk_bytes = chunk_samples * 2
-        prebuffer_bytes = 28800   # 300ms 안전 쿠션 @ 48kHz (모바일 RTT 180~300ms 변동 흡수 & MJPEG 립싱크 정렬)
+        prebuffer_bytes = 21120   # 220ms 초기/재충전 쿠션 @ 48kHz (빠른 복구 및 지터 흡수 균형)
+        target_buf_bytes = 30720  # 320ms 목표 평형 수위 @ 48kHz
         trim_bytes = 48000        # 500ms 소프트 정리 수위 @ 48kHz
         max_sync_bytes = 115200   # 1,200ms 상한 (지연 도착한 패킷 버스트를 절대 임의 절단하지 않음)
 
         buf_len = len(buf)
         now_t = time.time()
-        src_alive = (last_src_ts > 0) and ((now_t - last_src_ts) < 1.25)
+        src_alive = (last_src_ts > 0) and ((now_t - last_src_ts) < 1.5)
         need_crossfade = (empty_ticks > 0)
 
         if prebuffering:
@@ -8893,11 +9036,11 @@ class YouTubeDirectStreamer:
                 del buf[:chunk_bytes]
                 out_arr = array.array("h")
                 out_arr.frombytes(raw)
-                return out_arr, True, empty_ticks, (out_arr[-1] if len(out_arr) > 0 else 0), float(chunk_samples)
+                return out_arr, True, empty_ticks, (out_arr[-1] if len(out_arr) > 0 else 0), float(smooth_consume)
             else:
                 if (not src_alive) and 0 < buf_len < chunk_bytes:
                     del buf[:]
-                return None, True, empty_ticks, 0, float(chunk_samples)
+                return None, True, empty_ticks, 0, float(smooth_consume)
 
         if buf_len > max_sync_bytes:
             del buf[:-trim_bytes]
@@ -8905,33 +9048,72 @@ class YouTubeDirectStreamer:
             need_crossfade = True
             self._audio_overflow_drops += 1
 
-        # 100% 1:1 비트 무변조 추출 (960 샘플 = 1,920 바이트 고정, 리샘플링 왜곡 0%)
-        if buf_len >= chunk_bytes:
-            raw = bytes(buf[:chunk_bytes])
-            del buf[:chunk_bytes]
-            out_arr = array.array("h")
-            out_arr.frombytes(raw)
-            if need_crossfade and len(out_arr) > 0:
-                prev_s = int(last_sample)
-                n_fade = min(64, len(out_arr))
-                for i in range(n_fade):
-                    w = (i + 1) / float(n_fade)
-                    out_arr[i] = int(prev_s * (1.0 - w) + out_arr[i] * w)
-            return out_arr, False, 0, (out_arr[-1] if len(out_arr) > 0 else 0), float(chunk_samples)
+        # 실측 유입 비율(rate_ratio) + 버퍼 수위 오차(320ms 기준) 비례 서보로 목표 소비 샘플 수 산출
+        eff_ratio = max(0.78, min(1.04, float(rate_ratio or 1.0)))
+        buf_err_ms = (buf_len - target_buf_bytes) / 96.0
+        servo_samples = max(-42.0, min(48.0, buf_err_ms * 0.22))
+        target_consume = (chunk_samples * eff_ratio) + servo_samples
+        if buf_len < 15360:
+            # 버퍼 수위가 160ms 미만으로 내려가면 소비 속도를 선제적으로 완만히 낮춰 바닥 고갈(언더런) 원천 방지
+            target_consume = min(target_consume, chunk_samples * max(0.76, eff_ratio - 0.05))
+        target_consume = max(740.0, min(1020.0, target_consume))
 
-        # 버퍼가 1틱(20ms) 미만으로 마른 경우:
-        # 1틱(20ms)만 부드럽게 감쇠 브릿지하고, 2틱(40ms) 이상 마르면 즉시 prebuffering=True로 전환해
-        # 300ms 안전 쿠션을 재충전함으로써 수위가 0ms 바닥에 머물며 매 패킷마다 '틱틱틱' 소리가 나는 현상을 원천 차단
+        diff_c = target_consume - float(smooth_consume or chunk_samples)
+        max_step = 2.5 if abs(diff_c) > 25.0 else 0.55
+        if diff_c > max_step:
+            smooth_consume = float(smooth_consume) + max_step
+        elif diff_c < -max_step:
+            smooth_consume = float(smooth_consume) - max_step
+        else:
+            smooth_consume = target_consume
+
+        # 정격 48kHz 유입이고 버퍼 수위가 충분(240~440ms)하면 1:1 비트 무변조(960 샘플) 유지
+        if abs(eff_ratio - 1.0) <= 0.015 and 23040 <= buf_len <= 42240:
+            consume_samples = chunk_samples
+        else:
+            consume_samples = max(740, min(1020, int(round(smooth_consume))))
+        consume_bytes = consume_samples * 2
+
+        if buf_len >= consume_bytes:
+            raw = bytes(buf[:consume_bytes])
+            del buf[:consume_bytes]
+            in_arr = array.array("h")
+            in_arr.frombytes(raw)
+            if consume_samples == chunk_samples:
+                out_arr = in_arr
+                if need_crossfade and len(out_arr) > 0:
+                    prev_s = int(last_sample)
+                    n_fade = min(64, len(out_arr))
+                    for i in range(n_fade):
+                        w = (i + 1) / float(n_fade)
+                        out_arr[i] = int(prev_s * (1.0 - w) + out_arr[i] * w)
+            else:
+                out_arr = self._resample_linear_int16(in_arr, out_samples=chunk_samples, prev_sample=last_sample)
+            return out_arr, False, 0, (out_arr[-1] if len(out_arr) > 0 else 0), smooth_consume
+
+        # 버퍼에 10ms(480 샘플 = 960 바이트) 이상 남아 있으면 무음으로 끊지 않고 남은 샘플을 위상 연속 보간하여 20ms 브릿지
+        if buf_len >= 960 and src_alive:
+            avail_samples = buf_len // 2
+            avail_bytes = avail_samples * 2
+            raw = bytes(buf[:avail_bytes])
+            del buf[:avail_bytes]
+            in_arr = array.array("h")
+            in_arr.frombytes(raw)
+            out_arr = self._resample_linear_int16(in_arr, out_samples=chunk_samples, prev_sample=last_sample)
+            return out_arr, False, 0, (out_arr[-1] if len(out_arr) > 0 else 0), smooth_consume
+
+        # 버퍼가 완전히 비었을 때: 최대 6틱(120ms)까지 자연 감쇠 브릿지하여 패킷 지터를 무중단 흡수
         empty_ticks += 1
         if src_alive:
-            if empty_ticks == 1:
+            if empty_ticks <= 6:
                 bridge_arr = array.array("h")
                 v = int(last_sample)
+                decay = 0.96 if empty_ticks <= 2 else 0.92
                 for _ in range(chunk_samples):
-                    v = int(v * 0.94)
+                    v = int(v * decay)
                     bridge_arr.append(v)
-                return bridge_arr, False, empty_ticks, v, float(chunk_samples)
-            if empty_ticks == 2:
+                return bridge_arr, False, empty_ticks, v, smooth_consume
+            if empty_ticks == 7:
                 self.audio_underruns += 1
                 self._audio_underrun_ts.append(now_t)
                 if len(self._audio_underrun_ts) > 120:
@@ -8940,13 +9122,13 @@ class YouTubeDirectStreamer:
                     "BUFFER_UNDERRUN",
                     "bad",
                     f"🚨 오디오 지터 버퍼 언더런(끊김) 발생 (누적 {self.audio_underruns}회)",
-                    f"패킷 도착 지연으로 버퍼가 일시 고갈되어 300ms 안전 쿠션 재충전으로 전환되었습니다.",
+                    f"140ms 이상 패킷 도착이 중단되어 220ms 안전 쿠션 재충전으로 전환되었습니다.",
                     now_t
                 )
         elif buf_len > 0:
             del buf[:]
 
-        return None, True, empty_ticks, 0, float(chunk_samples)
+        return None, True, empty_ticks, 0, smooth_consume
 
     def _audio_feeder_loop(self, audio_srv, proc):
         """
@@ -10175,7 +10357,10 @@ class YouTubeDirectStreamer:
             mob_buf_ms = round(len(self._audio_buffer) / 96.0, 1)
             pc_buf_ms = round(len(self._audio_buffer_pc) / 96.0, 1)
             active_buf_ms = max(mob_buf_ms, pc_buf_ms)
-            is_prebuffering = self._audio_prebuffering if mob_alive else (self._audio_pc_prebuffering if pc_alive else True)
+            if not is_active and (mob_alive or pc_alive):
+                is_prebuffering = active_buf_ms < 220.0
+            else:
+                is_prebuffering = self._audio_prebuffering if mob_alive else (self._audio_pc_prebuffering if pc_alive else True)
 
             recent_underruns_10s = sum(1 for ts in self._audio_underrun_ts if (now_t - ts) <= 10.0)
             recent_underruns_1s = sum(1 for ts in self._audio_underrun_ts if (now_t - ts) <= 1.2)
@@ -10947,10 +11132,12 @@ class TikTokDirectChatPoller:
         if not msg_text:
             return
         dedup_key = str(msg_id or f"tt_{author}_{msg_text}")
+        norm_content_key = f"tt_norm_{re.sub(r'\\s+', ' ', author).strip().lower()}_{re.sub(r'\\s+', ' ', msg_text).strip()}"
         with self.lock:
-            if dedup_key in self.seen_ids:
+            if dedup_key in self.seen_ids or norm_content_key in self.seen_ids:
                 return
             self.seen_ids.append(dedup_key)
+            self.seen_ids.append(norm_content_key)
             self.collected_count += 1
             self.last_chat_at = datetime.now().strftime("%H:%M:%S")
 
@@ -11628,10 +11815,12 @@ class InstagramDirectChatPoller:
         if not msg_text:
             return
         dedup_key = str(msg_id or f"ig_{author}_{msg_text}")
+        norm_content_key = f"ig_norm_{re.sub(r'\\s+', ' ', author).strip().lower()}_{re.sub(r'\\s+', ' ', msg_text).strip()}"
         with self.lock:
-            if dedup_key in self.seen_ids:
+            if dedup_key in self.seen_ids or norm_content_key in self.seen_ids:
                 return
             self.seen_ids.append(dedup_key)
+            self.seen_ids.append(norm_content_key)
             self.collected_count += 1
             self.last_chat_at = datetime.now().strftime("%H:%M:%S")
 
@@ -14844,14 +15033,16 @@ def run_ninja_ws_listener():
                             inner = payload.get("data") if isinstance(payload.get("data"), dict) else (
                                 payload.get("value") if isinstance(payload.get("value"), dict) else payload
                             )
-                            msg_id = str(inner.get("id") or f"{inner.get('chatname')}_{inner.get('chatmessage')}")
-                            with seen_lock:
-                                if msg_id in seen_ids:
-                                    continue
-                                seen_ids.append(msg_id)
-
                             c_name = inner.get('chatname') or inner.get('username') or inner.get('author') or '익명'
                             c_msg = inner.get('chatmessage') or inner.get('message') or inner.get('text') or ''
+                            msg_id = str(inner.get("id") or f"{c_name}_{c_msg}")
+                            norm_sig = f"sig:{re.sub(r'\\s+', ' ', str(c_name)).strip().lower()}:{re.sub(r'\\s+', ' ', str(c_msg)).strip()}"
+                            with seen_lock:
+                                if msg_id in seen_ids or norm_sig in seen_ids:
+                                    continue
+                                seen_ids.append(msg_id)
+                                seen_ids.append(norm_sig)
+
                             if c_msg:
                                 print(f"⚡ [Social Stream Ninja 수신({ch_label})] {c_name}: {c_msg}", flush=True)
                                 process_chat_payload(inner)
@@ -15191,9 +15382,9 @@ def run_local_to_cloud_camera_bridge():
     last_forwarded_seq = {1: 0, 2: 0}
     last_forwarded_audio_seq = 0
     last_pulled_cloud_audio_seq = 0
-    last_cloud_audio_pull_ts = 0.0
     cloud_cam_tok = ""
     conn = None
+    audio_conn = None
 
     def get_conn():
         nonlocal conn
@@ -15215,6 +15406,94 @@ def run_local_to_cloud_camera_bridge():
                 pass
             conn = None
 
+    def get_audio_conn():
+        nonlocal audio_conn
+        if audio_conn is None:
+            if use_https:
+                import ssl
+                ctx = ssl._create_unverified_context()
+                audio_conn = http.client.HTTPSConnection(cloud_host, cloud_port, timeout=2.0, context=ctx)
+            else:
+                audio_conn = http.client.HTTPConnection(cloud_host, cloud_port, timeout=2.0)
+        return audio_conn
+
+    def reset_audio_conn():
+        nonlocal audio_conn
+        if audio_conn is not None:
+            try:
+                audio_conn.close()
+            except Exception:
+                pass
+            audio_conn = None
+
+    def _dedicated_audio_bridge_loop():
+        """
+        비디오 프레임(50~80KB JPEG) 업로드나 상태 동기화 요청에 의해 오디오 스트림이 블로킹(Head-of-Line Blocking)되지 않도록
+        전용 Keep-Alive 소켓으로 20ms마다 오디오만 독립 전달·수신하는 고속 스레드
+        """
+        nonlocal last_forwarded_audio_seq, last_pulled_cloud_audio_seq
+        while True:
+            try:
+                now_a = time.time()
+                did_audio = False
+                tok_use = cloud_cam_tok or get_studio_cam_token()
+
+                # 1) 로컬 PC에 직접 들어온 스마트폰 오디오가 있으면 클라우드 스튜디오로 즉시 푸시
+                pcm_out, cur_a_seq = youtube_direct_streamer.pull_raw_mobile_audio(last_forwarded_audio_seq)
+                if pcm_out and cur_a_seq > last_forwarded_audio_seq:
+                    last_forwarded_audio_seq = cur_a_seq
+                    try:
+                        ac = get_audio_conn()
+                        ac.request(
+                            "POST",
+                            f"/api/camera/audio?sr=48000&src=mobile&subsrc=cloud_bridge&seq={cur_a_seq}&cam_token={tok_use}",
+                            body=pcm_out,
+                            headers={
+                                "Content-Type": "application/octet-stream",
+                                "X-Cam-Token": tok_use,
+                                "Connection": "keep-alive",
+                            },
+                        )
+                        r_a = ac.getresponse()
+                        r_a.read()
+                        did_audio = True
+                    except Exception:
+                        reset_audio_conn()
+                elif (now_a - getattr(youtube_direct_streamer, "_last_direct_mobile_audio_ts", 0.0)) > 2.0:
+                    # 2) 반대로 스마트폰이 클라우드 서버에 연결되어 오디오를 보내는 경우 전용 소켓으로 20ms마다 즉시 풀링
+                    try:
+                        ac = get_audio_conn()
+                        ac.request(
+                            "GET",
+                            f"/api/camera/audio/pull?after_seq={last_pulled_cloud_audio_seq}&v=2&raw=1&cam_token={tok_use}",
+                            headers={
+                                "X-Cam-Token": tok_use,
+                                "Connection": "keep-alive",
+                            },
+                        )
+                        r_p = ac.getresponse()
+                        seq_hdr = int(r_p.getheader("X-Audio-Seq") or "0")
+                        pcm_in = r_p.read()
+                        if seq_hdr > 0:
+                            last_pulled_cloud_audio_seq = seq_hdr
+                        if r_p.status == 200 and pcm_in and len(pcm_in) >= 4:
+                            youtube_direct_streamer.push_audio_pcm(
+                                pcm_in,
+                                source="mobile",
+                                seq=last_pulled_cloud_audio_seq,
+                                subsource="cloud_bridge",
+                            )
+                            did_audio = True
+                    except Exception:
+                        reset_audio_conn()
+
+                time.sleep(0.018 if did_audio else 0.025)
+            except Exception:
+                reset_audio_conn()
+                time.sleep(0.5)
+
+    audio_bridge_started = False
+
     while True:
         try:
             now = time.time()
@@ -15226,6 +15505,10 @@ def run_local_to_cloud_camera_bridge():
             # 클라우드 서버 자신(192.168.0.6)에서는 실행 중단
             if ip == "192.168.0.6" and wifi_ip == "192.168.0.6":
                 return
+
+            if not audio_bridge_started:
+                audio_bridge_started = True
+                threading.Thread(target=_dedicated_audio_bridge_loop, daemon=True).start()
 
             # 1) 2초 주기로 로컬 IP(192.168.0.69) 및 카메라 상태 등록
             if (now - last_sync_ts) >= 2.0:
@@ -15288,65 +15571,27 @@ def run_local_to_cloud_camera_bridge():
                     except Exception:
                         reset_conn()
 
-            # 3) 로컬 PC에 새로 들어온 스마트폰 오디오(48kHz PCM)가 있으면 즉시 클라우드 스튜디오로 전달
-            pcm_out, cur_a_seq = youtube_direct_streamer.pull_raw_mobile_audio(last_forwarded_audio_seq)
-            if pcm_out and cur_a_seq > last_forwarded_audio_seq:
-                last_forwarded_audio_seq = cur_a_seq
-                tok_use = cloud_cam_tok or get_studio_cam_token()
-                try:
-                    c = get_conn()
-                    c.request(
-                        "POST",
-                        f"/api/camera/audio?sr=48000&src=mobile&subsrc=cloud_bridge&seq={cur_a_seq}&cam_token={tok_use}",
-                        body=pcm_out,
-                        headers={
-                            "Content-Type": "application/octet-stream",
-                            "X-Cam-Token": tok_use,
-                            "Connection": "keep-alive",
-                        },
-                    )
-                    r_a = c.getresponse()
-                    r_a.read()
-                    forwarded_any = True
-                except Exception:
-                    reset_conn()
-            elif (now - getattr(youtube_direct_streamer, "_last_direct_mobile_audio_ts", 0.0)) > 2.0 and (now - last_cloud_audio_pull_ts) >= 0.04:
-                # 4) 반대로 스마트폰이 클라우드 서버(/remote-cam 등)에 연결되어 오디오를 보내는 경우 로컬 PC로 가져와 RTMP 송출기에 공급
-                last_cloud_audio_pull_ts = now
-                tok_use = cloud_cam_tok or get_studio_cam_token()
-                try:
-                    c = get_conn()
-                    c.request(
-                        "GET",
-                        f"/api/camera/audio/pull?after_seq={last_pulled_cloud_audio_seq}&v=2&raw=1&cam_token={tok_use}",
-                        headers={
-                            "X-Cam-Token": tok_use,
-                            "Connection": "keep-alive",
-                        },
-                    )
-                    r_p = c.getresponse()
-                    seq_hdr = int(r_p.getheader("X-Audio-Seq") or "0")
-                    pcm_in = r_p.read()
-                    if seq_hdr > 0:
-                        last_pulled_cloud_audio_seq = seq_hdr
-                    if r_p.status == 200 and pcm_in and len(pcm_in) >= 4:
-                        youtube_direct_streamer.push_audio_pcm(
-                            pcm_in,
-                            source="mobile",
-                            seq=last_pulled_cloud_audio_seq,
-                            subsource="cloud_bridge",
-                        )
-                        forwarded_any = True
-                except Exception:
-                    reset_conn()
-
-            time.sleep(0.025 if forwarded_any else 0.08)
+            time.sleep(0.025 if forwarded_any else 0.06)
         except Exception:
             reset_conn()
             time.sleep(1.5)
 
 
 if __name__ == '__main__':
+    port = int(os.getenv("SERVER_PORT", 5000))
+    https_port = int(os.getenv("HTTPS_PORT", 5443))
+    host = os.getenv("SERVER_HOST", "0.0.0.0")
+
+    # 이미 기존 서버 프로세스가 메인 포트(5000)를 점유 중인 경우 백그라운드 채팅 폴러가 중복 기동되어
+    # 동일 채팅을 여러 프로세스가 중복 수집·DB 저장하는 현상을 원천 방지합니다.
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s_port_chk:
+            _s_port_chk.settimeout(0.4)
+            if _s_port_chk.connect_ex(("127.0.0.1", port)) == 0:
+                print(f"⚠️ [중복 실행 차단] 이미 포트 {port}에서 라이브 커머스 서버가 실행 중입니다. 중복 채팅 수집 방지를 위해 추가 프로세스를 종료합니다.", flush=True)
+                sys.exit(0)
+
     init_excel()
 
     # 저장된 유튜브 채널 핸들이 CP949 인코딩 깨짐(@???-0313) 상태인 경우 자동 복원 및 자동 연결
@@ -15374,9 +15619,6 @@ if __name__ == '__main__':
         ninja_thread = threading.Thread(target=run_ninja_ws_listener, daemon=True)
         ninja_thread.start()
 
-    port = int(os.getenv("SERVER_PORT", 5000))
-    https_port = int(os.getenv("HTTPS_PORT", 5443))
-    host = os.getenv("SERVER_HOST", "0.0.0.0")
     local_ip = get_local_ip()
 
     # 기동 즉시 공유기 UPnP 대역 브릿지(192.168.0.69) 및 Windows 방화벽 Edge Traversal(edge=yes) 활성화

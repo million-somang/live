@@ -3079,7 +3079,9 @@
             window.open(targetUrl, 'ig_live_chat_popout', 'width=480,height=740,menubar=no,toolbar=no,location=no,status=no');
         }
 
+        let isSendingLiveChat = false;
         async function sendLiveChatFromControlTower() {
+            if (isSendingLiveChat) return;
             const msgInput = document.getElementById('liveChatMessageInput');
             const senderInput = document.getElementById('liveChatSenderInput');
             const roleSelect = document.getElementById('liveChatRoleSelect');
@@ -3101,6 +3103,8 @@
             const broadcastObs = obsCheck ? obsCheck.checked : false;
             const sendHostCue = hostCueCheck ? hostCueCheck.checked : false;
 
+            isSendingLiveChat = true;
+            msgInput.value = '';
             if (btn) {
                 btn.disabled = true;
                 btn.innerText = '전송 중...';
@@ -3121,11 +3125,11 @@
                 });
                 const data = await res.json();
                 if (!res.ok || data.status === 'error') {
+                    msgInput.value = message;
                     alert(data.message || '채팅 전송에 실패했습니다.');
                     return;
                 }
 
-                msgInput.value = '';
                 msgInput.focus();
 
                 // 만약 현재 필터가 ORDER/QUESTION으로 걸려 있어 일반 채팅이 가려진다면 즉시 전체(ALL) 탭으로 전환하여 작성한 채팅을 보여줌
@@ -3170,8 +3174,10 @@
                     syncHostStudioMonitor();
                 }
             } catch (e) {
+                msgInput.value = message;
                 alert('채팅 전송 오류: ' + e.message);
             } finally {
+                isSendingLiveChat = false;
                 if (btn) {
                     btn.disabled = false;
                     btn.innerText = '💬 실시간 채팅 전송 ↵';
@@ -3197,10 +3203,13 @@
         } catch (e) {}
 
         // 모의 테스트 댓글 전송
+        let isSendingSimChat = false;
         async function sendSimulatorChat() {
+            if (isSendingSimChat) return;
             const user = document.getElementById('simUser').value.trim() || '시청자';
             const platform = document.getElementById('simPlatform').value;
-            const message = document.getElementById('simMessage').value.trim();
+            const simMsgInput = document.getElementById('simMessage');
+            const message = simMsgInput ? simMsgInput.value.trim() : '';
             const btn = document.getElementById('btnTestSend');
 
             if (!message) {
@@ -3208,6 +3217,8 @@
                 return;
             }
 
+            isSendingSimChat = true;
+            if (simMsgInput) simMsgInput.value = '';
             btn.disabled = true;
             btn.innerText = '전송 중...';
 
@@ -3227,11 +3238,12 @@
                     })
                 });
 
-                document.getElementById('simMessage').value = '';
                 await fetchDashboardData(true);
             } catch (e) {
+                if (simMsgInput) simMsgInput.value = message;
                 alert('전송 오류: ' + e.message);
             } finally {
+                isSendingSimChat = false;
                 btn.disabled = false;
                 btn.innerText = '🚀 실시간 댓글 즉시 전송';
             }
@@ -3350,13 +3362,15 @@
         }
 
         function handleReplyKey(event, chatId, userName, message) {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.isComposing) {
                 event.preventDefault();
                 submitDirectReply(chatId, userName, message);
             }
         }
 
+        let isSubmittingReply = false;
         async function submitDirectReply(chatId, userName, message) {
+            if (isSubmittingReply) return;
             const input = document.getElementById(`replyInput_${chatId}`);
             const btn = document.getElementById(`replySubmitBtn_${chatId}`);
             if (!input) return;
@@ -3368,6 +3382,8 @@
                 return;
             }
 
+            isSubmittingReply = true;
+            input.value = '';
             if (btn) {
                 btn.disabled = true;
                 btn.innerText = '전송 중...';
@@ -3416,21 +3432,20 @@
                     }
 
                     // 입력창 닫기 및 초기화
-                    input.value = '';
                     const box = document.getElementById(`replyBox_${chatId}`);
                     if (box) box.style.display = 'none';
 
                     // 즉시 1회 동기화
                     fetchDashboardData();
                 } else {
+                    input.value = replyText;
                     alert('답변 전송 실패: ' + (data.message || '오류 발생'));
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerText = '전송 ↵';
-                    }
                 }
             } catch (err) {
+                input.value = replyText;
                 alert('통신 오류: ' + err.message);
+            } finally {
+                isSubmittingReply = false;
                 if (btn) {
                     btn.disabled = false;
                     btn.innerText = '전송 ↵';
