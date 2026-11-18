@@ -588,13 +588,14 @@
         let audioSourceNode = null;
         let audioProcessorNode = null;
         let audioGainNode = null;
+        let audioUploadWorker = null;
         let audioInFlightCount = 0;
-        const MAX_AUDIO_IN_FLIGHT = 1;
+        const MAX_AUDIO_IN_FLIGHT = 2;
         let audioSeq = 0;
         let pendingPcmChunks = [];
         let pendingPcmSamples = 0;
         const TARGET_AUDIO_SAMPLE_RATE = 48000; // 48kHz 16-bit Mono PCM -> 서버 FFmpeg AAC 160kbps 1:1 무변조 직결
-        const AUDIO_PACKET_SAMPLES = 1920; // 40ms 단위 전송 (48kHz * 0.04s = 1920 샘플, 초당 25패킷)
+        const AUDIO_PACKET_SAMPLES = 3840; // 80ms 단위 전송 (48kHz * 0.08s = 3840 샘플, 초당 12.5패킷으로 HTTP 오버헤드 50% 절감)
 
         // WebRTC P2P 직접 연결 관리 (peer_id -> RTCPeerConnection)
         const activePeers = new Map();
@@ -811,6 +812,7 @@
         async function toggleMicMute() {
             if (!isMicMuted && hasAudioTrack && audioCtx && audioCtx.state === 'suspended') {
                 try { await audioCtx.resume(); } catch (e) {}
+                syncAudioWorkerConfig();
                 updateMicButtonUi();
                 updateStatusDisplay();
                 return;
@@ -827,6 +829,7 @@
             if (audioCtx && audioCtx.state === 'suspended' && !isMicMuted) {
                 audioCtx.resume().catch(() => {});
             }
+            syncAudioWorkerConfig();
             updateMicButtonUi();
             updateStatusDisplay();
         }
@@ -922,7 +925,120 @@
         // 🎤 스마트폰 마이크 실시간 PCM 오디오 캡처 & 서버(유튜브 RTMP) 송출
         // ==========================================
         let audioWorkletReady = false;
-        let keepAliveAudioEl = null;
+
+        function ensureAudioUploadWorker() {
+            if (audioUploadWorker) return audioUploadWorker;
+            if (typeof Worker === 'undefined') return null;
+            const workerCode = `
+                let uploadUrlBase = '';
+                let isActive = false;
+                let audioInFlightCount = 0;
+                const MAX_AUDIO_IN_FLIGHT = 2;
+                const AUDIO_PACKET_SAMPLES = 3840;
+                const MAX_BUFFER_SAMPLES = 36000;
+                let audioSeq = 0;
+                let pendingPcmChunks = [];
+                let pendingPcmSamples = 0;
+
+                function onPcmChunk(pcm16) {
+                    if (!isActive || !pcm16 || !pcm16.length) return;
+                    pendingPcmChunks.push(pcm16);
+                    pendingPcmSamples += pcm16.length;
+                    if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                        flushAudioChunks();
+                    }
+                }
+
+                async function flushAudioChunks() {
+                    if (!isActive || !uploadUrlBase || audioInFlightCount >= MAX_AUDIO_IN_FLIGHT || pendingPcmSamples < AUDIO_PACKET_SAMPLES) return;
+                    audioInFlightCount++;
+                    const mySeq = ++audioSeq;
+                    try {
+                        const chunks = pendingPcmChunks;
+                        const totalSamples = pendingPcmSamples;
+                        pendingPcmChunks = [];
+                        pendingPcmSamples = 0;
+
+                        const merged = new Int16Array(totalSamples);
+                        let offset = 0;
+                        for (let i = 0; i < chunks.length; i++) {
+                            merged.set(chunks[i], offset);
+                            offset += chunks[i].length;
+                        }
+                        const payload = totalSamples > MAX_BUFFER_SAMPLES
+                            ? merged.subarray(totalSamples - MAX_BUFFER_SAMPLES)
+                            : merged;
+
+                        const sep = uploadUrlBase.includes('?') ? '&' : '?';
+                        const url = uploadUrlBase + sep + 'seq=' + mySeq;
+                        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                        const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, 1500) : null;
+                        try {
+                            await fetch(url, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/octet-stream' },
+                                body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength),
+                                signal: ctrl ? ctrl.signal : undefined
+                            });
+                        } finally {
+                            if (timer) clearTimeout(timer);
+                        }
+                    } catch (e) {
+                    } finally {
+                        audioInFlightCount = Math.max(0, audioInFlightCount - 1);
+                        if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                            flushAudioChunks();
+                        }
+                    }
+                }
+
+                self.onmessage = (ev) => {
+                    const msg = ev.data || {};
+                    if (msg.type === 'config') {
+                        if (typeof msg.uploadUrlBase === 'string') uploadUrlBase = msg.uploadUrlBase;
+                        if (typeof msg.active === 'boolean') {
+                            isActive = msg.active;
+                            if (!isActive) {
+                                pendingPcmChunks = [];
+                                pendingPcmSamples = 0;
+                            }
+                        }
+                    } else if (msg.type === 'bindPort' && msg.port) {
+                        msg.port.onmessage = (pEv) => {
+                            onPcmChunk(pEv.data);
+                        };
+                    } else if (msg.type === 'pcm' && msg.pcm) {
+                        onPcmChunk(msg.pcm);
+                    }
+                };
+            `;
+            try {
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                audioUploadWorker = new Worker(URL.createObjectURL(blob));
+            } catch (e) {
+                try {
+                    const wUrl = CAM_TOKEN
+                        ? `/api/camera/audio-worker.js?cam_token=${encodeURIComponent(CAM_TOKEN)}`
+                        : '/api/camera/audio-worker.js';
+                    audioUploadWorker = new Worker(wUrl);
+                } catch (e2) {
+                    audioUploadWorker = null;
+                }
+            }
+            return audioUploadWorker;
+        }
+
+        function syncAudioWorkerConfig() {
+            const w = ensureAudioUploadWorker();
+            if (!w) return;
+            const tokPart = CAM_TOKEN ? `&cam_token=${encodeURIComponent(CAM_TOKEN)}` : '';
+            const fullBase = new URL(`/api/camera/audio?sr=48000&src=mobile&cam=${currentCamId}${tokPart}`, window.location.origin).toString();
+            w.postMessage({
+                type: 'config',
+                uploadUrlBase: fullBase,
+                active: Boolean(isStreaming && !isMicMuted && hasAudioTrack)
+            });
+        }
 
         function attachScriptProcessorFallback(inRate) {
             if (!audioCtx || !audioSourceNode || !audioGainNode) return;
@@ -932,6 +1048,8 @@
                 }
                 audioProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 const effRate = inRate || audioCtx.sampleRate || 48000;
+                const worker = ensureAudioUploadWorker();
+                syncAudioWorkerConfig();
                 audioProcessorNode.onaudioprocess = (event) => {
                     if (!isStreaming || isMicMuted || !hasAudioTrack) return;
                     const inputData = event.inputBuffer.getChannelData(0);
@@ -960,11 +1078,15 @@
                         pcm16[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
                     }
 
-                    pendingPcmChunks.push(pcm16);
-                    pendingPcmSamples += pcm16.length;
+                    if (worker) {
+                        worker.postMessage({ type: 'pcm', pcm: pcm16 }, [pcm16.buffer]);
+                    } else {
+                        pendingPcmChunks.push(pcm16);
+                        pendingPcmSamples += pcm16.length;
 
-                    if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
-                        flushAudioPcmChunks();
+                        if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                            flushAudioPcmChunks();
+                        }
                     }
                 };
 
@@ -979,10 +1101,12 @@
                 const audioTracks = stream ? stream.getAudioTracks() : [];
                 hasAudioTrack = audioTracks.length > 0;
                 if (!hasAudioTrack) {
+                    syncAudioWorkerConfig();
                     updateMicButtonUi();
                     return;
                 }
                 audioTracks.forEach(t => { t.enabled = !isMicMuted && isStreaming; });
+                syncAudioWorkerConfig();
                 updateMicButtonUi();
 
                 if (audioProcessorNode) {
@@ -993,21 +1117,6 @@
                     try { audioSourceNode.disconnect(); } catch (e) {}
                     audioSourceNode = null;
                 }
-
-                // 모바일 브라우저에서 음소거 <video>에 연결된 오디오 트랙이 슬립 모드로 빠지지 않도록 비가청 <audio> 싱크 유지
-                try {
-                    if (!keepAliveAudioEl) {
-                        keepAliveAudioEl = document.createElement('audio');
-                        keepAliveAudioEl.autoplay = true;
-                        keepAliveAudioEl.playsInline = true;
-                        keepAliveAudioEl.muted = false;
-                        keepAliveAudioEl.volume = 0.0001;
-                        keepAliveAudioEl.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;';
-                        document.body.appendChild(keepAliveAudioEl);
-                    }
-                    keepAliveAudioEl.srcObject = new MediaStream([audioTracks[0]]);
-                    keepAliveAudioEl.play().catch(() => {});
-                } catch (e) {}
 
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 if (!AudioContextClass) return;
@@ -1033,7 +1142,7 @@
 
                 const inRate = audioCtx.sampleRate || 48000;
 
-                // 1순위: 전용 실시간 오디오 스레드(AudioWorkletNode) 사용 -> 메인 스레드 캔버스 인코딩 부하와 무관하게 100% 무손실 캡처
+                // 1순위: 전용 실시간 오디오 스레드(AudioWorkletNode) + 전용 업로드 Web Worker 사용 -> 메인 스레드 캔버스 부하와 무관하게 100% 무손실 캡처·전송
                 if (audioCtx.audioWorklet && window.AudioWorkletNode) {
                     try {
                         if (!audioWorkletReady) {
@@ -1056,6 +1165,13 @@
                                             this.prevSample = 0;
                                             this.hasPrev = false;
                                             this.filteredBuf = new Float32Array(256);
+                                            this.workerPort = null;
+                                            this.notifiedAlive = false;
+                                            this.port.onmessage = (ev) => {
+                                                if (ev.data && ev.data.workerPort) {
+                                                    this.workerPort = ev.data.workerPort;
+                                                }
+                                            };
                                         }
                                         process(inputs) {
                                             const input = inputs[0];
@@ -1096,7 +1212,16 @@
                                                 else if (s < -0.98) s = -0.98;
                                                 this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
                                                 if (this.outIdx >= 1920) {
-                                                    this.port.postMessage(this.outBuf.slice(0));
+                                                    const chunk = this.outBuf.slice(0);
+                                                    if (this.workerPort) {
+                                                        this.workerPort.postMessage(chunk, [chunk.buffer]);
+                                                        if (!this.notifiedAlive) {
+                                                            this.notifiedAlive = true;
+                                                            this.port.postMessage('alive');
+                                                        }
+                                                    } else {
+                                                        this.port.postMessage(chunk, [chunk.buffer]);
+                                                    }
                                                     this.outIdx = 0;
                                                 }
                                                 this.srcPos += ratio;
@@ -1118,27 +1243,50 @@
                         let workletDeliveries = 0;
                         const workletNode = new AudioWorkletNode(audioCtx, 'mic-pcm-worklet');
                         audioProcessorNode = workletNode;
+                        const worker = ensureAudioUploadWorker();
+                        syncAudioWorkerConfig();
+                        if (worker && typeof MessageChannel !== 'undefined') {
+                            try {
+                                const mc = new MessageChannel();
+                                workletNode.port.postMessage({ workerPort: mc.port1 }, [mc.port1]);
+                                worker.postMessage({ type: 'bindPort', port: mc.port2 }, [mc.port2]);
+                            } catch (mcErr) {}
+                        }
                         workletNode.port.onmessage = (ev) => {
                             workletDeliveries++;
+                            if (ev.data === 'alive') return;
                             if (!isStreaming || isMicMuted || !hasAudioTrack) return;
                             const pcm16 = ev.data;
                             if (!pcm16 || !pcm16.length) return;
-                            pendingPcmChunks.push(pcm16);
-                            pendingPcmSamples += pcm16.length;
-                            if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
-                                flushAudioPcmChunks();
+                            if (worker) {
+                                worker.postMessage({ type: 'pcm', pcm: pcm16 }, [pcm16.buffer]);
+                            } else {
+                                pendingPcmChunks.push(pcm16);
+                                pendingPcmSamples += pcm16.length;
+                                if (pendingPcmSamples >= AUDIO_PACKET_SAMPLES && audioInFlightCount < MAX_AUDIO_IN_FLIGHT) {
+                                    flushAudioPcmChunks();
+                                }
                             }
                         };
                         audioSourceNode.connect(workletNode);
                         workletNode.connect(audioGainNode);
                         audioGainNode.connect(audioCtx.destination);
 
-                        // 1.2초 내 AudioWorklet에서 오디오 패킷이 생성되지 않으면 즉시 ScriptProcessorNode로 자동 폴백
-                        setTimeout(() => {
-                            if (isStreaming && !isMicMuted && hasAudioTrack && workletDeliveries === 0 && audioProcessorNode === workletNode) {
-                                attachScriptProcessorFallback(inRate);
+                        // AudioContext가 실제로 running 상태인 시간 기준 2.5초 동안 콜백이 전혀 없을 때만 ScriptProcessor로 폴백
+                        let runningWaitTicks = 0;
+                        const fbTimer = setInterval(() => {
+                            if (workletDeliveries > 0 || audioProcessorNode !== workletNode) {
+                                clearInterval(fbTimer);
+                                return;
                             }
-                        }, 1200);
+                            if (isStreaming && !isMicMuted && hasAudioTrack && audioCtx && audioCtx.state === 'running') {
+                                runningWaitTicks++;
+                                if (runningWaitTicks >= 5) {
+                                    clearInterval(fbTimer);
+                                    attachScriptProcessorFallback(inRate);
+                                }
+                            }
+                        }, 500);
                         return;
                     } catch (wErr) {
                         // AudioWorklet 지원 불가 시 아래 ScriptProcessor로 즉시 폴백
@@ -1151,7 +1299,7 @@
         }
 
         async function flushAudioPcmChunks() {
-            if (audioInFlightCount >= MAX_AUDIO_IN_FLIGHT || pendingPcmChunks.length === 0) return;
+            if (audioInFlightCount >= MAX_AUDIO_IN_FLIGHT || pendingPcmSamples < AUDIO_PACKET_SAMPLES) return;
             audioInFlightCount++;
             const myAudioSeq = ++audioSeq;
             try {
@@ -1160,20 +1308,27 @@
                 pendingPcmChunks = [];
                 pendingPcmSamples = 0;
 
-                // 최대 0.75초(18000 샘플) 이하로 유지하여 일시적 Wi-Fi 지연에서도 음절 유실 방지
+                // 최대 0.75초(36000 샘플) 이하로 유지하여 일시적 Wi-Fi 지연에서도 음절 유실 방지
                 const merged = new Int16Array(totalSamples);
                 let offset = 0;
                 for (const c of chunks) {
                     merged.set(c, offset);
                     offset += c.length;
                 }
-                const payload = totalSamples > 18000 ? merged.subarray(totalSamples - 18000) : merged;
+                const payload = totalSamples > 36000 ? merged.subarray(totalSamples - 36000) : merged;
 
-                await fetch(`/api/camera/audio?sr=48000&src=mobile&cam=${currentCamId}&seq=${myAudioSeq}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength)
-                });
+                const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, 1500) : null;
+                try {
+                    await fetch(`/api/camera/audio?sr=48000&src=mobile&cam=${currentCamId}&seq=${myAudioSeq}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/octet-stream' },
+                        body: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength),
+                        signal: ctrl ? ctrl.signal : undefined
+                    });
+                } finally {
+                    if (timer) clearTimeout(timer);
+                }
             } catch (e) {
             } finally {
                 audioInFlightCount = Math.max(0, audioInFlightCount - 1);
@@ -1381,6 +1536,7 @@
                 currentStream.getVideoTracks().forEach(t => { t.enabled = isStreaming; });
                 currentStream.getAudioTracks().forEach(t => { t.enabled = isStreaming && !isMicMuted; });
             }
+            syncAudioWorkerConfig();
 
             if (isStreaming) {
                 btn.classList.add('streaming');

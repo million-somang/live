@@ -2410,9 +2410,9 @@
 
                         const now = ovAudioCtx.currentTime;
                         if (ovNextPlayTime < now) {
-                            ovNextPlayTime = now + 0.09;
-                        } else if (ovNextPlayTime > now + 0.35) {
-                            ovNextPlayTime = now + 0.09;
+                            ovNextPlayTime = now + 0.28;
+                        } else if (ovNextPlayTime > now + 1.20) {
+                            ovNextPlayTime = now + 0.28;
                         }
                         src.start(ovNextPlayTime);
                         ovNextPlayTime += audioBuf.duration;

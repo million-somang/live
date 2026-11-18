@@ -11266,11 +11266,11 @@
                 src.connect(phoneMonitorGainNode);
 
                 const now = ctx.currentTime;
-                // 재생 큐가 현재 시점보다 뒤처졌거나 350ms 이상 밀렸으면 90ms 안전 쿠션 시점으로 스냅백하여 끊김 방지
+                // 모바일 네트워크 지터(180~350ms) 흡수 및 패킷 뭉침 시 중첩 재생 방지를 위해 280ms 안전 쿠션 및 1.2초 허용 폭 적용
                 if (phoneMonitorNextPlayTime < now) {
-                    phoneMonitorNextPlayTime = now + 0.09;
-                } else if (phoneMonitorNextPlayTime > now + 0.35) {
-                    phoneMonitorNextPlayTime = now + 0.09;
+                    phoneMonitorNextPlayTime = now + 0.28;
+                } else if (phoneMonitorNextPlayTime > now + 1.20) {
+                    phoneMonitorNextPlayTime = now + 0.28;
                 }
                 src.start(phoneMonitorNextPlayTime);
                 phoneMonitorNextPlayTime += audioBuf.duration;
