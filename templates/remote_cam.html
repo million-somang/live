@@ -270,7 +270,7 @@
         let audioWorkletReady = false;
         let audioUploadWorker = null;
         let audioInFlightCount = 0;
-        const MAX_AUDIO_IN_FLIGHT = 2;
+        const MAX_AUDIO_IN_FLIGHT = 1;
         let audioSeq = 0;
         let pendingPcmChunks = [];
         let pendingPcmSamples = 0;
@@ -299,7 +299,7 @@
                 let uploadUrlBase = '';
                 let isActive = false;
                 let audioInFlightCount = 0;
-                const MAX_AUDIO_IN_FLIGHT = 2;
+                const MAX_AUDIO_IN_FLIGHT = 1;
                 const AUDIO_PACKET_SAMPLES = 3840;
                 const MAX_BUFFER_SAMPLES = 36000;
                 let audioSeq = 0;
@@ -484,36 +484,63 @@
                 }
                 audioProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
                 const effRate = inRate || audioCtx.sampleRate || 48000;
+                const ratio = effRate / TARGET_AUDIO_SAMPLE_RATE;
+                let spDcX = 0, spDcY = 0, spPrevSample = 0, spHasPrev = false, spSrcPos = 0;
                 const worker = ensureAudioUploadWorker();
                 syncAudioWorkerConfig();
                 audioProcessorNode.onaudioprocess = (event) => {
                     if (!isStreaming || isMicMuted || !hasAudioTrack) return;
                     const inputData = event.inputBuffer.getChannelData(0);
                     if (!inputData || inputData.length === 0) return;
-
-                    const outLength = Math.max(1, Math.floor(inputData.length / (effRate / TARGET_AUDIO_SAMPLE_RATE)));
-                    const ratio = inputData.length / outLength;
-                    const pcm16 = new Int16Array(outLength);
                     const inLen = inputData.length;
-                    for (let i = 0; i < outLength; i++) {
-                        const startF = i * ratio;
-                        const endF = startF + ratio;
-                        const startIdx = Math.min(inLen - 1, Math.floor(startF));
-                        const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
-                        let sum = 0;
-                        let cnt = 0;
-                        for (let j = startIdx; j < endIdx; j++) {
-                            sum += inputData[j];
-                            cnt++;
+                    const fBuf = new Float32Array(inLen);
+                    for (let i = 0; i < inLen; i++) {
+                        const x = inputData[i];
+                        spDcY = x - spDcX + 0.995 * spDcY;
+                        spDcX = x;
+                        fBuf[i] = spDcY;
+                    }
+
+                    let pcm16;
+                    if (Math.abs(ratio - 1.0) < 0.001) {
+                        pcm16 = new Int16Array(inLen);
+                        for (let i = 0; i < inLen; i++) {
+                            let s = fBuf[i];
+                            if (s > 0.98) s = 0.98;
+                            else if (s < -0.98) s = -0.98;
+                            pcm16[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
                         }
-                        let sample = (cnt > 0 ? (sum / cnt) : inputData[startIdx]);
-                        if (sample > 0.98) sample = 0.98;
-                        else if (sample < -0.98) sample = -0.98;
-                        pcm16[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7FFF);
+                        spPrevSample = fBuf[inLen - 1];
+                        spHasPrev = true;
+                    } else {
+                        if (!spHasPrev) {
+                            spPrevSample = fBuf[0];
+                            spHasPrev = true;
+                            spSrcPos = 0;
+                        }
+                        const maxOut = Math.ceil((inLen + 2) / ratio) + 2;
+                        const tmp = new Int16Array(maxOut);
+                        let outIdx = 0;
+                        const limit = inLen - 1;
+                        while (spSrcPos < limit) {
+                            const idx = Math.floor(spSrcPos);
+                            const frac = spSrcPos - idx;
+                            const s0 = idx < 0 ? spPrevSample : fBuf[idx];
+                            const s1 = idx < 0 ? fBuf[0] : fBuf[idx + 1];
+                            let s = s0 * (1 - frac) + s1 * frac;
+                            if (s > 0.98) s = 0.98;
+                            else if (s < -0.98) s = -0.98;
+                            tmp[outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                            spSrcPos += ratio;
+                        }
+                        spPrevSample = fBuf[inLen - 1];
+                        spSrcPos -= inLen;
+                        pcm16 = tmp.subarray(0, outIdx);
                     }
 
                     if (worker) {
-                        worker.postMessage({ type: 'pcm', pcm: pcm16 }, [pcm16.buffer]);
+                        const copy = new Int16Array(pcm16);
+                        worker.postMessage({ type: 'pcm', pcm: copy }, [copy.buffer]);
                     } else {
                         pendingPcmChunks.push(pcm16);
                         pendingPcmSamples += pcm16.length;
@@ -596,6 +623,24 @@
                                                 }
                                             };
                                         }
+                                        emitSample(s) {
+                                            if (s > 0.98) s = 0.98;
+                                            else if (s < -0.98) s = -0.98;
+                                            this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                                            if (this.outIdx >= 1920) {
+                                                const chunk = this.outBuf.slice(0);
+                                                if (this.workerPort) {
+                                                    this.workerPort.postMessage(chunk, [chunk.buffer]);
+                                                    if (!this.notifiedAlive) {
+                                                        this.notifiedAlive = true;
+                                                        this.port.postMessage('alive');
+                                                    }
+                                                } else {
+                                                    this.port.postMessage(chunk, [chunk.buffer]);
+                                                }
+                                                this.outIdx = 0;
+                                            }
+                                        }
                                         process(inputs) {
                                             const input = inputs[0];
                                             if (!input || !input[0] || input[0].length === 0) return true;
@@ -613,43 +658,31 @@
                                             }
                                             this.dcX = dcX;
                                             this.dcY = dcY;
-                                            const ratio = sampleRate / 48000;
                                             const fBuf = this.filteredBuf;
-                                            while (this.srcPos < inLen) {
+                                            if (sampleRate === 48000) {
+                                                for (let i = 0; i < inLen; i++) {
+                                                    this.emitSample(fBuf[i]);
+                                                }
+                                                this.prevSample = fBuf[inLen - 1];
+                                                this.hasPrev = true;
+                                                return true;
+                                            }
+                                            const ratio = sampleRate / 48000;
+                                            if (!this.hasPrev) {
+                                                this.prevSample = fBuf[0];
+                                                this.hasPrev = true;
+                                                this.srcPos = 0;
+                                            }
+                                            const limit = inLen - 1;
+                                            while (this.srcPos < limit) {
                                                 const idx = Math.floor(this.srcPos);
                                                 const frac = this.srcPos - idx;
-                                                let s0, s1;
-                                                if (idx < 0) {
-                                                    s0 = this.hasPrev ? this.prevSample : fBuf[0];
-                                                    s1 = fBuf[0];
-                                                } else if (idx >= inLen - 1) {
-                                                    s0 = fBuf[inLen - 1];
-                                                    s1 = fBuf[inLen - 1];
-                                                } else {
-                                                    s0 = fBuf[idx];
-                                                    s1 = fBuf[idx + 1];
-                                                }
-                                                let s = (s0 * (1 - frac) + s1 * frac);
-                                                if (s > 0.98) s = 0.98;
-                                                else if (s < -0.98) s = -0.98;
-                                                this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
-                                                if (this.outIdx >= 1920) {
-                                                    const chunk = this.outBuf.slice(0);
-                                                    if (this.workerPort) {
-                                                        this.workerPort.postMessage(chunk, [chunk.buffer]);
-                                                        if (!this.notifiedAlive) {
-                                                            this.notifiedAlive = true;
-                                                            this.port.postMessage('alive');
-                                                        }
-                                                    } else {
-                                                        this.port.postMessage(chunk, [chunk.buffer]);
-                                                    }
-                                                    this.outIdx = 0;
-                                                }
+                                                const s0 = idx < 0 ? this.prevSample : fBuf[idx];
+                                                const s1 = idx < 0 ? fBuf[0] : fBuf[idx + 1];
+                                                this.emitSample(s0 * (1 - frac) + s1 * frac);
                                                 this.srcPos += ratio;
                                             }
                                             this.prevSample = fBuf[inLen - 1];
-                                            this.hasPrev = true;
                                             this.srcPos -= inLen;
                                             return true;
                                         }
@@ -905,13 +938,19 @@
 
         async function answerViewerOffer(peerId, offer) {
             try {
+                if (peerConnection) {
+                    try { peerConnection.close(); } catch (e) {}
+                    peerConnection = null;
+                }
                 const pc = new RTCPeerConnection({
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' }
                     ]
                 });
-                mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
+                peerConnection = pc;
+                // 오디오는 전용 AudioWorklet + Web Worker가 48kHz 무손실 PCM으로 전송하므로 WebRTC에는 비디오 트랙만 연결하여 모바일 VoIP 세션 전환 및 중복 유입 원천 차단
+                mediaStream.getVideoTracks().forEach(track => pc.addTrack(track, mediaStream));
                 await pc.setRemoteDescription(new RTCSessionDescription(offer));
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);

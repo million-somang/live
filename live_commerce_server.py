@@ -5674,7 +5674,7 @@ def api_camera_pull_monitor_audio():
 
 @app.route('/api/camera/mic-worklet.js', methods=['GET'])
 def api_camera_mic_worklet_js():
-    """모바일 HTTPS(자체 서명 인증서 포함)에서 Blob URL 차단 없이 즉시 로드되는 전용 AudioWorklet 모듈 (48kHz 무필터 원음 + 전용 Worker 포트 직결)"""
+    """모바일 HTTPS(자체 서명 인증서 포함)에서 Blob URL 차단 없이 즉시 로드되는 전용 AudioWorklet 모듈 (48kHz 무필터 원음 + 블록 경계 무손실 연속 보간)"""
     from flask import Response
     js_code = """class MicPcmWorklet extends AudioWorkletProcessor {
     constructor() {
@@ -5695,6 +5695,24 @@ def api_camera_mic_worklet_js():
             }
         };
     }
+    emitSample(s) {
+        if (s > 0.98) s = 0.98;
+        else if (s < -0.98) s = -0.98;
+        this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+        if (this.outIdx >= 1920) {
+            const chunk = this.outBuf.slice(0);
+            if (this.workerPort) {
+                this.workerPort.postMessage(chunk, [chunk.buffer]);
+                if (!this.notifiedAlive) {
+                    this.notifiedAlive = true;
+                    this.port.postMessage('alive');
+                }
+            } else {
+                this.port.postMessage(chunk, [chunk.buffer]);
+            }
+            this.outIdx = 0;
+        }
+    }
     process(inputs) {
         const input = inputs[0];
         if (!input || !input[0] || input[0].length === 0) return true;
@@ -5713,43 +5731,39 @@ def api_camera_mic_worklet_js():
         this.dcX = dcX;
         this.dcY = dcY;
 
-        const ratio = sampleRate / 48000;
         const fBuf = this.filteredBuf;
-        while (this.srcPos < inLen) {
+        if (sampleRate === 48000) {
+            for (let i = 0; i < inLen; i++) {
+                this.emitSample(fBuf[i]);
+            }
+            this.prevSample = fBuf[inLen - 1];
+            this.hasPrev = true;
+            return true;
+        }
+
+        const ratio = sampleRate / 48000;
+        if (!this.hasPrev) {
+            this.prevSample = fBuf[0];
+            this.hasPrev = true;
+            this.srcPos = 0;
+        }
+        // inLen - 1 까지만 보간하고 마지막 샘플(inLen - 1)과 다음 블록 첫 샘플(0) 사이는 다음 process() 호출에서 idx = -1로 무손실 연속 보간
+        const limit = inLen - 1;
+        while (this.srcPos < limit) {
             const idx = Math.floor(this.srcPos);
             const frac = this.srcPos - idx;
             let s0, s1;
             if (idx < 0) {
-                s0 = this.hasPrev ? this.prevSample : fBuf[0];
+                s0 = this.prevSample;
                 s1 = fBuf[0];
-            } else if (idx >= inLen - 1) {
-                s0 = fBuf[inLen - 1];
-                s1 = fBuf[inLen - 1];
             } else {
                 s0 = fBuf[idx];
                 s1 = fBuf[idx + 1];
             }
-            let s = (s0 * (1 - frac) + s1 * frac);
-            if (s > 0.98) s = 0.98;
-            else if (s < -0.98) s = -0.98;
-            this.outBuf[this.outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
-            if (this.outIdx >= 1920) {
-                const chunk = this.outBuf.slice(0);
-                if (this.workerPort) {
-                    this.workerPort.postMessage(chunk, [chunk.buffer]);
-                    if (!this.notifiedAlive) {
-                        this.notifiedAlive = true;
-                        this.port.postMessage('alive');
-                    }
-                } else {
-                    this.port.postMessage(chunk, [chunk.buffer]);
-                }
-                this.outIdx = 0;
-            }
+            this.emitSample(s0 * (1 - frac) + s1 * frac);
             this.srcPos += ratio;
         }
         this.prevSample = fBuf[inLen - 1];
-        this.hasPrev = true;
         this.srcPos -= inLen;
         return true;
     }
@@ -5763,12 +5777,12 @@ registerProcessor('mic-pcm-worklet', MicPcmWorklet);
 
 @app.route('/api/camera/audio-worker.js', methods=['GET'])
 def api_camera_audio_worker_js():
-    """스마트폰 메인 스레드(캔버스 JPEG 인코딩)와 완전히 분리된 전용 Web Worker 오디오 업로더"""
+    """스마트폰 메인 스레드(캔버스 JPEG 인코딩)와 완전히 분리된 전용 Web Worker 오디오 업로더 (MAX_AUDIO_IN_FLIGHT=1 직렬 순서 보장)"""
     from flask import Response
     js_code = """let uploadUrlBase = '';
 let isActive = false;
 let audioInFlightCount = 0;
-const MAX_AUDIO_IN_FLIGHT = 2;
+const MAX_AUDIO_IN_FLIGHT = 1;
 const AUDIO_PACKET_SAMPLES = 3840;
 const MAX_BUFFER_SAMPLES = 36000;
 let audioSeq = 0;
@@ -7800,45 +7814,63 @@ class YouTubeDirectStreamer:
         self._last_meter_update_ts = now_ts
 
     def _append_ordered_pcm(self, buf, reorder_map, last_seq, pcm_slice, seq, last_ts, now_a, max_buf_bytes=153600):
-        """오디오 패킷을 시퀀스 순서대로 지터 버퍼에 적재 (2-way 병렬 업로드 시 역전된 패킷 1개까지 무손실 재정렬)"""
-        if not seq or seq <= 0 or last_seq <= 0 or (last_ts > 0 and (now_a - last_ts) > 0.6) or seq < last_seq:
+        """오디오 패킷을 시퀀스 순서대로 지터 버퍼에 적재 (역전 패킷 재정렬 및 뒤늦게 도착한 과거 패킷 역주행 원천 차단)"""
+        emitted = bytearray()
+        is_fresh_stream = (
+            not seq
+            or seq <= 0
+            or last_seq <= 0
+            or (last_ts > 0 and (now_a - last_ts) > 0.8)
+            or (seq <= 3 and last_seq > 10)
+        )
+        if is_fresh_stream:
             if reorder_map:
                 for k in sorted(reorder_map.keys()):
-                    buf.extend(reorder_map[k][1])
+                    emitted.extend(reorder_map[k][1])
                 reorder_map.clear()
-            buf.extend(pcm_slice)
+            emitted.extend(pcm_slice)
+            buf.extend(emitted)
             if len(buf) > max_buf_bytes:
                 del buf[:-max_buf_bytes]
+            self._last_ordered_emitted = bytes(emitted)
             return seq if (seq and seq > 0) else (last_seq + 1)
+
+        # 이미 방출된 시퀀스보다 과거/중복 패킷(seq <= last_seq)이 뒤늦게 도착한 경우 파형 역주행('틱' 소리) 방지를 위해 즉시 폐기
+        if seq <= last_seq:
+            self._last_ordered_emitted = b""
+            return last_seq
 
         if reorder_map:
             oldest_ts = min(v[0] for v in reorder_map.values())
             if (now_a - oldest_ts) > 0.16 or len(reorder_map) >= 2:
                 for k in sorted(reorder_map.keys()):
-                    buf.extend(reorder_map[k][1])
                     if k > last_seq:
+                        emitted.extend(reorder_map[k][1])
                         last_seq = k
                 reorder_map.clear()
 
         if seq == last_seq + 1:
-            buf.extend(pcm_slice)
+            emitted.extend(pcm_slice)
             last_seq = seq
             while (last_seq + 1) in reorder_map:
                 _, next_bytes = reorder_map.pop(last_seq + 1)
-                buf.extend(next_bytes)
+                emitted.extend(next_bytes)
                 last_seq += 1
         elif seq == last_seq + 2 and not reorder_map:
             reorder_map[seq] = (now_a, bytes(pcm_slice))
         else:
             reorder_map[seq] = (now_a, bytes(pcm_slice))
             for k in sorted(reorder_map.keys()):
-                buf.extend(reorder_map[k][1])
                 if k > last_seq:
+                    emitted.extend(reorder_map[k][1])
                     last_seq = k
             reorder_map.clear()
 
-        if len(buf) > max_buf_bytes:
-            del buf[:-max_buf_bytes]
+        if emitted:
+            buf.extend(emitted)
+            if len(buf) > max_buf_bytes:
+                del buf[:-max_buf_bytes]
+        self._last_ordered_emitted = bytes(emitted)
         return last_seq
 
     def _update_rate_window(self, rate_win, current_ratio, nbytes, now_a):
@@ -7865,9 +7897,7 @@ class YouTubeDirectStreamer:
         import array
         now_a = time.time()
         pcm_slice = pcm_bytes[:even_len]
-        if source != "pc":
-            # 🔬 탭① RAW: 서버에 도착한 그대로의 원음 바이트
-            self._scope_push("raw", pcm_slice)
+        ordered_pcm = pcm_slice
         # 송출 대기 중(inactive)에는 최신 600ms(57600 bytes) 유지, 송출 중(active)에는 최대 1600ms(153600 bytes)까지 버퍼 보장
         max_buf_bytes = 153600 if self.active else 57600
         with self._audio_lock:
@@ -7901,6 +7931,7 @@ class YouTubeDirectStreamer:
                     now_a,
                     max_buf_bytes
                 )
+                ordered_pcm = getattr(self, "_last_ordered_emitted", pcm_slice)
                 if not self.active and len(self._audio_buffer_pc) > 57600:
                     del self._audio_buffer_pc[:-57600]
                 self.last_pc_audio_ts = now_a
@@ -7932,12 +7963,6 @@ class YouTubeDirectStreamer:
                         return
                     self._last_mob_subsource = "mobile_cam"
 
-                if eff_sub not in ("cloud_bridge", "webrtc_mobile"):
-                    self._raw_mobile_audio_seq += 1
-                    self._raw_mobile_audio_ring.append((self._raw_mobile_audio_seq, now_a, bytes(pcm_slice)))
-                    if len(self._raw_mobile_audio_ring) > 60:
-                        del self._raw_mobile_audio_ring[:-45]
-
                 if self.last_mobile_audio_ts > 0:
                     dt_ms = (now_a - self.last_mobile_audio_ts) * 1000.0
                     if 1.0 <= dt_ms <= 1500.0:
@@ -7953,7 +7978,7 @@ class YouTubeDirectStreamer:
                                     "PACKET_GAP",
                                     "warn" if dt_ms < 520.0 else "bad",
                                     f"📡 무선 마이크 패킷 갭 감지 ({round(dt_ms)}ms 지연)",
-                                    f"스마트폰({eff_sub}) 네트워크 패킷 도착 간격이 {round(dt_ms, 1)}ms로 벌어졌습니다 (안전 버퍼 320~400ms가 흡수 중).",
+                                    f"스마트폰({eff_sub}) 네트워크 패킷 도착 간격이 {round(dt_ms, 1)}ms로 벌어졌습니다 (안전 버퍼 300~400ms가 흡수 중).",
                                     now_a
                                 )
                 self._mob_rate_ratio = self._update_rate_window(self._mob_rate_win, self._mob_rate_ratio, even_len, now_a)
@@ -7967,35 +7992,43 @@ class YouTubeDirectStreamer:
                     now_a,
                     max_buf_bytes
                 )
+                ordered_pcm = getattr(self, "_last_ordered_emitted", pcm_slice)
                 if not self.active and len(self._audio_buffer) > 57600:
                     del self._audio_buffer[:-57600]
                 self.last_mobile_audio_ts = now_a
+
+                if ordered_pcm and eff_sub not in ("cloud_bridge", "webrtc_mobile"):
+                    self._raw_mobile_audio_seq += 1
+                    self._raw_mobile_audio_ring.append((self._raw_mobile_audio_seq, now_a, bytes(ordered_pcm)))
+                    if len(self._raw_mobile_audio_ring) > 60:
+                        del self._raw_mobile_audio_ring[:-45]
 
             self._audio_pkt_win.append((now_a, even_len))
             if len(self._audio_pkt_win) > 150:
                 del self._audio_pkt_win[:-120]
             self.last_audio_ts = now_a
             self.audio_packets_received += 1
-            # OBS 스튜디오/오버레이 스피커 모니터링용 48kHz PCM 링버퍼 적재 (스마트폰 유입 음성)
-            if source != "pc":
+            # 시퀀스 정렬이 완료된 연속 오디오 바이트(ordered_pcm)만 스코프 및 모니터 링버퍼에 적재
+            if source != "pc" and ordered_pcm:
+                self._scope_push("raw", ordered_pcm)
                 if not self.active:
                     # 방송 대기 중에도 실제 송출(Broadcast) 파이프라인과 100% 동일한 AGC + 고감도 부스트 파형으로 감도 미터 측정
                     bcast_arr = array.array("h")
-                    bcast_arr.frombytes(pcm_slice)
+                    bcast_arr.frombytes(ordered_pcm)
                     self._apply_gain_to_array(bcast_arr, source="mobile")
                     # 🔬 탭② DSP (방송 대기 중 미리보기 가공본)
                     self._scope_push("dsp", bcast_arr.tobytes())
                     self._update_audio_envelope(bcast_arr, None, now_a)
                 mon_arr = array.array("h")
-                mon_arr.frombytes(pcm_slice)
+                mon_arr.frombytes(ordered_pcm)
                 self._apply_gain_to_array(mon_arr, source="monitor")
                 self._monitor_audio_seq += 1
                 self._monitor_audio_ring.append((self._monitor_audio_seq, now_a, mon_arr.tobytes()))
                 if len(self._monitor_audio_ring) > 60:
                     del self._monitor_audio_ring[:-45]
-            elif not self.active:
+            elif source == "pc" and (not self.active) and ordered_pcm:
                 in_arr = array.array("h")
-                in_arr.frombytes(pcm_slice)
+                in_arr.frombytes(ordered_pcm)
                 self._apply_gain_to_array(in_arr, source="pc")
                 self._update_audio_envelope(None, in_arr, now_a)
 
@@ -8214,7 +8247,7 @@ class YouTubeDirectStreamer:
                     draw.text((bx0 + 12, by0 + 10), banner_txt, fill=(52, 211, 153))
 
             buf = io.BytesIO()
-            base_img.save(buf, format="JPEG", quality=85)
+            base_img.save(buf, format="JPEG", quality=78, subsampling=1)
             out_bytes = buf.getvalue()
             comp_ms = (time.perf_counter() - t_comp0) * 1000.0
             with self.lock:
@@ -8832,23 +8865,24 @@ class YouTubeDirectStreamer:
         """
         모바일 네트워크(LTE/5G/Wi-Fi) 지터(180~350ms)를 완벽 흡수하는 1:1 비트 무변조(Bit-Exact) 직결 지터 버퍼 (48kHz, 960 샘플 = 1,920 바이트 @ 20ms):
         1) 가변 리샘플링 및 자투리 타임스트레칭 없이 48kHz 원본 PCM을 1:1 무변조로 직결 전달합니다.
-        2) 스마트폰 카메라 JPEG 동시 업로드로 인한 180~350ms 패킷 간격 흔들림에도 버퍼가 마르지 않도록
-           320ms(30,720 bytes) 안전 쿠션과 최대 1,200ms(115,200 bytes) 버스트 허용 폭을 유지하여 지연 패킷 강제 절단을 원천 차단합니다.
+        2) 일시적 버퍼 소진 시 수위가 0ms 바닥에 고착되어 매 패킷마다 '틱-틱-틱' 단절음을 내는 현상을 방지하기 위해,
+           2틱(40ms) 이상 마르면 즉시 300ms 안전 쿠션을 재충전하고 재개 시 첫 64샘플 크로스페이드로 파형 단절을 0으로 만듭니다.
         """
         import array
         chunk_bytes = chunk_samples * 2
-        prebuffer_bytes = 30720   # 320ms 안전 쿠션 @ 48kHz (모바일 RTT 180~300ms 변동 완벽 흡수 & MJPEG 립싱크 정렬)
-        target_bytes = 38400      # 400ms 목표 중심 수위 @ 48kHz
+        prebuffer_bytes = 28800   # 300ms 안전 쿠션 @ 48kHz (모바일 RTT 180~300ms 변동 흡수 & MJPEG 립싱크 정렬)
         trim_bytes = 48000        # 500ms 소프트 정리 수위 @ 48kHz
         max_sync_bytes = 115200   # 1,200ms 상한 (지연 도착한 패킷 버스트를 절대 임의 절단하지 않음)
 
         buf_len = len(buf)
         now_t = time.time()
         src_alive = (last_src_ts > 0) and ((now_t - last_src_ts) < 1.25)
+        need_crossfade = (empty_ticks > 0)
 
         if prebuffering:
             if buf_len >= prebuffer_bytes:
                 prebuffering = False
+                need_crossfade = True
                 if buf_len > max_sync_bytes:
                     del buf[:-trim_bytes]
                     buf_len = len(buf)
@@ -8868,6 +8902,7 @@ class YouTubeDirectStreamer:
         if buf_len > max_sync_bytes:
             del buf[:-trim_bytes]
             buf_len = len(buf)
+            need_crossfade = True
             self._audio_overflow_drops += 1
 
         # 100% 1:1 비트 무변조 추출 (960 샘플 = 1,920 바이트 고정, 리샘플링 왜곡 0%)
@@ -8876,34 +8911,27 @@ class YouTubeDirectStreamer:
             del buf[:chunk_bytes]
             out_arr = array.array("h")
             out_arr.frombytes(raw)
+            if need_crossfade and len(out_arr) > 0:
+                prev_s = int(last_sample)
+                n_fade = min(64, len(out_arr))
+                for i in range(n_fade):
+                    w = (i + 1) / float(n_fade)
+                    out_arr[i] = int(prev_s * (1.0 - w) + out_arr[i] * w)
             return out_arr, False, 0, (out_arr[-1] if len(out_arr) > 0 else 0), float(chunk_samples)
 
-        # 버퍼에 20ms 미만의 잔여 샘플이 남아 있으면 먼저 소진하고 나머지를 부드럽게 감쇠 브릿지
-        if src_alive and buf_len >= 2:
-            even_rem = buf_len - (buf_len % 2)
-            raw_rem = bytes(buf[:even_rem])
-            del buf[:even_rem]
-            rem_arr = array.array("h")
-            rem_arr.frombytes(raw_rem)
-            v = int(rem_arr[-1]) if len(rem_arr) > 0 else int(last_sample)
-            pad_needed = chunk_samples - len(rem_arr)
-            for _ in range(max(0, pad_needed)):
-                v = int(v * 0.94)
-                rem_arr.append(v)
-            return rem_arr, False, empty_ticks, v, float(chunk_samples)
-
-        # 버퍼가 일시적으로 비었을 때:
-        # 최대 6틱(120ms) 동안 소리를 즉시 끊거나 언더런으로 전환하지 않고 부드럽게 브릿지하여 지연 패킷을 이어받음
+        # 버퍼가 1틱(20ms) 미만으로 마른 경우:
+        # 1틱(20ms)만 부드럽게 감쇠 브릿지하고, 2틱(40ms) 이상 마르면 즉시 prebuffering=True로 전환해
+        # 300ms 안전 쿠션을 재충전함으로써 수위가 0ms 바닥에 머물며 매 패킷마다 '틱틱틱' 소리가 나는 현상을 원천 차단
         empty_ticks += 1
         if src_alive:
-            if empty_ticks <= 6:
+            if empty_ticks == 1:
                 bridge_arr = array.array("h")
                 v = int(last_sample)
                 for _ in range(chunk_samples):
-                    v = int(v * 0.92)
+                    v = int(v * 0.94)
                     bridge_arr.append(v)
                 return bridge_arr, False, empty_ticks, v, float(chunk_samples)
-            if empty_ticks == 7:
+            if empty_ticks == 2:
                 self.audio_underruns += 1
                 self._audio_underrun_ts.append(now_t)
                 if len(self._audio_underrun_ts) > 120:
@@ -8912,7 +8940,7 @@ class YouTubeDirectStreamer:
                     "BUFFER_UNDERRUN",
                     "bad",
                     f"🚨 오디오 지터 버퍼 언더런(끊김) 발생 (누적 {self.audio_underruns}회)",
-                    f"패킷 도착 지연으로 버퍼가 일시 고갈되어 안전 쿠션 재충전으로 전환되었습니다.",
+                    f"패킷 도착 지연으로 버퍼가 일시 고갈되어 300ms 안전 쿠션 재충전으로 전환되었습니다.",
                     now_t
                 )
         elif buf_len > 0:
@@ -9131,8 +9159,12 @@ class YouTubeDirectStreamer:
                             with self.lock:
                                 t0 = self._stream_clock_t0
                                 wall_s = (now_pc - t0) if (t0 is not None and now_pc >= t0) else ff_out_s
-                                lag_ms = round((wall_s - ff_out_s) * 1000.0, 1) if ff_out_s > 0 else 0.0
                                 q_frames = max(0, self.frames_sent - ff_frame)
+                                fps_val = float(max(1, self.fps or 30))
+                                # 실제 FFmpeg 인코더 내부 지연(ms)은 인코더 큐에 쌓여 아직 인코딩되지 못한 프레임 수(q_frames / fps)로 산출합니다.
+                                # (과거 시작 시점부터 누적된 단순 벽시계 차이 wall_s - ff_out_s는 q_frames=0이어도 허위 누적을 유발하므로 분리)
+                                lag_ms = round((q_frames / fps_val) * 1000.0, 1)
+                                clock_drift_ms = round(max(0.0, wall_s - ff_out_s) * 1000.0, 1) if ff_out_s > 0 else 0.0
                                 self._ffmpeg_telemetry = {
                                     "encoded_frames": ff_frame,
                                     "fps": round(ff_fps, 1),
@@ -9143,6 +9175,7 @@ class YouTubeDirectStreamer:
                                     "speed": round(ff_sp, 3),
                                     "queued_frames": q_frames,
                                     "internal_lag_ms": lag_ms,
+                                    "clock_drift_ms": clock_drift_ms,
                                     "updated_at": time.time(),
                                     "raw_status": line[:160]
                                 }
@@ -9223,11 +9256,11 @@ class YouTubeDirectStreamer:
                             self._latest_server_built_frame = built
                             self._last_comp_cam_seq = cur_cam_seq
                             self._last_comp_ov_ts = cur_ov_ts
-                        time.sleep(0.012 if not do_burnin else 0.024)
+                        time.sleep(0.025 if not do_burnin else 0.030)
                         continue
             except Exception:
                 pass
-            time.sleep(0.015)
+            time.sleep(0.020)
 
     def _feeder_loop(self, proc):
         """
@@ -9368,12 +9401,28 @@ class YouTubeDirectStreamer:
                     break
 
             frames_emitted += 1
+            now_after = time.perf_counter()
             target_frame_time = t0 + (frames_emitted * interval)
-            sleep_for = target_frame_time - time.perf_counter()
+            sleep_for = target_frame_time - now_after
             if sleep_for > 0:
                 time.sleep(sleep_for)
-            elif sleep_for < -2.5:
-                t0 = time.perf_counter() - (frames_emitted * interval)
+            elif sleep_for < -interval and last_sent_frame and proc.poll() is None:
+                # PIL 합성 등 GIL 경합으로 1프레임 이상 뒤처진 경우 즉시 보충(Catch-up)하여 30.0 FPS (1.00x) 유지
+                deficit_frames = min(2, int((-sleep_for) // interval))
+                for _ in range(deficit_frames):
+                    try:
+                        proc.stdin.write(last_sent_frame)
+                        proc.stdin.flush()
+                        frames_emitted += 1
+                        with self.lock:
+                            self.frames_sent += 1
+                    except Exception:
+                        break
+                if (t0 + (frames_emitted * interval) - time.perf_counter()) < -2.5:
+                    new_t0 = time.perf_counter() - (frames_emitted * interval)
+                    t0 = new_t0
+                    with self.lock:
+                        self._stream_clock_t0 = new_t0
 
         if unexpected_exit_reason and self._user_requested_active and not self._stop_flag:
             self._schedule_auto_restart(unexpected_exit_reason)

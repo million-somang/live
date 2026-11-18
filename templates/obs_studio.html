@@ -3983,10 +3983,8 @@
                 });
                 studioWebRtcPc = pc;
                 pc.addTransceiver('video', { direction: 'recvonly' });
-                pc.addTransceiver('audio', { direction: 'recvonly' });
 
                 let connected = false;
-                let audioConnected = false;
                 const activateStudioWebRtcVideoIfReady = () => {
                     if (!isMobileActive || studioWebRtcPc !== pc || connected) return;
                     if (video.videoWidth > 0 && video.readyState >= 2) {
@@ -3996,7 +3994,7 @@
                         // 실제 UDP 비디오 프레임 디코딩이 확인된 경우에만 MJPEG 폴백 중단
                         img.src = '';
                         img.style.display = 'none';
-                        showToast('⚡ 스마트폰 WebRTC P2P 초저지연(영상+음성) 직결 완료!');
+                        showToast('⚡ 스마트폰 WebRTC P2P 초저지연 직결 완료!');
                     }
                 };
 
@@ -4004,10 +4002,6 @@
                     if (!isMobileActive) return;
                     if (event.streams && event.streams[0]) {
                         const stream = event.streams[0];
-                        if (event.track && event.track.kind === 'audio' && !audioConnected) {
-                            audioConnected = true;
-                            connectExternalAudioStreamToRtmp(stream, 'WebRTC 폰 오디오');
-                        }
                         video.srcObject = stream;
                         video.onloadeddata = activateStudioWebRtcVideoIfReady;
                         video.onplaying = activateStudioWebRtcVideoIfReady;
@@ -10576,39 +10570,51 @@
                     });
                 };
 
+                let pcMicPrevSample = 0, pcMicHasPrev = false, pcMicSrcPos = 0;
                 studioAudioProc.onaudioprocess = (ev) => {
                     if (!studioPcMicActive) return;
                     const input = ev.inputBuffer.getChannelData(0);
-                    const ratio = inRate / targetRate;
-                    const outLen = Math.floor(input.length / ratio);
-                    if (outLen <= 0) return;
-                    const pcm16 = new Int16Array(outLen);
                     const inLen = input.length;
+                    if (!inLen) return;
+                    const ratio = inRate / targetRate;
+                    let pcm16;
                     if (Math.abs(ratio - 1.0) < 0.01) {
-                        for (let i = 0; i < outLen; i++) {
+                        pcm16 = new Int16Array(inLen);
+                        for (let i = 0; i < inLen; i++) {
                             let s = input[i] * 1.05;
                             if (s > 0.98) s = 0.98;
                             else if (s < -0.98) s = -0.98;
                             pcm16[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
                         }
+                        pcMicPrevSample = input[inLen - 1];
+                        pcMicHasPrev = true;
                     } else {
-                        for (let i = 0; i < outLen; i++) {
-                            const startF = i * ratio;
-                            const endF = startF + ratio;
-                            const startIdx = Math.min(inLen - 1, Math.floor(startF));
-                            const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
-                            let sum = 0;
-                            let cnt = 0;
-                            for (let j = startIdx; j < endIdx; j++) {
-                                sum += input[j];
-                                cnt++;
-                            }
-                            let s = (cnt > 0 ? (sum / cnt) : input[startIdx]) * 1.05;
+                        if (!pcMicHasPrev) {
+                            pcMicPrevSample = input[0];
+                            pcMicHasPrev = true;
+                            pcMicSrcPos = 0;
+                        }
+                        const maxOut = Math.ceil((inLen + 2) / ratio) + 2;
+                        const tmp = new Int16Array(maxOut);
+                        let outIdx = 0;
+                        const limit = inLen - 1;
+                        while (pcMicSrcPos < limit) {
+                            const idx = Math.floor(pcMicSrcPos);
+                            const frac = pcMicSrcPos - idx;
+                            const s0 = idx < 0 ? pcMicPrevSample : input[idx];
+                            const s1 = idx < 0 ? input[0] : input[idx + 1];
+                            let s = (s0 * (1 - frac) + s1 * frac) * 1.05;
                             if (s > 0.98) s = 0.98;
                             else if (s < -0.98) s = -0.98;
-                            pcm16[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                            tmp[outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                            pcMicSrcPos += ratio;
                         }
+                        pcMicPrevSample = input[inLen - 1];
+                        pcMicSrcPos -= inLen;
+                        pcm16 = tmp.subarray(0, outIdx);
                     }
+                    const outLen = pcm16.length;
+                    if (outLen <= 0) return;
                     // 로컬 PC 마이크 즉각 볼륨(VU) 계산 (0ms 지연 피드백)
                     let sqSum = 0;
                     let pk = 0;
@@ -10704,39 +10710,50 @@
                     });
                 };
 
+                let extPrevSample = 0, extHasPrev = false, extSrcPos = 0;
                 extAudioProc.onaudioprocess = (ev) => {
                     if (!mediaStream.active) return;
                     const input = ev.inputBuffer.getChannelData(0);
-                    const ratio = inRate / targetRate;
-                    const outLen = Math.floor(input.length / ratio);
-                    if (outLen <= 0) return;
-                    const pcm16 = new Int16Array(outLen);
                     const inLen = input.length;
+                    if (!inLen) return;
+                    const ratio = inRate / targetRate;
+                    let pcm16;
                     if (Math.abs(ratio - 1.0) < 0.01) {
-                        for (let i = 0; i < outLen; i++) {
+                        pcm16 = new Int16Array(inLen);
+                        for (let i = 0; i < inLen; i++) {
                             let s = input[i] * 1.05;
                             if (s > 0.98) s = 0.98;
                             else if (s < -0.98) s = -0.98;
                             pcm16[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
                         }
+                        extPrevSample = input[inLen - 1];
+                        extHasPrev = true;
                     } else {
-                        for (let i = 0; i < outLen; i++) {
-                            const startF = i * ratio;
-                            const endF = startF + ratio;
-                            const startIdx = Math.min(inLen - 1, Math.floor(startF));
-                            const endIdx = Math.min(inLen, Math.max(startIdx + 1, Math.ceil(endF)));
-                            let sum = 0;
-                            let cnt = 0;
-                            for (let j = startIdx; j < endIdx; j++) {
-                                sum += input[j];
-                                cnt++;
-                            }
-                            let s = (cnt > 0 ? (sum / cnt) : input[startIdx]) * 1.05;
+                        if (!extHasPrev) {
+                            extPrevSample = input[0];
+                            extHasPrev = true;
+                            extSrcPos = 0;
+                        }
+                        const maxOut = Math.ceil((inLen + 2) / ratio) + 2;
+                        const tmp = new Int16Array(maxOut);
+                        let outIdx = 0;
+                        const limit = inLen - 1;
+                        while (extSrcPos < limit) {
+                            const idx = Math.floor(extSrcPos);
+                            const frac = extSrcPos - idx;
+                            const s0 = idx < 0 ? extPrevSample : input[idx];
+                            const s1 = idx < 0 ? input[0] : input[idx + 1];
+                            let s = (s0 * (1 - frac) + s1 * frac) * 1.05;
                             if (s > 0.98) s = 0.98;
                             else if (s < -0.98) s = -0.98;
-                            pcm16[i] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                            tmp[outIdx++] = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7FFF);
+                            extSrcPos += ratio;
                         }
+                        extPrevSample = input[inLen - 1];
+                        extSrcPos -= inLen;
+                        pcm16 = tmp.subarray(0, outIdx);
                     }
+                    if (!pcm16.length) return;
                     extAudioChunks.push(pcm16);
                     extAudioSamples += pcm16.length;
                     if (extAudioSamples >= 1920 && !extAudioSendInFlight) {
@@ -11236,6 +11253,8 @@
             });
         }
 
+        let phoneMonitorLastSample = 0;
+
         async function pollPhoneMonitorAudioTick() {
             if (!phoneAudioMonitorEnabled || phoneAudioMonitorVolPct <= 0 || phoneMonitorInFlight) return;
             const ctx = ensurePhoneMonitorAudioContext();
@@ -11261,17 +11280,30 @@
                     chData[i] = pcm16[i] / 32768.0;
                 }
 
-                const src = ctx.createBufferSource();
-                src.buffer = audioBuf;
-                src.connect(phoneMonitorGainNode);
-
                 const now = ctx.currentTime;
+                let resetQueue = false;
                 // 모바일 네트워크 지터(180~350ms) 흡수 및 패킷 뭉침 시 중첩 재생 방지를 위해 280ms 안전 쿠션 및 1.2초 허용 폭 적용
                 if (phoneMonitorNextPlayTime < now) {
                     phoneMonitorNextPlayTime = now + 0.28;
+                    resetQueue = true;
                 } else if (phoneMonitorNextPlayTime > now + 1.20) {
                     phoneMonitorNextPlayTime = now + 0.28;
+                    resetQueue = true;
                 }
+                // 청크 경계 또는 재개 시 첫 48샘플(1ms)을 부드럽게 보간하여 스피커 '틱' 소리 원천 방지
+                const fadeLen = Math.min(48, sampleCount);
+                const startVal = resetQueue ? 0.0 : phoneMonitorLastSample;
+                for (let i = 0; i < fadeLen; i++) {
+                    const w = (i + 1) / fadeLen;
+                    chData[i] = startVal * (1.0 - w) + chData[i] * w;
+                }
+                if (sampleCount > 0) {
+                    phoneMonitorLastSample = chData[sampleCount - 1];
+                }
+
+                const src = ctx.createBufferSource();
+                src.buffer = audioBuf;
+                src.connect(phoneMonitorGainNode);
                 src.start(phoneMonitorNextPlayTime);
                 phoneMonitorNextPlayTime += audioBuf.duration;
             } catch (e) {
@@ -11415,12 +11447,21 @@
                 if (i > 0) diffSum += Math.abs(v - pcm[i - 1]);
             }
             const rms = Math.sqrt(sq / n);
-            const meanDiff = diffSum / Math.max(1, n - 1);
-            // 틱/클릭: 평균 변화량의 8배 이상 & 1500 이상 급점프
-            const clickThr = Math.max(1500, meanDiff * 8);
+            // 틱/클릭: 정적 후 정상 발화 시작 시의 자연스러운 음성 기울기를 오탐지하지 않도록
+            // 국소(Local) 변화량 대비 1차 점프(d1)와 2차 가속도 불연속(d2)이 동시에 급증하는 실제 파형 단절(Step/Impulse)만 정밀 검출
             let clicks = 0, zeroRuns = 0, zr = 0;
+            let localDiff = Math.max(80, Math.abs(pcm[1] - pcm[0]));
+            let clickCooldown = 0;
             for (let i = 1; i < n; i++) {
-                if (Math.abs(pcm[i] - pcm[i - 1]) > clickThr) clicks++;
+                const d1 = Math.abs(pcm[i] - pcm[i - 1]);
+                const d2 = i >= 2 ? Math.abs((pcm[i] - pcm[i - 1]) - (pcm[i - 1] - pcm[i - 2])) : 0;
+                if (clickCooldown > 0) {
+                    clickCooldown--;
+                } else if (d1 > Math.max(3200, localDiff * 9.5) && d2 > Math.max(3600, localDiff * 11.0)) {
+                    clicks++;
+                    clickCooldown = 12;
+                }
+                localDiff = localDiff * 0.94 + d1 * 0.06;
                 if (Math.abs(pcm[i]) <= 1) { zr++; if (zr === 48) zeroRuns++; } else zr = 0;
             }
             // 청크 주기성: 변화량 엔벨로프의 자기상관 (20ms=960, 40ms=1920 샘플) vs 주변 lag
