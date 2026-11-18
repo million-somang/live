@@ -437,6 +437,10 @@
                 ✅ 비회원 바로구매 진행 중 — 회원가입 없이 수령인 정보와 조회용 비밀번호만 입력하시면 즉시 주문됩니다!
             </div>
             {% endif %}
+            <div id="ibProductSelectorRow" style="display:none; margin-bottom:10px;">
+                <label class="form-label" style="margin-bottom:4px;">구매 상품 선택</label>
+                <select id="ibProductSelect" class="form-input" style="padding:8px 10px; font-weight:800;" onchange="onChangeInstantBuyProduct(this.value)"></select>
+            </div>
             <div id="instantBuyItemSummary" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px; margin-bottom:12px; display:flex; gap:12px; align-items:center;">
             </div>
             <div id="ibOptionQtyRow" style="display:none; grid-template-columns:1fr 100px; gap:10px; margin-bottom:12px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px;">
@@ -627,6 +631,83 @@
             renderInstantBuySummary();
         }
 
+        let __instantBuyCatalogCache__ = null;
+
+        async function openQuickGuestBuyAnyWhere(sourcePage = 'MALL') {
+            try {
+                const cart = getMallCart();
+                if (Array.isArray(cart) && cart.length > 0 && window.location.pathname.startsWith('/auth/')) {
+                    window.location.href = '/checkout';
+                    return;
+                }
+                if (!__instantBuyCatalogCache__) {
+                    const res = await fetch('/api/catalog');
+                    const data = await res.json();
+                    __instantBuyCatalogCache__ = (data && Array.isArray(data.products)) ? data.products : [];
+                }
+                if (!__instantBuyCatalogCache__ || __instantBuyCatalogCache__.length === 0) {
+                    window.location.href = '/';
+                    return;
+                }
+                const isLive = Boolean(__mallLastIsLive);
+                const firstProd = __instantBuyCatalogCache__[0];
+                const opts = (Array.isArray(firstProd.options) && firstProd.options.length > 0)
+                    ? firstProd.options
+                    : [{ color: '기본', size: 'FREE', stock: 10 }];
+                const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
+                const effPrice = isLive ? Number(firstProd.live_price || firstProd.price || 0) : Number(firstProd.price || 0);
+
+                const prodRow = document.getElementById('ibProductSelectorRow');
+                const prodSel = document.getElementById('ibProductSelect');
+                if (prodRow && prodSel && __instantBuyCatalogCache__.length > 1) {
+                    prodSel.innerHTML = __instantBuyCatalogCache__.map((p, idx) => {
+                        const pr = isLive ? Number(p.live_price || p.price || 0) : Number(p.price || 0);
+                        return `<option value="${idx}">#${p.num}번 ${p.name} (${pr.toLocaleString()}원)</option>`;
+                    }).join('');
+                    prodRow.style.display = 'block';
+                }
+
+                openInstantBuyModal({
+                    num: firstProd.num,
+                    name: firstProd.name,
+                    price: effPrice,
+                    live_price: Number(firstProd.live_price || firstProd.price || 0),
+                    consumer_price: firstProd.consumer_price,
+                    image_url: firstProd.image_url,
+                    color: firstOpt.color,
+                    size: firstOpt.size,
+                    quantity: 1,
+                    options: opts
+                }, isLive ? 'LIVE' : sourcePage);
+            } catch (e) {
+                window.location.href = '/';
+            }
+        }
+
+        function onChangeInstantBuyProduct(idxStr) {
+            if (!__instantBuyCatalogCache__) return;
+            const prod = __instantBuyCatalogCache__[Number(idxStr) || 0];
+            if (!prod) return;
+            const isLive = Boolean(__mallLastIsLive);
+            const opts = (Array.isArray(prod.options) && prod.options.length > 0)
+                ? prod.options
+                : [{ color: '기본', size: 'FREE', stock: 10 }];
+            const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
+            const effPrice = isLive ? Number(prod.live_price || prod.price || 0) : Number(prod.price || 0);
+            openInstantBuyModal({
+                num: prod.num,
+                name: prod.name,
+                price: effPrice,
+                live_price: Number(prod.live_price || prod.price || 0),
+                consumer_price: prod.consumer_price,
+                image_url: prod.image_url,
+                color: firstOpt.color,
+                size: firstOpt.size,
+                quantity: 1,
+                options: opts
+            }, isLive ? 'LIVE' : 'MALL');
+        }
+
         function openInstantBuyModal(item, sourcePage = 'LIVE') {
             pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
             const optRow = document.getElementById('ibOptionQtyRow');
@@ -661,6 +742,8 @@
 
         function closeInstantBuyModal() {
             document.getElementById('instantBuyModal').style.display = 'none';
+            const prodRow = document.getElementById('ibProductSelectorRow');
+            if (prodRow) prodRow.style.display = 'none';
             pendingInstantBuyItem = null;
         }
 

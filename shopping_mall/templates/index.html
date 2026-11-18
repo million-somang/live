@@ -233,12 +233,12 @@
                         상세
                     </a>
                     <button type="button"
-                            onclick='quickCartFromHome({{ p | tojson }})'
+                            onclick="quickCartByNum({{ p.num }})"
                             style="flex:0.9; padding:10px 8px; border-radius:10px; border:1.5px solid #0f172a; background:#fff; color:#0f172a; font-size:0.8rem; font-weight:800; cursor:pointer; white-space:nowrap;">
                         🛒 담기
                     </button>
                     <button type="button"
-                            onclick='quickBuyFromHome({{ p | tojson }})'
+                            onclick="quickBuyByNum({{ p.num }})"
                             style="flex:1.25; padding:10px 10px; border-radius:10px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.82rem; font-weight:900; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(225,29,72,0.25);">
                         ⚡ 바로구매
                     </button>
@@ -260,6 +260,18 @@
 {% block extra_scripts %}
 <script>
     const __HOME_IS_LIVE__ = {{ (True if live_state and live_state.is_live else False) | tojson }};
+    const __HOME_PRODUCTS__ = {{ (products or []) | tojson }};
+    const __HOME_PRODUCTS_MAP__ = {};
+    (__HOME_PRODUCTS__ || []).forEach(p => { __HOME_PRODUCTS_MAP__[Number(p.num)] = p; });
+
+    function quickCartByNum(num) {
+        quickCartFromHome(__HOME_PRODUCTS_MAP__[Number(num)]);
+    }
+
+    function quickBuyByNum(num) {
+        quickBuyFromHome(__HOME_PRODUCTS_MAP__[Number(num)]);
+    }
+
     function quickCartFromHome(prod) {
         if (!prod) return;
         const firstOpt = (Array.isArray(prod.options) && prod.options.length > 0)
@@ -299,5 +311,13 @@
             options: opts
         }, __HOME_IS_LIVE__ ? 'LIVE' : 'MALL_HOME');
     }
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('instant_buy') === '1' && Array.isArray(__HOME_PRODUCTS__) && __HOME_PRODUCTS__.length > 0) {
+                quickBuyFromHome(__HOME_PRODUCTS__[0]);
+            }
+        } catch (e) {}
+    });
 </script>
 {% endblock %}

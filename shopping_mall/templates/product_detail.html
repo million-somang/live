@@ -114,5 +114,14 @@
     function pdInstantBuy() {
         openInstantBuyModal(getPdSelection(), 'PRODUCT_DETAIL');
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('instant_buy') === '1') {
+                openInstantBuyModal(getPdSelection(), 'PRODUCT_DETAIL');
+            }
+        } catch (e) {}
+    });
 </script>
 {% endblock %}

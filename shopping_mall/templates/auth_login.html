@@ -12,9 +12,12 @@
     </p>
     <div style="padding:12px 14px; border-radius:12px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; font-size:0.84rem; font-weight:800; margin-bottom:18px; line-height:1.5;">
         ✅ <strong>비회원도 쇼핑몰의 모든 상품(일반 스토어 · 장바구니 · 라이브)을 로그인 없이 즉시 구매</strong>하실 수 있습니다!
-        <div style="margin-top:8px;">
-            <a href="{{ next_url if next_url and next_url != '/admin' else '/' }}" style="display:inline-block; padding:6px 12px; border-radius:8px; background:#059669; color:#fff; font-size:0.8rem; font-weight:900;">
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" onclick="goGuestPurchaseNow()" style="padding:8px 14px; border-radius:8px; border:none; background:#059669; color:#fff; font-size:0.82rem; font-weight:900; cursor:pointer;">
                 🛍️ 로그인 없이 비회원으로 바로 구매하러 가기 ➔
+            </button>
+            <a href="/checkout" id="guestCheckoutQuickLink" style="display:none; padding:8px 14px; border-radius:8px; background:#e11d48; color:#fff; font-size:0.82rem; font-weight:900;">
+                💳 장바구니 상품 비회원 결제하기 ➔
             </a>
         </div>
     </div>
@@ -51,4 +54,42 @@
         <a href="/auth/register?next={{ next_url or '/' }}" style="color:#e11d48; font-weight:800; margin-left:6px;">회원가입하기 ➔</a>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const __LOGIN_NEXT_URL__ = {{ (next_url or '/') | tojson }};
+    function goGuestPurchaseNow() {
+        let target = (__LOGIN_NEXT_URL__ && __LOGIN_NEXT_URL__ !== '/admin' && !__LOGIN_NEXT_URL__.startsWith('/auth/'))
+            ? __LOGIN_NEXT_URL__
+            : '';
+        try {
+            const cart = typeof getMallCart === 'function' ? getMallCart() : [];
+            if (Array.isArray(cart) && cart.length > 0) {
+                window.location.href = '/checkout';
+                return;
+            }
+            if (target && target.startsWith('/product/')) {
+                const sep = target.includes('?') ? '&' : '?';
+                window.location.href = target + sep + 'instant_buy=1';
+                return;
+            }
+            if (typeof openQuickGuestBuyAnyWhere === 'function') {
+                openQuickGuestBuyAnyWhere('LOGIN_GUEST_BUY');
+                return;
+            }
+        } catch (e) {}
+        window.location.href = '/?instant_buy=1';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            const cart = typeof getMallCart === 'function' ? getMallCart() : [];
+            const btn = document.getElementById('guestCheckoutQuickLink');
+            if (btn && Array.isArray(cart) && cart.length > 0) {
+                btn.style.display = 'inline-block';
+            }
+        } catch (e) {}
+    });
+</script>
 {% endblock %}
