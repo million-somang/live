@@ -49,10 +49,11 @@
             <strong>수령인:</strong> {{ ord.buyer_name }} ({{ ord.buyer_phone }}) • <strong>배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
         </div>
         <div style="background:#f8fafc; border-radius:12px; padding:12px 16px;">
-            {% for it in ord.items %}
+            {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
+            {% for it in (item_list or []) %}
             <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:0.9rem;">
                 <span><strong>#{{ it.product_num }} {{ it.product_name }}</strong> ({{ it.color }}/{{ it.size }}) × {{ it.quantity }}개</span>
-                <strong>{{ "{:,}".format(it.line_total) }}원</strong>
+                <strong>{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
             </div>
             {% endfor %}
         </div>
@@ -60,9 +61,12 @@
             <span style="font-size:0.86rem; font-weight:800; color:#92400e;">🏦 입금 계좌: <strong style="color:#0f172a;">카카오뱅크 3333 233 094904</strong> (예금주: 박창현)</span>
             <button type="button" onclick="copyMallBankAccount()" style="padding:4px 10px; border-radius:8px; border:1px solid #f59e0b; background:#fff; color:#92400e; font-size:0.76rem; font-weight:800; cursor:pointer;">📋 계좌 복사</button>
         </div>
+        {% set safe_total = (ord.total_amount or 0)|int %}
+        {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
+        {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
         <div style="text-align:right; margin-top:12px; font-size:1.1rem; font-weight:900; color:#e11d48;">
-            <span style="font-size:0.84rem; color:#475569; font-weight:700; margin-right:8px;">(상품 {{ "{:,}".format(ord.subtotal_amount or (ord.total_amount - (ord.shipping_fee or 4000))) }}원 + 택배비 {{ "{:,}".format(ord.shipping_fee or 4000) }}원)</span>
-            총 결제 금액: {{ "{:,}".format(ord.total_amount) }}원
+            <span style="font-size:0.84rem; color:#475569; font-weight:700; margin-right:8px;">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</span>
+            총 결제 금액: {{ "{:,}".format(safe_total) }}원
         </div>
     </div>
     {% endfor %}
@@ -82,12 +86,12 @@
 <script>
     (function autoLookupRecentGuestOrder() {
         const hasRenderedOrders = {{ (True if orders else False) | tojson }};
-        if (hasRenderedOrders || window.__MALL_USER_LOGGED_IN__) return;
         try {
             const raw = sessionStorage.getItem('mall_last_guest_lookup_v1');
             if (!raw) return;
             const saved = JSON.parse(raw);
             sessionStorage.removeItem('mall_last_guest_lookup_v1');
+            if (hasRenderedOrders || window.__MALL_USER_LOGGED_IN__) return;
             if (!saved || !saved.order_code || !saved.buyer_phone || !saved.guest_password) return;
             const codeEl = document.getElementById('lookupOrderCode');
             const phoneEl = document.getElementById('lookupBuyerPhone');

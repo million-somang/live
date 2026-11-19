@@ -814,10 +814,18 @@ def create_mall_order(order_data):
             use_live_pricing = (source_page == "LIVE") or is_currently_live
 
             for it in items_req:
-                p_num = int(it.get("num"))
+                if not isinstance(it, dict):
+                    continue
+                raw_num = it.get("num") if it.get("num") is not None else it.get("product_num")
+                if raw_num is None or not str(raw_num).strip().lstrip("-").isdigit():
+                    return {"ok": False, "message": "장바구니에 유효하지 않은 상품 번호가 포함되어 있습니다."}
+                p_num = int(raw_num)
                 color = str(it.get("color") or "-").strip() or "-"
                 size = str(it.get("size") or "-").strip() or "-"
-                qty = max(1, int(it.get("quantity") or 1))
+                try:
+                    qty = max(1, int(it.get("quantity") or 1))
+                except Exception:
+                    qty = 1
 
                 cur.execute("SELECT * FROM mall_products WHERE num = ?", (p_num,))
                 p_row = cur.fetchone()
@@ -928,6 +936,7 @@ def create_mall_order(order_data):
                 "payment_status": pay_status,
                 "order_status": ord_status,
                 "items": resolved_items,
+                "order_items": resolved_items,
                 "created_at": now_str
             }
         except Exception as e:
@@ -955,6 +964,7 @@ def get_mall_orders_after(after_id=0, limit=100):
                 d = dict(r)
                 d.pop("guest_password_hash", None)
                 d["items"] = items
+                d["order_items"] = items
                 orders.append(d)
             return orders
         finally:
@@ -990,6 +1000,7 @@ def get_mall_orders(buyer_name=None, buyer_phone=None, order_code=None, limit=10
                 d = dict(r)
                 d.pop("guest_password_hash", None)
                 d["items"] = items
+                d["order_items"] = items
                 orders.append(d)
             return orders
         finally:
@@ -1016,8 +1027,33 @@ def get_mall_orders_by_user(user_id: int, limit: int = 50):
                 d = dict(r)
                 d.pop("guest_password_hash", None)
                 d["items"] = items
+                d["order_items"] = items
                 orders.append(d)
             return orders
+        finally:
+            conn.close()
+
+
+def get_mall_order_by_code(order_code: str):
+    """동일 브라우저 세션에서 방금 완료한 주문을 주문번호로 단건 조회합니다."""
+    code = str(order_code or "").strip()
+    if not code:
+        return []
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM mall_orders WHERE order_code = ? LIMIT 1", (code,))
+            row = cur.fetchone()
+            if not row:
+                return []
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (row["id"],))
+            items = [dict(ir) for ir in cur.fetchall()]
+            d = dict(row)
+            d.pop("guest_password_hash", None)
+            d["items"] = items
+            d["order_items"] = items
+            return [d]
         finally:
             conn.close()
 
@@ -1054,6 +1090,7 @@ def lookup_guest_mall_order(order_code: str, buyer_phone: str, guest_password: s
             d = dict(row)
             d.pop("guest_password_hash", None)
             d["items"] = items
+            d["order_items"] = items
             return [d]
         finally:
             conn.close()
@@ -1292,3 +1329,9 @@ def get_mall_user_by_id(user_id: int):
             return dict(row) if row else None
         finally:
             conn.close()
+
+
+try:
+    init_mall_db()
+except Exception:
+    pass

@@ -395,6 +395,7 @@ def mall_product_detail(num):
 @app.route("/cart", methods=["GET"])
 def mall_cart():
     """장바구니 페이지"""
+    pull_sync_from_obs_server(force=False)
     live_state = mall_database.get_full_live_state()
     return render_template("cart.html", live_state=live_state, active_nav="cart")
 
@@ -536,6 +537,7 @@ def mall_auth_logout():
 @app.route("/checkout", methods=["GET"])
 def mall_checkout():
     """주문/결제 작성 페이지 (회원 및 비회원 모두 구매 가능)"""
+    pull_sync_from_obs_server(force=False)
     live_state = mall_database.get_full_live_state()
     return render_template("checkout.html", live_state=live_state, active_nav="cart")
 
@@ -546,6 +548,7 @@ def mall_orders_view():
     주문/배송 조회 페이지
     - 회원: 본인(user_id)의 주문 내역만 노출
     - 비회원: 기본 목록 0건 (타인 개인정보 노출 원천 차단), 주문번호+연락처+비밀번호 3중 일치 시에만 단건 표시
+      (단, 방금 동일 브라우저 세션에서 주문을 완료해 리다이렉트된 직후에는 해당 주문을 1회 즉시 표시)
     """
     user = get_current_mall_user()
     order_code = (request.values.get("order_code") or "").strip()
@@ -570,6 +573,13 @@ def mall_orders_view():
                 lookup_error = "일치하는 주문 정보가 없거나 비밀번호가 올바르지 않습니다."
     elif user:
         orders = mall_database.get_mall_orders_by_user(user["id"], limit=50)
+    else:
+        recent_guest_code = str(session.get("mall_recent_guest_order_code") or "").strip()
+        if recent_guest_code:
+            orders = mall_database.get_mall_order_by_code(recent_guest_code)
+            if orders:
+                order_code = orders[0].get("order_code", "")
+                buyer_phone = orders[0].get("buyer_phone", "")
 
     live_state = mall_database.get_full_live_state()
     return render_template(
@@ -871,9 +881,15 @@ def api_mall_create_order():
             digits = "".join(ch for ch in str(data.get("buyer_phone") or "") if ch.isdigit())
             data["guest_password"] = digits[-4:] if len(digits) >= 4 else "0000"
 
+    if len(mall_database.get_all_mall_products()) == 0:
+        pull_sync_from_obs_server(force=False)
+
     res = mall_database.create_mall_order(data)
     if not res.get("ok"):
         return jsonify({"status": "error", "message": res.get("message", "주문 실패")}), 400
+
+    if not user and res.get("order_code"):
+        session["mall_recent_guest_order_code"] = res["order_code"]
 
     # 로컬 동시 기동 모드일 때만 OBS 서버에 비동기로 주문 웹훅 전달 (클라우드 단독 모드에서는 에이전트가 pending-orders를 Pull)
     if _is_obs_pull_enabled():
