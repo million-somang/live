@@ -7,8 +7,18 @@
 """
 
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+import os
+import sys
 import database
 import security_core
+
+_MALL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "shopping_mall"))
+if os.path.isdir(_MALL_DIR) and _MALL_DIR not in sys.path:
+    sys.path.append(_MALL_DIR)
+try:
+    import mall_database
+except Exception:
+    mall_database = None
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
 
@@ -23,11 +33,57 @@ def _get_current_admin_user():
     return u
 
 
+def _load_admin_orders_bundle():
+    """통합 관리자 페이지(/admin)에서 쇼핑몰 웹 구매 내역과 라이브 방송 주문 내역을 함께 조회합니다."""
+    mall_orders = []
+    if mall_database is not None:
+        try:
+            mall_orders = mall_database.get_mall_orders(limit=100)
+        except Exception:
+            mall_orders = []
+
+    live_orders = []
+    try:
+        conn = database.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, order_time, platform, buyer_name, item_name, color, size,
+                       quantity, unit_price, total_price, raw_message, reply_text, status,
+                       COALESCE(payment_status, 'PENDING') as payment_status
+                FROM orders
+                ORDER BY id DESC
+                LIMIT 100
+            """)
+            live_orders = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:
+        live_orders = []
+
+    mall_rev = sum(int(o.get("total_amount") or 0) for o in mall_orders if str(o.get("order_status") or "") != "주문취소")
+    non_mall_live_rev = sum(
+        int(o.get("total_price") or 0)
+        for o in live_orders
+        if str(o.get("platform") or "").upper() != "MALL" and str(o.get("status") or "") != "REJECTED"
+    )
+    non_mall_live_cnt = sum(1 for o in live_orders if str(o.get("platform") or "").upper() != "MALL")
+    return {
+        "mall_orders": mall_orders,
+        "live_orders": live_orders,
+        "mall_orders_count": len(mall_orders),
+        "live_orders_count": len(live_orders),
+        "total_orders_count": len(mall_orders) + non_mall_live_cnt,
+        "total_orders_revenue": mall_rev + non_mall_live_rev,
+    }
+
+
 @admin_bp.route("", methods=["GET"])
 @admin_bp.route("/", methods=["GET"])
 @admin_bp.route("/traffic", methods=["GET"])
+@admin_bp.route("/orders", methods=["GET"])
 def admin_dashboard():
-    """통합 관리자 대시보드 메인 (/admin 및 /admin/traffic)"""
+    """통합 관리자 대시보드 메인 (/admin, /admin/orders, /admin/traffic)"""
     admin_user = _get_current_admin_user()
     if not admin_user:
         return redirect(url_for("admin_bp.admin_login"))
@@ -39,8 +95,14 @@ def admin_dashboard():
     audit_logs = database.list_security_audit_logs(limit=80)
     cloud_cfg = database.get_cloud_mall_config()
     products = database.get_all_products()
-    initial_tab = "traffic" if request.path.endswith("/traffic") else (request.args.get("tab") or "users")
+    if request.path.endswith("/traffic"):
+        initial_tab = "traffic"
+    elif request.path.endswith("/orders"):
+        initial_tab = "orders"
+    else:
+        initial_tab = request.args.get("tab") or "orders"
     traffic_snapshot = security_core.traffic_monitor.get_snapshot()
+    orders_bundle = _load_admin_orders_bundle()
 
     return render_template(
         "admin/dashboard.html",
@@ -52,9 +114,11 @@ def admin_dashboard():
         active_invites_count=sum(1 for c in invite_codes if c.get("is_active")),
         audit_logs=audit_logs,
         cloud_cfg=cloud_cfg,
+        products=products,
         products_count=len(products),
         initial_tab=initial_tab,
         traffic_snapshot=traffic_snapshot,
+        **orders_bundle,
     )
 
 
@@ -273,3 +337,23 @@ def admin_api_traffic_reset():
         detail="관리자가 서버 트래픽 통계 카운터를 초기화함",
     )
     return jsonify(security_core.traffic_monitor.get_snapshot()), 200
+
+
+@admin_bp.route("/api/mall-orders/status", methods=["POST"])
+def admin_api_mall_order_status():
+    """통합 관리자 페이지(/admin)에서 쇼핑몰 주문의 입금상태/배송상태를 즉시 변경"""
+    admin_user = _get_current_admin_user()
+    if not admin_user:
+        return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
+    if mall_database is None:
+        return jsonify({"status": "error", "message": "쇼핑몰 DB 모듈을 불러올 수 없습니다."}), 500
+    data = request.get_json(silent=True) or {}
+    order_id = data.get("order_id")
+    if not order_id:
+        return jsonify({"status": "error", "message": "order_id가 필요합니다."}), 400
+    ok = mall_database.update_mall_order_status(
+        order_id=order_id,
+        payment_status=data.get("payment_status"),
+        order_status=data.get("order_status"),
+    )
+    return jsonify({"status": "ok" if ok else "error"}), (200 if ok else 400)

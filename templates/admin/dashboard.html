@@ -251,7 +251,11 @@
         <!-- 좌측 사이드바 메뉴 -->
         <aside class="admin-sidebar">
             <div class="side-label">ADMIN MENU</div>
-            <button type="button" id="sideBtn_users" class="side-tab {% if initial_tab != 'traffic' %}active{% endif %}" onclick="switchAdminTab('users', this)">
+            <button type="button" id="sideBtn_orders" class="side-tab {% if initial_tab == 'orders' %}active{% endif %}" onclick="switchAdminTab('orders', this)">
+                <span>🛍️ 구매/주문 상품 내역</span>
+                <span class="count-pill" style="background:#e11d48;">{{ total_orders_count or 0 }}</span>
+            </button>
+            <button type="button" id="sideBtn_users" class="side-tab {% if initial_tab == 'users' %}active{% endif %}" onclick="switchAdminTab('users', this)">
                 <span>👥 방송자 회원 승인 관리</span>
                 {% if pending_count > 0 %}
                 <span class="count-pill">{{ pending_count }}</span>
@@ -261,10 +265,10 @@
                 <span>📊 트래픽 관리</span>
                 <span class="count-pill" id="sideTrafficLiveBadge" style="background:#0ea5e9;">LIVE</span>
             </button>
-            <button type="button" id="sideBtn_invites" class="side-tab" onclick="switchAdminTab('invites', this)">
+            <button type="button" id="sideBtn_invites" class="side-tab {% if initial_tab == 'invites' %}active{% endif %}" onclick="switchAdminTab('invites', this)">
                 <span>🔑 초대 코드 발급/관리</span>
             </button>
-            <button type="button" id="sideBtn_security" class="side-tab" onclick="switchAdminTab('security', this)">
+            <button type="button" id="sideBtn_security" class="side-tab {% if initial_tab == 'security' %}active{% endif %}" onclick="switchAdminTab('security', this)">
                 <span>🛡️ 비밀번호 변경 & 감사로그</span>
             </button>
         </aside>
@@ -273,17 +277,24 @@
         <main class="admin-main">
             <!-- 상단 KPI 요약 -->
             <div class="kpi-row">
-                <div class="kpi-card {% if pending_count > 0 %}pending-alert{% endif %}">
+                <div class="kpi-card" style="cursor:pointer; border-color:#fecdd3; background:#fff1f2;" onclick="switchAdminTab('orders', document.getElementById('sideBtn_orders'))">
+                    <div class="kpi-title" style="color:#be123c; font-weight:800;">🛍️ 구매/주문 상품 내역 (클릭)</div>
+                    <div class="kpi-num" style="color:#e11d48;">{{ total_orders_count or 0 }}건</div>
+                    <div style="font-size:0.76rem; color:#9f1239; font-weight:700; margin-top:4px;">
+                        총 결제액 {{ "{:,}".format((total_orders_revenue or 0)|int) }}원
+                    </div>
+                </div>
+                <div class="kpi-card {% if pending_count > 0 %}pending-alert{% endif %}" style="cursor:pointer;" onclick="switchAdminTab('users', document.getElementById('sideBtn_users'))">
                     <div class="kpi-title">⏳ 가입 승인 대기 (PENDING)</div>
                     <div class="kpi-num" style="color:{% if pending_count > 0 %}#d97706{% else %}#0f172a{% endif %};">
                         {{ pending_count }}명
                     </div>
                 </div>
-                <div class="kpi-card">
+                <div class="kpi-card" style="cursor:pointer;" onclick="switchAdminTab('users', document.getElementById('sideBtn_users'))">
                     <div class="kpi-title">✅ 승인 완료 방송자 (APPROVED)</div>
                     <div class="kpi-num" style="color:#059669;">{{ approved_count }}명</div>
                 </div>
-                <div class="kpi-card">
+                <div class="kpi-card" style="cursor:pointer;" onclick="switchAdminTab('invites', document.getElementById('sideBtn_invites'))">
                     <div class="kpi-title">🔑 활성 초대 코드</div>
                     <div class="kpi-num" style="color:#2563eb;">{{ active_invites_count }}개</div>
                 </div>
@@ -293,8 +304,173 @@
                 </div>
             </div>
 
+            <!-- 탭 0: 🛍️ 구매/주문 상품 내역 (쇼핑몰 웹 주문 + 라이브 방송 주문 통합) -->
+            <div id="adminTab_orders" class="tab-section {% if initial_tab == 'orders' %}active{% endif %}">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>🛒 쇼핑몰 구매 상품 및 주문 상세 내역 ({{ (mall_orders or [])|length }}건)</h2>
+                            <p style="font-size:0.84rem; color:var(--text-muted); margin-top:4px;">
+                                고객이 쇼핑몰(장바구니 · 라이브 바로구매 · 상품 상세)에서 구매한 <strong>상품 이미지, 방송번호, 상품명, 색상/사이즈 옵션, 수량, 결제금액, 배송지 및 입금/배송 상태</strong>를 실시간으로 확인하고 관리합니다.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button type="button" class="btn-act primary" onclick="location.href='/admin?tab=orders'">🔄 최신 주문 새로고침</button>
+                            <a href="{{ mall_public_url }}/admin" target="_blank" rel="noopener" class="btn-act">🛍️ 쇼핑몰 전용 어드민 열기 ↗</a>
+                        </div>
+                    </div>
+
+                    {% if mall_orders %}
+                    <div style="display:flex; flex-direction:column; gap:14px;">
+                        {% for ord in mall_orders %}
+                        {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
+                        {% set safe_total = (ord.total_amount or 0)|int %}
+                        {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
+                        {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
+                        {% set src_up = (ord.source_page or 'MALL')|upper %}
+                        <div style="padding:16px 18px; border:1px solid #e2e8f0; border-radius:16px; background:#ffffff; box-shadow:0 2px 8px rgba(15,23,42,0.03);">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <strong style="font-size:1rem; color:#0f172a;">주문번호: {{ ord.order_code }}</strong>
+                                    <span style="font-weight:800; color:#334155;">수령인: {{ ord.buyer_name }} ({{ ord.buyer_phone }})</span>
+                                    {% if src_up == 'CART_CHECKOUT' %}
+                                    <span style="background:#eff6ff; color:#2563eb; padding:3px 9px; border-radius:999px; font-size:0.75rem; font-weight:900;">🛒 장바구니 구매</span>
+                                    {% elif src_up == 'LIVE' %}
+                                    <span style="background:#ffe4e6; color:#e11d48; padding:3px 9px; border-radius:999px; font-size:0.75rem; font-weight:900;">🔴 라이브 바로구매</span>
+                                    {% else %}
+                                    <span style="background:#f1f5f9; color:#475569; padding:3px 9px; border-radius:999px; font-size:0.75rem; font-weight:800;">🛍️ 스토어 구매</span>
+                                    {% endif %}
+                                    {% if ord.is_guest %}
+                                    <span style="background:#fef3c7; color:#92400e; padding:3px 8px; border-radius:999px; font-size:0.73rem; font-weight:800;">비회원 주문</span>
+                                    {% else %}
+                                    <span style="background:#ecfdf5; color:#059669; padding:3px 8px; border-radius:999px; font-size:0.73rem; font-weight:800;">회원 주문</span>
+                                    {% endif %}
+                                </div>
+                                <div style="text-align:right;">
+                                    <strong style="font-size:1.15rem; color:#e11d48;">총 결제금액: {{ "{:,}".format(safe_total) }}원</strong>
+                                    <div style="font-size:0.78rem; color:#64748b;">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</div>
+                                </div>
+                            </div>
+
+                            <div style="color:#475569; margin-bottom:10px; font-size:0.86rem;">
+                                📍 <strong>배송지 주소:</strong> {{ ord.address }} {{ ord.address_detail }}
+                                {% if ord.delivery_memo %}
+                                <div style="margin-top:4px; color:#0369a1; font-weight:700;">📝 배송 요청사항: {{ ord.delivery_memo }}</div>
+                                {% endif %}
+                            </div>
+
+                            <!-- 구매한 상품 목록 -->
+                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin-bottom:12px;">
+                                <div style="font-size:0.8rem; font-weight:900; color:#334155; margin-bottom:8px;">
+                                    🛍️ 구매한 상품 내역 ({{ (item_list or [])|length }}개 품목)
+                                </div>
+                                {% for it in (item_list or []) %}
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; {% if not loop.last %}border-bottom:1px dashed #cbd5e1;{% endif %}">
+                                    <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
+                                        {% if it.image_url %}
+                                        <img src="{{ it.image_url }}" style="width:48px; height:48px; border-radius:10px; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">
+                                        {% else %}
+                                        <div style="width:48px; height:48px; border-radius:10px; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-size:1.25rem; flex-shrink:0;">🛍️</div>
+                                        {% endif %}
+                                        <div style="min-width:0; flex:1;">
+                                            <div style="font-weight:900; color:#0f172a; font-size:0.94rem;">
+                                                <span style="color:#e11d48;">#{{ it.product_num }}번</span> {{ it.product_name }}
+                                            </div>
+                                            <div style="font-size:0.84rem; color:#475569; margin-top:3px;">
+                                                옵션: <strong style="color:#0f172a;">{{ it.color }} / {{ it.size }}</strong> •
+                                                수량: <strong style="color:#e11d48;">{{ it.quantity }}개</strong>
+                                                <span style="color:#64748b; margin-left:6px;">(개당 {{ "{:,}".format((it.unit_price or 0)|int) }}원)</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <strong style="font-size:0.96rem; color:#0f172a; white-space:nowrap;">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
+                                </div>
+                                {% else %}
+                                <div style="font-size:0.84rem; color:#94a3b8; padding:4px 0;">상세 구매 품목 정보가 없습니다.</div>
+                                {% endfor %}
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <span style="font-size:0.8rem; font-weight:800; color:#475569;">상태 변경:</span>
+                                    <select onchange="updateAdminMallOrderStatus({{ ord.id }}, {payment_status: this.value})" class="input-sm" style="padding:6px 10px; font-size:0.82rem; font-weight:800;">
+                                        {% for pst in ['입금대기', '입금완료', '환불완료'] %}
+                                        <option value="{{ pst }}" {% if ord.payment_status == pst %}selected{% endif %}>💳 {{ pst }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <select onchange="updateAdminMallOrderStatus({{ ord.id }}, {order_status: this.value})" class="input-sm" style="padding:6px 10px; font-size:0.82rem; font-weight:800;">
+                                        {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
+                                        <option value="{{ st }}" {% if ord.order_status == st %}selected{% endif %}>📦 {{ st }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <span style="font-size:0.8rem; color:#64748b; font-weight:600;">주문일시: {{ ord.created_at }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div style="padding:36px 20px; text-align:center; color:var(--text-muted); background:#f8fafc; border-radius:14px; border:1px dashed #cbd5e1;">
+                        아직 쇼핑몰에서 접수된 주문이 없습니다.
+                    </div>
+                    {% endif %}
+                </section>
+
+                <!-- 라이브 방송 채팅 및 통합 주문 원장 -->
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>💬 실시간 라이브 방송 채팅 & 통합 주문 원장 ({{ (live_orders or [])|length }}건)</h2>
+                            <p style="font-size:0.84rem; color:var(--text-muted); margin-top:4px;">
+                                유튜브·인스타그램·틱톡 실시간 채팅 주문 및 쇼핑몰 연동 주문이 기록된 통합 주문 대장입니다.
+                            </p>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>주문번호</th>
+                                    <th>주문일시</th>
+                                    <th>경로/플랫폼</th>
+                                    <th>구매자</th>
+                                    <th>구매한 상품명</th>
+                                    <th>옵션 (색상/사이즈)</th>
+                                    <th>수량</th>
+                                    <th>결제금액</th>
+                                    <th>상세/배송 메모</th>
+                                    <th>상태</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lo in (live_orders or []) %}
+                                <tr>
+                                    <td><strong>#{{ lo.id }}</strong></td>
+                                    <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">{{ lo.order_time }}</td>
+                                    <td><span class="status-pill APPROVED" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;">{{ lo.platform }}</span></td>
+                                    <td><strong>{{ lo.buyer_name }}</strong></td>
+                                    <td><strong style="color:#e11d48;">{{ lo.item_name }}</strong></td>
+                                    <td>{{ lo.color }} / {{ lo.size }}</td>
+                                    <td><strong>{{ lo.quantity }}개</strong></td>
+                                    <td><strong>{{ "{:,}".format((lo.total_price or 0)|int) }}원</strong></td>
+                                    <td style="font-size:0.8rem; color:#475569; max-width:260px;">{{ lo.raw_message }}</td>
+                                    <td>
+                                        <span class="status-pill {{ 'APPROVED' if lo.status == 'CONFIRMED' else ('PENDING' if lo.status == 'PENDING' else 'REJECTED') }}">
+                                            {{ '✅ 주문확정' if lo.status == 'CONFIRMED' else ('⏳ 확인대기' if lo.status == 'PENDING' else '❌ 취소/반려') }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:24px;">기록된 라이브 통합 주문 내역이 없습니다.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
             <!-- 탭 1: 방송자 회원 승인 및 계정 관리 -->
-            <div id="adminTab_users" class="tab-section {% if initial_tab != 'traffic' %}active{% endif %}">
+            <div id="adminTab_users" class="tab-section {% if initial_tab == 'users' %}active{% endif %}">
                 <section class="panel">
                     <div class="panel-head">
                         <div>
@@ -704,6 +880,22 @@
             if (sideBtn) sideBtn.classList.add('active');
             if (tabName === 'traffic') {
                 fetchTrafficSnapshot();
+            }
+        }
+
+        async function updateAdminMallOrderStatus(orderId, payload) {
+            try {
+                const res = await fetch('/admin/api/mall-orders/status', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(Object.assign({order_id: orderId}, payload || {}))
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    alert(data.message || '주문 상태 변경에 실패했습니다.');
+                }
+            } catch (e) {
+                alert('주문 상태 변경 오류: ' + e.message);
             }
         }
 
