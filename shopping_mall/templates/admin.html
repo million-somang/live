@@ -58,20 +58,87 @@
     <!-- 쇼핑몰 주문 관리 -->
     <div style="background:#fff; border-radius:20px; padding:22px; border:1px solid var(--border);">
         <h3 style="font-size:1.08rem; font-weight:900; margin-bottom:14px;">🧾 쇼핑몰 웹 주문 내역 ({{ orders|length }}건)</h3>
-        <div style="max-height:520px; overflow-y:auto;">
+        <div style="max-height:640px; overflow-y:auto; display:flex; flex-direction:column; gap:12px;">
             {% for ord in orders %}
-            <div style="padding:12px 0; border-bottom:1px solid #f1f5f9; font-size:0.86rem;">
-                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                    <strong>{{ ord.order_code }} ({{ ord.buyer_name }})</strong>
-                    <strong style="color:#e11d48;">{{ "{:,}".format(ord.total_amount) }}원</strong>
+            {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
+            {% set safe_total = (ord.total_amount or 0)|int %}
+            {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
+            {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
+            {% set src_up = (ord.source_page or 'MALL')|upper %}
+            <div style="padding:14px 16px; border:1px solid #e2e8f0; border-radius:16px; background:#ffffff; font-size:0.86rem; box-shadow:0 2px 6px rgba(15,23,42,0.03);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <strong style="font-size:0.94rem; color:#0f172a;">{{ ord.order_code }}</strong>
+                        <span style="font-weight:800; color:#334155;">({{ ord.buyer_name }} / {{ ord.buyer_phone }})</span>
+                        {% if src_up == 'CART_CHECKOUT' %}
+                        <span style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:900;">🛒 장바구니</span>
+                        {% elif src_up == 'LIVE' %}
+                        <span style="background:#ffe4e6; color:#e11d48; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:900;">🔴 라이브</span>
+                        {% else %}
+                        <span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:800;">🛍️ 스토어</span>
+                        {% endif %}
+                        {% if ord.is_guest %}
+                        <span style="background:#fef3c7; color:#92400e; padding:2px 7px; border-radius:999px; font-size:0.7rem; font-weight:800;">비회원</span>
+                        {% else %}
+                        <span style="background:#ecfdf5; color:#059669; padding:2px 7px; border-radius:999px; font-size:0.7rem; font-weight:800;">회원</span>
+                        {% endif %}
+                    </div>
+                    <div style="text-align:right;">
+                        <strong style="font-size:1rem; color:#e11d48;">{{ "{:,}".format(safe_total) }}원</strong>
+                        <div style="font-size:0.73rem; color:#64748b;">상품 {{ "{:,}".format(safe_sub) }}원 + 택배 {{ "{:,}".format(safe_ship) }}원</div>
+                    </div>
                 </div>
-                <div style="color:#64748b; margin-bottom:6px;">{{ ord.address }} {{ ord.address_detail }} ({{ ord.buyer_phone }})</div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <select onchange="updateOrderStatus({{ ord.id }}, this.value)" class="form-input" style="padding:5px 8px; font-size:0.8rem; width:auto;">
-                        {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
-                        <option value="{{ st }}" {% if ord.order_status == st %}selected{% endif %}>{{ st }}</option>
-                        {% endfor %}
-                    </select>
+
+                <div style="color:#475569; margin-bottom:8px; font-size:0.82rem;">
+                    📍 <strong>배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
+                    {% if ord.delivery_memo %}
+                    <div style="margin-top:3px; color:#0369a1; font-weight:700;">📝 배송메모: {{ ord.delivery_memo }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- 구매한 상품 상세 목록 -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; margin-bottom:10px;">
+                    <div style="font-size:0.76rem; font-weight:900; color:#334155; margin-bottom:6px;">
+                        🛍️ 구매 상품 내역 ({{ (item_list or [])|length }}건)
+                    </div>
+                    {% for it in (item_list or []) %}
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 0; {% if not loop.last %}border-bottom:1px dashed #e2e8f0;{% endif %}">
+                        <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+                            {% if it.image_url %}
+                            <img src="{{ it.image_url }}" style="width:42px; height:42px; border-radius:8px; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">
+                            {% else %}
+                            <div style="width:42px; height:42px; border-radius:8px; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0;">🛍️</div>
+                            {% endif %}
+                            <div style="min-width:0; flex:1;">
+                                <div style="font-weight:900; color:#0f172a; font-size:0.86rem;">
+                                    <span style="color:#e11d48;">#{{ it.product_num }}번</span> {{ it.product_name }}
+                                </div>
+                                <div style="font-size:0.79rem; color:#475569; margin-top:2px;">
+                                    옵션: <strong style="color:#0f172a;">{{ it.color }} / {{ it.size }}</strong> • 수량: <strong style="color:#e11d48;">{{ it.quantity }}개</strong>
+                                    <span style="color:#94a3b8; margin-left:4px;">(단가 {{ "{:,}".format((it.unit_price or 0)|int) }}원)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <strong style="font-size:0.88rem; color:#0f172a; white-space:nowrap;">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
+                    </div>
+                    {% else %}
+                    <div style="font-size:0.8rem; color:#94a3b8; padding:4px 0;">등록된 상세 품목 정보가 없습니다.</div>
+                    {% endfor %}
+                </div>
+
+                <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                        <select onchange="updateOrderPaymentStatus({{ ord.id }}, this.value)" class="form-input" style="padding:5px 8px; font-size:0.78rem; width:auto; font-weight:800;">
+                            {% for pst in ['입금대기', '입금완료', '환불완료'] %}
+                            <option value="{{ pst }}" {% if ord.payment_status == pst %}selected{% endif %}>💳 {{ pst }}</option>
+                            {% endfor %}
+                        </select>
+                        <select onchange="updateOrderStatus({{ ord.id }}, this.value)" class="form-input" style="padding:5px 8px; font-size:0.78rem; width:auto; font-weight:800;">
+                            {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
+                            <option value="{{ st }}" {% if ord.order_status == st %}selected{% endif %}>📦 {{ st }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                     <span style="font-size:0.76rem; color:#94a3b8;">{{ ord.created_at }}</span>
                 </div>
             </div>
@@ -103,7 +170,18 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ order_id: orderId, order_status: orderStatus })
             });
-            showMallToast('주문 상태가 변경되었습니다.');
+            showMallToast('배송/주문 상태가 변경되었습니다.');
+        } catch (e) {}
+    }
+
+    async function updateOrderPaymentStatus(orderId, paymentStatus) {
+        try {
+            await fetch('/api/admin/order-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_id: orderId, payment_status: paymentStatus })
+            });
+            showMallToast('입금 상태가 변경되었습니다.');
         } catch (e) {}
     }
 

@@ -3449,10 +3449,71 @@ def api_overlay_pin():
     }), 200
 
 
+def _apply_and_record_mall_order(ord_data):
+    """
+    쇼핑몰 주문(장바구니/라이브/상세페이지)이 접수되었을 때:
+    1) OBS DB의 해당 상품 옵션 재고를 실시간 차감하고,
+    2) OBS 메인 서버 주문 원장(orders 테이블)에도 구매 상품·옵션·수량·수령인 정보를 기록하여
+       메인 관제탑(/chat) 및 매출 분석(/analytics) 관리자 화면에서도 구매 상품을 즉시 확인할 수 있게 합니다.
+    """
+    if not isinstance(ord_data, dict):
+        return 0
+    order_code = str(ord_data.get("order_code") or ord_data.get("id") or "").strip()
+    buyer_name = str(ord_data.get("buyer_name") or "쇼핑몰고객").strip()
+    buyer_phone = str(ord_data.get("buyer_phone") or "").strip()
+    addr = str(ord_data.get("address") or "").strip()
+    addr_det = str(ord_data.get("address_detail") or "").strip()
+    memo = str(ord_data.get("delivery_memo") or "").strip()
+    src_page = str(ord_data.get("source_page") or "MALL").strip().upper()
+    ord_time = str(ord_data.get("created_at") or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_addr = f"{addr} {addr_det}".strip()
+
+    items = ord_data.get("items") or ord_data.get("order_items") or []
+    recorded = 0
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        try:
+            p_num = it.get("product_num") if it.get("product_num") is not None else it.get("num")
+            p_name = str(it.get("product_name") or it.get("name") or f"{p_num}번 상품").strip()
+            color = str(it.get("color") or "-").strip() or "-"
+            size = str(it.get("size") or "-").strip() or "-"
+            qty = max(1, int(it.get("quantity") or 1))
+            unit_price = int(it.get("unit_price") or it.get("price") or 0)
+
+            database.deduct_stock(p_name, color, size, qty=qty)
+
+            disp_item_name = f"#{p_num}번 {p_name}" if p_num is not None and f"#{p_num}" not in p_name else p_name
+            raw_summary = f"[쇼핑몰 {src_page} 주문 {order_code}] {disp_item_name} ({color}/{size}) {qty}개"
+            if buyer_phone or full_addr:
+                raw_summary += f" | 연락처: {buyer_phone} | 배송지: {full_addr}"
+            if memo:
+                raw_summary += f" | 메모: {memo}"
+
+            database.create_order({
+                "order_time": ord_time,
+                "platform": "MALL",
+                "buyer_name": f"{buyer_name} ({buyer_phone})" if buyer_phone else buyer_name,
+                "item_name": disp_item_name,
+                "color": color,
+                "size": size,
+                "quantity": qty,
+                "unit_price": unit_price,
+                "raw_message": raw_summary,
+                "reply_text": f"쇼핑몰 주문번호 {order_code} 접수 및 재고 자동 차감 완료",
+                "status": "CONFIRMED"
+            })
+            recorded += 1
+        except Exception as e:
+            print(f"⚠️ [쇼핑몰 주문 재고/원장 연동 경고] {e}", flush=True)
+    return recorded
+
+
 @app.route('/api/mall/order-webhook', methods=['POST'])
 def api_mall_order_webhook():
     """
-    독립 쇼핑몰(Port 3000)에서 고객이 주문을 완료했을 때 OBS DB의 해당 상품 옵션 재고도 함께 동기화 차감합니다.
+    독립 쇼핑몰(Port 6001)에서 고객이 주문을 완료했을 때 OBS DB의 해당 상품 옵션 재고를 차감하고
+    OBS 메인 주문 원장에도 구매 상품 내역을 함께 기록합니다.
     (중복 차감 방지를 위해 order_code/order_id 이력을 기록합니다.)
     """
     data = request.get_json(silent=True) or {}
@@ -3460,18 +3521,8 @@ def api_mall_order_webhook():
     if order_key and not _mark_mall_order_processed(order_key):
         return jsonify({"status": "ok", "skipped_duplicate": True}), 200
 
-    items = data.get("items") or []
-    for it in items:
-        try:
-            p_num = it.get("product_num") or it.get("num")
-            p_name = it.get("product_name") or f"{p_num}번"
-            color = it.get("color", "-")
-            size = it.get("size", "-")
-            qty = max(1, int(it.get("quantity", 1)))
-            database.deduct_stock(p_name, color, size, qty=qty)
-        except Exception as e:
-            print(f"⚠️ [쇼핑몰 주문 재고 연동 경고] {e}", flush=True)
-    return jsonify({"status": "ok"}), 200
+    recorded = _apply_and_record_mall_order(data)
+    return jsonify({"status": "ok", "recorded_items": recorded}), 200
 
 
 _processed_mall_order_lock = Lock()
@@ -3569,16 +3620,7 @@ def pull_and_apply_pending_mall_orders(mall_url=None, sync_secret=None):
         order_key = str(ord_obj.get("order_code") or oid)
         if not _mark_mall_order_processed(order_key):
             continue
-        for it in (ord_obj.get("items") or []):
-            try:
-                p_num = it.get("product_num") or it.get("num")
-                p_name = it.get("product_name") or f"{p_num}번"
-                color = it.get("color", "-")
-                size = it.get("size", "-")
-                qty = max(1, int(it.get("quantity", 1)))
-                database.deduct_stock(p_name, color, size, qty=qty)
-            except Exception as e:
-                print(f"⚠️ [클라우드 주문 Pull 재고 차감 경고] {e}", flush=True)
+        _apply_and_record_mall_order(ord_obj)
         applied += 1
 
     if max_id > cursor:

@@ -899,8 +899,12 @@ def api_mall_create_order():
                     "order_code": res["order_code"],
                     "buyer_name": res["buyer_name"],
                     "buyer_phone": res["buyer_phone"],
+                    "address": str(data.get("address") or ""),
+                    "address_detail": str(data.get("address_detail") or ""),
+                    "delivery_memo": str(data.get("delivery_memo") or ""),
                     "total_amount": res["total_amount"],
                     "source_page": data.get("source_page", "MALL"),
+                    "created_at": res.get("created_at", ""),
                     "items": res["items"]
                 }).encode("utf-8")
                 req = urllib.request.Request(
