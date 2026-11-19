@@ -34,7 +34,7 @@ def _get_current_admin_user():
 
 
 def _load_admin_orders_bundle():
-    """통합 관리자 페이지(/admin)에서 쇼핑몰 웹 구매 내역과 라이브 방송 주문 내역을 함께 조회합니다."""
+    """통합 관리자 페이지(/admin)에서 쇼핑몰 웹 구매 내역을 조회합니다 (로컬 DB + HTTP API 폴백 지원)."""
     mall_orders = []
     if mall_database is not None:
         try:
@@ -42,39 +42,37 @@ def _load_admin_orders_bundle():
         except Exception:
             mall_orders = []
 
-    live_orders = []
-    try:
-        conn = database.get_connection()
+    if not mall_orders:
         try:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, order_time, platform, buyer_name, item_name, color, size,
-                       quantity, unit_price, total_price, raw_message, reply_text, status,
-                       COALESCE(payment_status, 'PENDING') as payment_status
-                FROM orders
-                ORDER BY id DESC
-                LIMIT 100
-            """)
-            live_orders = [dict(r) for r in cur.fetchall()]
-        finally:
-            conn.close()
-    except Exception:
-        live_orders = []
+            import json
+            import urllib.request
+            cfg = database.get_cloud_mall_config()
+            target_url = (cfg.get("mall_url") or "http://127.0.0.1:6001").rstrip("/")
+            headers = {"Accept": "application/json"}
+            if cfg.get("sync_secret"):
+                headers["X-Mall-Sync-Secret"] = cfg["sync_secret"]
+            req = urllib.request.Request(
+                f"{target_url}/api/sync/pending-orders?after_id=0&limit=100",
+                headers=headers,
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                if isinstance(data, dict) and data.get("status") == "ok":
+                    fetched = data.get("orders") or []
+                    for o in fetched:
+                        if isinstance(o, dict) and "order_items" not in o:
+                            o["order_items"] = o.get("items") or []
+                    mall_orders = list(reversed(fetched))
+        except Exception:
+            pass
 
     mall_rev = sum(int(o.get("total_amount") or 0) for o in mall_orders if str(o.get("order_status") or "") != "주문취소")
-    non_mall_live_rev = sum(
-        int(o.get("total_price") or 0)
-        for o in live_orders
-        if str(o.get("platform") or "").upper() != "MALL" and str(o.get("status") or "") != "REJECTED"
-    )
-    non_mall_live_cnt = sum(1 for o in live_orders if str(o.get("platform") or "").upper() != "MALL")
     return {
         "mall_orders": mall_orders,
-        "live_orders": live_orders,
         "mall_orders_count": len(mall_orders),
-        "live_orders_count": len(live_orders),
-        "total_orders_count": len(mall_orders) + non_mall_live_cnt,
-        "total_orders_revenue": mall_rev + non_mall_live_rev,
+        "total_orders_count": len(mall_orders),
+        "total_orders_revenue": mall_rev,
     }
 
 

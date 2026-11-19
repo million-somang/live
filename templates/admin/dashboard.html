@@ -415,58 +415,6 @@
                     </div>
                     {% endif %}
                 </section>
-
-                <!-- 라이브 방송 채팅 및 통합 주문 원장 -->
-                <section class="panel">
-                    <div class="panel-head">
-                        <div>
-                            <h2>💬 실시간 라이브 방송 채팅 & 통합 주문 원장 ({{ (live_orders or [])|length }}건)</h2>
-                            <p style="font-size:0.84rem; color:var(--text-muted); margin-top:4px;">
-                                유튜브·인스타그램·틱톡 실시간 채팅 주문 및 쇼핑몰 연동 주문이 기록된 통합 주문 대장입니다.
-                            </p>
-                        </div>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>주문번호</th>
-                                    <th>주문일시</th>
-                                    <th>경로/플랫폼</th>
-                                    <th>구매자</th>
-                                    <th>구매한 상품명</th>
-                                    <th>옵션 (색상/사이즈)</th>
-                                    <th>수량</th>
-                                    <th>결제금액</th>
-                                    <th>상세/배송 메모</th>
-                                    <th>상태</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for lo in (live_orders or []) %}
-                                <tr>
-                                    <td><strong>#{{ lo.id }}</strong></td>
-                                    <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">{{ lo.order_time }}</td>
-                                    <td><span class="status-pill APPROVED" style="background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe;">{{ lo.platform }}</span></td>
-                                    <td><strong>{{ lo.buyer_name }}</strong></td>
-                                    <td><strong style="color:#e11d48;">{{ lo.item_name }}</strong></td>
-                                    <td>{{ lo.color }} / {{ lo.size }}</td>
-                                    <td><strong>{{ lo.quantity }}개</strong></td>
-                                    <td><strong>{{ "{:,}".format((lo.total_price or 0)|int) }}원</strong></td>
-                                    <td style="font-size:0.8rem; color:#475569; max-width:260px;">{{ lo.raw_message }}</td>
-                                    <td>
-                                        <span class="status-pill {{ 'APPROVED' if lo.status == 'CONFIRMED' else ('PENDING' if lo.status == 'PENDING' else 'REJECTED') }}">
-                                            {{ '✅ 주문확정' if lo.status == 'CONFIRMED' else ('⏳ 확인대기' if lo.status == 'PENDING' else '❌ 취소/반려') }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:24px;">기록된 라이브 통합 주문 내역이 없습니다.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
             </div>
 
             <!-- 탭 1: 방송자 회원 승인 및 계정 관리 -->
