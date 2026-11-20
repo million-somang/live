@@ -290,7 +290,7 @@
             <span id="pdLightboxTitle">상세 이미지 크게 보기</span>
             <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm" onclick="closePdImageLightbox()">닫기</button>
         </div>
-        <img id="pdLightboxImg" src="" alt="상세 이미지 확대" class="ax-lightbox-img">
+        <img id="pdLightboxImg" alt="상세 이미지 확대" class="ax-lightbox-img">
     </div>
 </div>
 
@@ -369,7 +369,7 @@
         const lb = document.getElementById('pdImageLightbox');
         const img = document.getElementById('pdLightboxImg');
         if (lb) lb.classList.remove('is-open');
-        if (img) img.src = '';
+        if (img) img.removeAttribute('src');
     }
 
     function selectPdReviewRating(score) {

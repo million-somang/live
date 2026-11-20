@@ -1106,8 +1106,8 @@
                             <div class="total-stock-pill">
                                 총 잔여 재고: <strong>{{ item.total_stock }}</strong>개
                             </div>
-                            <button type="button" class="btn-card-action" onclick="openEditModal('{{ item.id }}')">✏️ 수정</button>
-                            <button type="button" class="btn-card-action btn-card-delete" onclick="deleteProduct('{{ item.id }}', '{{ item.name }}')">🗑️ 삭제</button>
+                            <button type="button" class="btn-card-action" data-item-id="{{ item.id }}" onclick="openEditModal(this.dataset.itemId)">✏️ 수정</button>
+                            <button type="button" class="btn-card-action btn-card-delete" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" onclick="deleteProduct(this.dataset.itemId, this.dataset.itemName)">🗑️ 삭제</button>
                         </div>
                     </div>
 
@@ -1142,7 +1142,7 @@
                                 <td>
                                     <div style="display:flex; gap:6px; align-items:center;">
                                         <input type="number" class="input-stock" id="input-{{ item.id }}-{{ opt.color }}-{{ opt.size }}" value="{{ opt.stock }}" min="0">
-                                        <button class="btn-update" onclick="updateStock('{{ item.id }}', '{{ opt.color }}', '{{ opt.size }}')">저장</button>
+                                        <button class="btn-update" data-item-id="{{ item.id }}" data-color="{{ opt.color }}" data-size="{{ opt.size }}" onclick="updateStock(this.dataset.itemId, this.dataset.color, this.dataset.size)">저장</button>
                                     </div>
                                 </td>
                             </tr>

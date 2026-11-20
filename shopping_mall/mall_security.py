@@ -13,6 +13,7 @@ import base64
 import hashlib
 import secrets
 from threading import RLock
+from typing import Optional
 from urllib.parse import urlparse
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -228,7 +229,7 @@ def inject_csrf_into_html_response(response, csrf_token: str):
     return response
 
 
-def create_signed_token(secret_key: str, purpose: str, payload: dict = None, ttl_sec: int = 86400) -> str:
+def create_signed_token(secret_key: str, purpose: str, payload: Optional[dict] = None, ttl_sec: int = 86400) -> str:
     now = int(time.time())
     body = {
         "p": str(purpose),

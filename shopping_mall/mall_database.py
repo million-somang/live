@@ -11,8 +11,11 @@ import time
 import json
 import uuid
 import sqlite3
+import secrets as _secrets
 from datetime import datetime
 from threading import RLock, Condition
+
+import mall_security
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MALL_DB_PATH = os.getenv("MALL_DB_PATH", os.path.join(BASE_DIR, "shopping_mall.db"))
@@ -270,6 +273,9 @@ def _parse_detail_images(raw):
 
 def _serialize_detail_images(raw):
     return json.dumps(_parse_detail_images(raw), ensure_ascii=False)
+
+
+parse_detail_images = _parse_detail_images
 
 
 def _format_product_row(prow, opt_rows):
@@ -979,7 +985,6 @@ def create_mall_order(order_data):
             guest_pw_raw = str(order_data.get("guest_password") or "").strip()
             guest_pw_hash = ""
             if is_guest and guest_pw_raw:
-                import mall_security
                 guest_pw_hash = mall_security.hash_password(guest_pw_raw)
 
             cur.execute("""
@@ -1160,7 +1165,6 @@ def lookup_guest_mall_order(order_code: str, buyer_phone: str, guest_password: s
     if not code or not clean_phone or not pw:
         return []
 
-    import mall_security
     with mall_db_lock:
         conn = get_connection()
         try:
@@ -1259,9 +1263,6 @@ def add_mall_review(product_num, author, rating, content, user_id=None):
 # ==============================================================================
 # 🔐 쇼핑몰 전용 회원(mall_users) 및 관리자 인증 API
 # ==============================================================================
-
-import secrets as _secrets
-import mall_security
 
 
 def ensure_default_mall_admin():

@@ -131,7 +131,7 @@ def get_current_mall_user():
 
 
 def create_live_order_token() -> str:
-    return mall_security.create_signed_token(app.secret_key, "live_order", {"page": "LIVE"}, ttl_sec=86400)
+    return mall_security.create_signed_token(str(app.secret_key or ""), "live_order", {"page": "LIVE"}, ttl_sec=86400)
 
 
 @app.context_processor
@@ -240,7 +240,7 @@ def _sync_product_detail_images(prod_dict, images_b64=None):
     """상품의 detail_images 배열에 포함된 로컬/원격 이미지를 쇼핑몰 저장소로 동기화합니다."""
     if not isinstance(prod_dict, dict) or "detail_images" not in prod_dict:
         return prod_dict
-    raw_imgs = mall_database._parse_detail_images(prod_dict.get("detail_images"))
+    raw_imgs = mall_database.parse_detail_images(prod_dict.get("detail_images"))
     b64_map = images_b64 if isinstance(images_b64, dict) else {}
     resolved = []
     for img_u in raw_imgs:
@@ -901,7 +901,7 @@ def api_mall_create_order():
 
     # 라이브커머스(/live) 주문: live_order_token이 전달된 경우 서명 무결성 검증 (위조 토큰 차단)
     live_tok = str(data.get("live_order_token") or "").strip()
-    if live_tok and mall_security.verify_signed_token(app.secret_key, "live_order", live_tok) is None:
+    if live_tok and mall_security.verify_signed_token(str(app.secret_key or ""), "live_order", live_tok) is None:
         return jsonify({"status": "error", "code": "INVALID_LIVE_TOKEN", "message": "유효하지 않은 라이브 주문 보안 토큰입니다."}), 403
 
     if user:
