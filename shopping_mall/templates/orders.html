@@ -57,7 +57,7 @@
         <div class="ax-surface-muted">
             {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
             {% for it in (item_list or []) %}
-            <div style="display:flex; justify-content:space-between; gap:10px; padding:6px 0; font-size:0.88rem; {% if not loop.last %}border-bottom:1px dashed var(--ax-border-subtle);{% endif %}">
+            <div class="ax-order-item-row">
                 <span><strong>#{{ it.product_num }} {{ it.product_name }}</strong> ({{ it.color }}/{{ it.size }}) × <span class="ax-num">{{ it.quantity }}개</span></span>
                 <strong class="ax-num">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
             </div>
@@ -89,9 +89,12 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<div id="mallOrdersBootstrap" hidden
+     data-has-orders="{{ (True if orders else False) | tojson | forceescape }}"></div>
 <script>
     (function autoLookupRecentGuestOrder() {
-        const hasRenderedOrders = {{ (True if orders else False) | tojson }};
+        const __ordersBootEl = document.getElementById('mallOrdersBootstrap');
+        const hasRenderedOrders = __ordersBootEl ? JSON.parse(__ordersBootEl.dataset.hasOrders || 'false') : false;
         try {
             const raw = sessionStorage.getItem('mall_last_guest_lookup_v1');
             if (!raw) return;

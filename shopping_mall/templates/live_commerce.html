@@ -35,7 +35,7 @@
 </div>
 
 <!-- 1-2. 라이브 방송 접속 주소 표시 바 (방송 중일 때만 표시) -->
-<div id="liveAccessUrlBar" class="ax-card ax-live-url-bar" style="display:{% if live_state.is_live %}flex{% else %}none{% endif %};">
+<div id="liveAccessUrlBar" class="ax-card ax-live-url-bar{% if not live_state.is_live %} ax-is-hidden{% endif %}">
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0;">
         <span class="ax-badge ax-badge-indigo">라이브 접속 주소</span>
         <code id="mallLiveUrlText" class="ax-code-chip" style="word-break:break-all; white-space:normal;">{{ request.url }}</code>
@@ -79,18 +79,18 @@
             </div>
             <!-- 플랫폼 CDN 직결 플레이어 (YouTube iframe 임베드 + 다크 슬레이트 대기 스테이지) -->
             <iframe id="liveYoutubeEmbedFrame"
+                    class="ax-video-iframe{% if not (live_state.is_live and live_state.youtube_embed_url) %} ax-is-hidden{% endif %}"
                     src="{% if live_state.is_live and live_state.youtube_embed_url %}{{ live_state.youtube_embed_url }}{% endif %}"
-                    style="display:{% if live_state.is_live and live_state.youtube_embed_url %}block{% else %}none{% endif %}; width:100%; height:100%; border:0; background:#0f172a;"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowfullscreen
                     title="실시간 유튜브 라이브 방송"></iframe>
             <div id="liveFallbackStage"
-                 style="display:{% if live_state.is_live and live_state.youtube_embed_url %}none{% else %}flex{% endif %}; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; padding:24px; text-align:center; gap:12px;">
+                 class="ax-video-fallback{% if live_state.is_live and live_state.youtube_embed_url %} ax-is-hidden{% endif %}">
                 <img id="liveFallbackProductImg"
+                     class="ax-fallback-thumb{% if not (selected_product and selected_product.image_url) %} ax-is-hidden{% endif %}"
                      src="{% if selected_product and selected_product.image_url %}{{ selected_product.image_url }}{% endif %}"
-                     style="display:{% if selected_product and selected_product.image_url %}block{% else %}none{% endif %}; width:128px; height:128px; border-radius:14px; object-fit:cover; border:2px solid rgba(99,102,241,0.45); box-shadow:0 12px 28px rgba(0,0,0,0.45);"
                      alt="현재 소개 상품">
-                <div id="liveFallbackEmoji" style="display:{% if selected_product and selected_product.image_url %}none{% else %}flex{% endif %}; width:54px; height:54px; border-radius:14px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14); align-items:center; justify-content:center; color:#c7d2fe;">
+                <div id="liveFallbackEmoji" class="ax-fallback-icon{% if selected_product and selected_product.image_url %} ax-is-hidden{% endif %}">
                     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
                 </div>
                 <div id="liveFallbackHeadline" style="font-size:0.95rem; font-weight:800; color:#f8fafc;">
@@ -115,7 +115,8 @@
                 {% for p in all_products %}
                 <div class="ax-lineup-item {% if selected_product and selected_product.num == p.num %}active-pinned{% endif %}"
                      id="lineupItem_{{ p.num }}"
-                     onclick="manualPreviewProductOnLivePage({{ p.num }})">
+                     data-product-num="{{ p.num }}"
+                     onclick="manualPreviewProductOnLivePage(Number(this.dataset.productNum))">
                     {% if p.image_url %}
                     <img src="{{ p.image_url }}" alt="{{ p.name }}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); flex-shrink:0;">
                     {% else %}
@@ -306,9 +307,17 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<div id="mallLiveBootstrap" hidden
+     data-live-state="{{ (live_state or {}) | tojson | forceescape }}"
+     data-selected-product="{{ (selected_product or None) | tojson | forceescape }}"
+     data-all-products="{{ (all_products or []) | tojson | forceescape }}"
+     data-catalog-version="{{ (live_state.catalog_version or 1) | tojson | forceescape }}"
+     data-embed-url="{{ (live_state.youtube_embed_url or '') | tojson | forceescape }}"
+     data-initial-reviews="{{ (live_state.selected_product_reviews or []) | tojson | forceescape }}"></div>
 <script>
-    let currentLiveState = {{ (live_state or {}) | tojson }};
-    let currentDisplayedProduct = {{ (selected_product or None) | tojson }};
+    const __liveBootEl = document.getElementById('mallLiveBootstrap');
+    let currentLiveState = __liveBootEl ? JSON.parse(__liveBootEl.dataset.liveState || '{}') : {};
+    let currentDisplayedProduct = __liveBootEl ? JSON.parse(__liveBootEl.dataset.selectedProduct || 'null') : null;
     let selectedOptionIdx = 0;
     let autoFollowObsPin = true;
     let lastObsPinnedNum = currentLiveState ? currentLiveState.pinned_product_num : null;
@@ -641,12 +650,12 @@
     }
 
     // CSR 실시간 상태 동기화 (SSE 우선 + ETag 304 경량 폴백 + 카탈로그 캐시)
-    let csrCatalogCache = {{ (all_products or []) | tojson }};
+    let csrCatalogCache = __liveBootEl ? JSON.parse(__liveBootEl.dataset.allProducts || '[]') : [];
     let liveProductsMap = {};
     (csrCatalogCache || []).forEach(p => { liveProductsMap[p.num] = p; });
-    let lastCatalogVersion = Number({{ (live_state.catalog_version or 1) | tojson }});
+    let lastCatalogVersion = Number(__liveBootEl ? JSON.parse(__liveBootEl.dataset.catalogVersion || '1') : 1);
     let lastStateEtag = '';
-    let currentMountedEmbedUrl = {{ (live_state.youtube_embed_url or '') | tojson }};
+    let currentMountedEmbedUrl = __liveBootEl ? JSON.parse(__liveBootEl.dataset.embedUrl || '""') : '';
     let liveSseSource = null;
     let fallbackPollTimer = null;
 
@@ -664,15 +673,15 @@
                     iframeEl.src = embedUrl;
                     currentMountedEmbedUrl = embedUrl;
                 }
-                iframeEl.style.display = 'block';
-                fallbackEl.style.display = 'none';
+                iframeEl.classList.remove('ax-is-hidden');
+                fallbackEl.classList.add('ax-is-hidden');
             } else {
                 if (currentMountedEmbedUrl) {
                     iframeEl.src = '';
                     currentMountedEmbedUrl = '';
                 }
-                iframeEl.style.display = 'none';
-                fallbackEl.style.display = 'flex';
+                iframeEl.classList.add('ax-is-hidden');
+                fallbackEl.classList.remove('ax-is-hidden');
             }
         }
 
@@ -686,11 +695,11 @@
         if (fbImg && fbEmoji) {
             if (dispProd && dispProd.image_url) {
                 fbImg.src = dispProd.image_url;
-                fbImg.style.display = 'block';
-                fbEmoji.style.display = 'none';
+                fbImg.classList.remove('ax-is-hidden');
+                fbEmoji.classList.add('ax-is-hidden');
             } else {
-                fbImg.style.display = 'none';
-                fbEmoji.style.display = 'flex';
+                fbImg.classList.add('ax-is-hidden');
+                fbEmoji.classList.remove('ax-is-hidden');
             }
         }
 
@@ -834,7 +843,7 @@
     function updateLiveAccessUrlBar(isLive, liveUrls) {
         const bar = document.getElementById('liveAccessUrlBar');
         if (!bar) return;
-        bar.style.display = isLive ? 'flex' : 'none';
+        bar.classList.toggle('ax-is-hidden', !isLive);
         const urlEl = document.getElementById('mallLiveUrlText');
         if (urlEl && !urlEl.innerText) urlEl.innerText = window.location.href;
         const listEl = document.getElementById('platformLiveUrlList');
@@ -850,11 +859,12 @@
         if (document.getElementById('liveMobileStickyBar')) {
             document.body.classList.add('has-mobile-sticky-bar');
         }
+        const initialReviews = __liveBootEl ? JSON.parse(__liveBootEl.dataset.initialReviews || '[]') : [];
         if (currentDisplayedProduct) {
             renderSelectedProductDetailInPlace(
                 currentDisplayedProduct,
                 false,
-                {{ (live_state.selected_product_reviews or []) | tojson }}
+                initialReviews
             );
         }
         startLiveCommerceCsrStream();

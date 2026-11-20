@@ -121,7 +121,7 @@
                         구매 상품 내역 ({{ (item_list or [])|length }}건)
                     </div>
                     {% for it in (item_list or []) %}
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; {% if not loop.last %}border-bottom:1px dashed var(--ax-border-subtle);{% endif %}">
+                    <div class="ax-admin-item-row">
                         <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
                             {% if it.image_url %}
                             <img src="{{ it.image_url }}" alt="" style="width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">
@@ -149,14 +149,22 @@
 
                 <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
                     <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                        <select onchange="updateOrderPaymentStatus({{ ord.id }}, this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="입금 상태">
+                        <select data-order-id="{{ ord.id }}" onchange="updateOrderPaymentStatus(Number(this.dataset.orderId), this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="입금 상태">
                             {% for pst in ['입금대기', '입금완료', '환불완료'] %}
-                            <option value="{{ pst }}" {% if ord.payment_status == pst %}selected{% endif %}>{{ pst }}</option>
+                            {% if ord.payment_status == pst %}
+                            <option value="{{ pst }}" selected>{{ pst }}</option>
+                            {% else %}
+                            <option value="{{ pst }}">{{ pst }}</option>
+                            {% endif %}
                             {% endfor %}
                         </select>
-                        <select onchange="updateOrderStatus({{ ord.id }}, this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="주문 배송 상태">
+                        <select data-order-id="{{ ord.id }}" onchange="updateOrderStatus(Number(this.dataset.orderId), this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="주문 배송 상태">
                             {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
-                            <option value="{{ st }}" {% if ord.order_status == st %}selected{% endif %}>{{ st }}</option>
+                            {% if ord.order_status == st %}
+                            <option value="{{ st }}" selected>{{ st }}</option>
+                            {% else %}
+                            <option value="{{ st }}">{{ st }}</option>
+                            {% endif %}
                             {% endfor %}
                         </select>
                     </div>

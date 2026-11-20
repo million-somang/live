@@ -64,11 +64,9 @@
                     </div>
                     <h3 style="font-size:1.1rem; font-weight:800; color:var(--ax-text-primary);">장바구니가 비어 있습니다</h3>
                     <p style="margin:8px 0 18px; font-size:0.875rem;">라이브 커머스 전용관이나 스토어 홈에서 원하는 상품을 담아보세요.</p>
-                    {% if live_state and live_state.is_live %}
-                    <a href="/live" class="ax-btn ax-btn-primary">라이브 커머스 보러가기</a>
-                    {% else %}
-                    <a href="/" class="ax-btn ax-btn-charcoal">스토어 홈으로 가기</a>
-                    {% endif %}
+                    ${__mallLastIsLive
+                        ? '<a href="/live" class="ax-btn ax-btn-primary">라이브 커머스 보러가기</a>'
+                        : '<a href="/" class="ax-btn ax-btn-charcoal">스토어 홈으로 가기</a>'}
                 </div>
             `;
             document.getElementById('cartSubtotalText').innerText = '0원';

@@ -57,10 +57,10 @@
             <input type="text" name="q" value="{{ search_query }}" placeholder="상품명, 방송번호, 스펙 검색..." class="ax-input ax-input-search">
         </div>
         <select name="sort" onchange="this.form.submit()" class="ax-select" style="width:auto; min-width:128px; font-weight:600;">
-            <option value="num_asc" {% if current_sort == 'num_asc' %}selected{% endif %}>방송번호순</option>
-            <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>최신등록순</option>
-            <option value="price_asc" {% if current_sort == 'price_asc' %}selected{% endif %}>낮은가격순</option>
-            <option value="price_desc" {% if current_sort == 'price_desc' %}selected{% endif %}>높은가격순</option>
+            {% if current_sort == 'num_asc' %}<option value="num_asc" selected>방송번호순</option>{% else %}<option value="num_asc">방송번호순</option>{% endif %}
+            {% if current_sort == 'newest' %}<option value="newest" selected>최신등록순</option>{% else %}<option value="newest">최신등록순</option>{% endif %}
+            {% if current_sort == 'price_asc' %}<option value="price_asc" selected>낮은가격순</option>{% else %}<option value="price_asc">낮은가격순</option>{% endif %}
+            {% if current_sort == 'price_desc' %}<option value="price_desc" selected>높은가격순</option>{% else %}<option value="price_desc">높은가격순</option>{% endif %}
         </select>
         <button type="submit" class="ax-btn ax-btn-charcoal">검색</button>
     </form>
@@ -119,10 +119,10 @@
                     <a href="/product/{{ p.num }}" class="ax-btn ax-btn-secondary ax-btn-sm" style="flex:0.8;">
                         상세
                     </a>
-                    <button type="button" onclick="quickCartByNum({{ p.num }})" class="ax-btn ax-btn-outline-charcoal ax-btn-sm" style="flex:0.95;">
+                    <button type="button" data-product-num="{{ p.num }}" onclick="quickCartByNum(Number(this.dataset.productNum))" class="ax-btn ax-btn-outline-charcoal ax-btn-sm" style="flex:0.95;">
                         담기
                     </button>
-                    <button type="button" onclick="quickBuyByNum({{ p.num }})" class="ax-btn ax-btn-primary ax-btn-sm" style="flex:1.25;">
+                    <button type="button" data-product-num="{{ p.num }}" onclick="quickBuyByNum(Number(this.dataset.productNum))" class="ax-btn ax-btn-primary ax-btn-sm" style="flex:1.25;">
                         바로구매
                     </button>
                 </div>
@@ -143,9 +143,13 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<div id="mallHomeBootstrap" hidden
+     data-is-live="{{ (True if live_state and live_state.is_live else False) | tojson | forceescape }}"
+     data-products="{{ (products or []) | tojson | forceescape }}"></div>
 <script>
-    const __HOME_IS_LIVE__ = {{ (True if live_state and live_state.is_live else False) | tojson }};
-    const __HOME_PRODUCTS__ = {{ (products or []) | tojson }};
+    const __homeBootEl = document.getElementById('mallHomeBootstrap');
+    const __HOME_IS_LIVE__ = __homeBootEl ? JSON.parse(__homeBootEl.dataset.isLive || 'false') : false;
+    const __HOME_PRODUCTS__ = __homeBootEl ? JSON.parse(__homeBootEl.dataset.products || '[]') : [];
     const __HOME_PRODUCTS_MAP__ = {};
     (__HOME_PRODUCTS__ || []).forEach(p => { __HOME_PRODUCTS_MAP__[Number(p.num)] = p; });
 

@@ -149,11 +149,15 @@
 ## 5. 새 기능·페이지 추가 시 필수 체크리스트
 
 1. **템플릿 상속**: 반드시 `{% extends "base.html" %}`를 사용하고, 별도 `<style>` 블록을 만들기 전에 `static/css/astryx_mall.css`의 `.ax-*` 클래스를 우선 사용합니다. 새 전용 클래스가 꼭 필요하면 `astryx_mall.css`에 `--ax-*` 토큰을 참조해 추가합니다.
-2. **기존 기능/DOM ID/보안 계약 보존**:
+2. **무에러 템플릿 작성 규칙 (IDE 파서 & 자동 포맷 손상 원천 차단)**:
+   - HTML `style="..."`, `<script>`, `onclick`/`onchange` 이벤트 핸들러, 태그 속성 나열 영역(`<option ...>`) 내부에 Jinja2(`{{ ... }}`, `{% ... %}`) 문법을 직접 삽입하지 않습니다.
+   - 조건부 표시/스타일은 `astryx_mall.css` 클래스(`.ax-is-hidden` 등) 조합으로 처리합니다.
+   - 서버 데이터를 JS로 전달할 때는 `<div id="..." hidden data-foo="{{ val | tojson | forceescape }}"></div>` 브릿지와 순수 JS `JSON.parse(el.dataset.foo)`를 사용하며, 이벤트 핸들러 인자는 `data-*` 속성과 `this.dataset.*`으로 전달합니다.
+3. **기존 기능/DOM ID/보안 계약 보존**:
    - `base.html`의 `#instantBuyModal`, `#navCartBadge`, `#mallNavLiveSlot`, `window.__mallApplyLiteState`, `showMallToast` 계약 유지.
    - `orders.html`, `admin.html` 등에서 주문 품목 순회 시 Python dict `.items()` 충돌 방지를 위해 `ord.order_items if ord.order_items is defined else ord['items']` 패턴 유지.
    - POST 폼에는 `<input type="hidden" name="csrf_token" value="{{ csrf_token }}">` 포함.
-3. **완료 전 검증 필수**:
+4. **완료 전 검증 필수**:
    - 데스크톱(`1440×900`) 및 모바일(`390×844`)에서 가로 넘침(`scrollWidth <= innerWidth`) 0건 확인.
-   - 브라우저 콘솔 에러 0건, CSS/이미지 404 0건, HTML 태그 균형 확인.
+   - 브라우저 콘솔 에러 0건, CSS/이미지 404 0건, HTML 태그 균형, 원문 템플릿 기준 IDE HTML/CSS/JS 구문 에러 0건 확인.
    - `THE VINE LIVE MALL` 또는 삭제된 구 테마(`mall_light_theme.css`) 재도입 금지.

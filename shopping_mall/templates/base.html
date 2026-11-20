@@ -188,10 +188,16 @@
         </div>
     </footer>
 
+    <div id="mallBaseBootstrap" hidden
+         data-logged-in="{{ (True if current_mall_user else False) | tojson | forceescape }}"
+         data-live-order-token="{{ (live_order_token or '') | tojson | forceescape }}"
+         data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"></div>
+
     <script>
         const MALL_CART_KEY = 'gollabang_mall_cart_v1';
-        window.__MALL_USER_LOGGED_IN__ = {{ (True if current_mall_user else False) | tojson }};
-        window.__LIVE_ORDER_TOKEN__ = {{ (live_order_token or '') | tojson }};
+        const __baseBootEl = document.getElementById('mallBaseBootstrap');
+        window.__MALL_USER_LOGGED_IN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.loggedIn || 'false') : false;
+        window.__LIVE_ORDER_TOKEN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.liveOrderToken || '""') : '';
         let pendingInstantBuyItem = null;
 
         function getMallCart() {
@@ -517,7 +523,7 @@
         }
 
         // 전역 CSR 경량 상태 반영기 (네비게이션 라이브 메뉴 활성/비활성 및 페이지별 실시간 재고·핀 동기화)
-        let __mallLastIsLive = {{ (live_state.is_live if live_state else false) | tojson }};
+        let __mallLastIsLive = __baseBootEl ? JSON.parse(__baseBootEl.dataset.isLive || 'false') : false;
         window.__mallApplyLiteState = function(state) {
             if (!state || typeof state !== 'object') return;
             const isLive = Boolean(state.is_live);

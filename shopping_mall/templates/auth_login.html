@@ -53,8 +53,11 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<div id="mallLoginBootstrap" hidden
+     data-next-url="{{ (next_url or '/') | tojson | forceescape }}"></div>
 <script>
-    const __LOGIN_NEXT_URL__ = {{ (next_url or '/') | tojson }};
+    const __loginBootEl = document.getElementById('mallLoginBootstrap');
+    const __LOGIN_NEXT_URL__ = __loginBootEl ? JSON.parse(__loginBootEl.dataset.nextUrl || '"/"') : '/';
     function goGuestPurchaseNow() {
         let target = (__LOGIN_NEXT_URL__ && __LOGIN_NEXT_URL__ !== '/admin' && !__LOGIN_NEXT_URL__.startsWith('/auth/'))
             ? __LOGIN_NEXT_URL__

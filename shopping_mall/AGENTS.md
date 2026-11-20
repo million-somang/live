@@ -17,9 +17,10 @@
    - 상단 1단 슬림 헤더에 카테고리나 2차 필터를 추가하지 말고, 필요한 필터는 본문 툴바의 `.ax-segmented-bar`에 배치합니다.
    - 모바일(`<= 768px`)에서 2단 레이아웃이 1열 스택으로 전환되며 가로 오버플로우가 없는지 검증합니다.
 
-## 2. 기능·보안 무결성 규칙
+## 2. 기능·보안·무에러 템플릿 규칙
 - 모든 템플릿은 `{% extends "base.html" %}`를 상속합니다.
 - POST 폼은 `<input type="hidden" name="csrf_token" value="{{ csrf_token }}">`을 유지합니다.
 - 주문 품목 목록 순회 시 `ord.order_items if ord.order_items is defined else ord['items']` 패턴을 유지합니다.
 - `/live` 템플릿에는 서버 영상 스트림(`/api/camera/stream`)을 절대 포함하지 않습니다.
-- UI 변경 후에는 Flask 렌더링 테스트(HTTP 200, DOM ID 보존, 태그 균형) 및 Playwright 데스크톱/모바일 뷰포트 검증을 통과한 뒤 작업을 완료하세요.
+- **IDE 파서 무에러 원칙**: HTML `style="..."`, `<script>`, `onclick`/`onchange`, 태그 내부(`<option ... {% if ... %}>`)에 Jinja2 표현식을 직접 섞지 마세요. 조건부 스타일은 CSS 클래스(`.ax-is-hidden` 등)로, JS 데이터 전달은 `hidden data-*` (`| tojson | forceescape`) + `JSON.parse(el.dataset.*)`로 처리하세요.
+- UI 변경 후에는 정적 HTML/CSS/JS 구문 검사, Flask 렌더링 테스트(HTTP 200, DOM ID 보존, 태그 균형), Playwright 데스크톱/모바일 뷰포트 검증을 통과한 뒤 작업을 완료하세요.
