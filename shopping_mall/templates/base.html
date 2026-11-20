@@ -3,23 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}골라방 LIVE — 실시간 라이브 커머스 스토어{% endblock %}</title>
+    <title>{% block title %}골라방 LIVE — 공식 온라인 스토어{% endblock %}</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
     <link rel="stylesheet" href="/static/css/astryx_mall.css">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <!-- 상단 공지 티커 바 -->
-    <div class="ax-promo-bar">
-        <div class="ax-container ax-promo-inner">
-            <span class="ax-promo-pill">LIVE STORE</span>
-            <span id="topBarTickerText">
-                {{ live_state.ticker_message if live_state and live_state.ticker_message else '실시간 라이브 방송 중 선택된 상품을 [라이브 커머스] 메뉴에서 바로 확인하세요.' }}
-            </span>
-        </div>
-    </div>
-
     <!-- 1단 슬림 Astryx 헤더 -->
     <header class="ax-header">
         <div class="ax-container ax-header-inner">
@@ -41,11 +31,10 @@
                     <span class="ax-nav-status-tag">방송중</span>
                 </a>
                 {% else %}
-                <span class="ax-nav-link ax-nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">
-                    <span class="ax-live-dot"></span>
+                <a href="/live" class="ax-nav-link {% if active_nav == 'live' %}active{% endif %}">
+                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg>
                     <span>라이브 커머스</span>
-                    <span class="ax-nav-status-tag">대기중</span>
-                </span>
+                </a>
                 {% endif %}
                 </span>
                 <a href="/orders" class="ax-nav-link {% if active_nav == 'orders' %}active{% endif %}">
@@ -55,10 +44,6 @@
             </nav>
 
             <div class="ax-header-actions">
-                <a href="{{ studio_public_url or 'http://localhost:5000' }}" target="_blank" rel="noopener" class="ax-util-btn ax-util-btn-indigo ax-hide-mobile" title="OBS 스튜디오 및 홍보 홈페이지 이동">
-                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg>
-                    <span>OBS 스튜디오</span>
-                </a>
                 <a href="/cart" class="ax-util-btn">
                     <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
                     <span>장바구니</span>
@@ -177,10 +162,10 @@
         <div class="ax-container ax-footer-inner">
             <div>
                 <div style="font-weight:800; color:var(--ax-text-primary); font-size:0.95rem; margin-bottom:3px;">골라방 LIVE</div>
-                <div style="color:var(--ax-text-secondary);">OBS 방송 스튜디오 실시간 연동 공식 온라인 스토어</div>
+                <div style="color:var(--ax-text-secondary);">골라방 LIVE 공식 온라인 스토어</div>
             </div>
             <div class="ax-footer-links">
-                <a href="/live" style="color:var(--ax-accent-primary); font-weight:700;">실시간 라이브 커머스</a>
+                <a href="/" style="font-weight:600;">스토어 홈</a>
                 <a href="/orders" style="font-weight:600;">주문/배송 조회</a>
                 <a href="/cart" style="font-weight:600;">장바구니</a>
                 <a href="/admin" style="font-weight:600;">스토어 어드민</a>
@@ -327,19 +312,18 @@
                     window.location.href = '/';
                     return;
                 }
-                const isLive = Boolean(__mallLastIsLive);
                 const firstProd = __instantBuyCatalogCache__[0];
                 const opts = (Array.isArray(firstProd.options) && firstProd.options.length > 0)
                     ? firstProd.options
                     : [{ color: '기본', size: 'FREE', stock: 10 }];
                 const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
-                const effPrice = isLive ? Number(firstProd.live_price || firstProd.price || 0) : Number(firstProd.price || 0);
+                const effPrice = Number(firstProd.price || 0);
 
                 const prodRow = document.getElementById('ibProductSelectorRow');
                 const prodSel = document.getElementById('ibProductSelect');
                 if (prodRow && prodSel && __instantBuyCatalogCache__.length > 1) {
                     prodSel.innerHTML = __instantBuyCatalogCache__.map((p, idx) => {
-                        const pr = isLive ? Number(p.live_price || p.price || 0) : Number(p.price || 0);
+                        const pr = Number(p.price || 0);
                         return `<option value="${idx}">#${p.num}번 ${p.name} (${pr.toLocaleString()}원)</option>`;
                     }).join('');
                     prodRow.style.display = 'block';
@@ -349,14 +333,13 @@
                     num: firstProd.num,
                     name: firstProd.name,
                     price: effPrice,
-                    live_price: Number(firstProd.live_price || firstProd.price || 0),
                     consumer_price: firstProd.consumer_price,
                     image_url: firstProd.image_url,
                     color: firstOpt.color,
                     size: firstOpt.size,
                     quantity: 1,
                     options: opts
-                }, isLive ? 'LIVE' : sourcePage);
+                }, sourcePage);
             } catch (e) {
                 window.location.href = '/';
             }
@@ -366,24 +349,22 @@
             if (!__instantBuyCatalogCache__) return;
             const prod = __instantBuyCatalogCache__[Number(idxStr) || 0];
             if (!prod) return;
-            const isLive = Boolean(__mallLastIsLive);
             const opts = (Array.isArray(prod.options) && prod.options.length > 0)
                 ? prod.options
                 : [{ color: '기본', size: 'FREE', stock: 10 }];
             const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
-            const effPrice = isLive ? Number(prod.live_price || prod.price || 0) : Number(prod.price || 0);
+            const effPrice = Number(prod.price || 0);
             openInstantBuyModal({
                 num: prod.num,
                 name: prod.name,
                 price: effPrice,
-                live_price: Number(prod.live_price || prod.price || 0),
                 consumer_price: prod.consumer_price,
                 image_url: prod.image_url,
                 color: firstOpt.color,
                 size: firstOpt.size,
                 quantity: 1,
                 options: opts
-            }, isLive ? 'LIVE' : 'MALL');
+            }, 'MALL');
         }
 
         function openInstantBuyModal(item, sourcePage = 'LIVE') {
@@ -522,7 +503,7 @@
             }
         }
 
-        // 전역 CSR 경량 상태 반영기 (네비게이션 라이브 메뉴 활성/비활성 및 페이지별 실시간 재고·핀 동기화)
+        // 전역 CSR 경량 상태 반영기 (네비게이션 라이브 메뉴 활성/방송중 배지 및 상품 실시간 재고 동기화)
         let __mallLastIsLive = __baseBootEl ? JSON.parse(__baseBootEl.dataset.isLive || 'false') : false;
         window.__mallApplyLiteState = function(state) {
             if (!state || typeof state !== 'object') return;
@@ -533,18 +514,12 @@
                 if (isLive) {
                     navSlot.innerHTML = `<a href="/live" class="ax-nav-link ax-nav-live ${isLiveNav ? 'active' : ''}"><span class="ax-live-dot"></span><span>라이브 커머스</span><span class="ax-nav-status-tag">방송중</span></a>`;
                 } else {
-                    navSlot.innerHTML = `<span class="ax-nav-link ax-nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다"><span class="ax-live-dot"></span><span>라이브 커머스</span><span class="ax-nav-status-tag">대기중</span></span>`;
+                    navSlot.innerHTML = `<a href="/live" class="ax-nav-link ${isLiveNav ? 'active' : ''}"><svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg><span>라이브 커머스</span></a>`;
                 }
-            }
-            const heroSlot = document.getElementById('mallHeroLiveSlot');
-            if (heroSlot && isLive !== __mallLastIsLive) {
-                heroSlot.innerHTML = isLive
-                    ? `<a href="/live" class="ax-btn ax-btn-primary ax-btn-lg"><span class="ax-live-dot" style="background:#fff; box-shadow:none;"></span><span>라이브 커머스 전용관 입장하기</span></a>`
-                    : `<span class="ax-btn ax-btn-secondary ax-btn-lg disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">현재 라이브 방송 대기 중</span>`;
             }
             __mallLastIsLive = isLive;
 
-            // 스토어 홈 상품 카드 실시간 재고 및 방송 소개중 핀 배지 CSR 반영
+            // 스토어 홈 상품 카드 실시간 재고 CSR 반영
             if (state.product_stocks && typeof state.product_stocks === 'object') {
                 document.querySelectorAll('[data-csr-stock-num]').forEach(el => {
                     const num = el.getAttribute('data-csr-stock-num');
@@ -555,13 +530,6 @@
                     }
                 });
             }
-            const selNum = state.selected_product ? String(state.selected_product.num) : '';
-            document.querySelectorAll('[data-csr-pin-slot]').forEach(el => {
-                const num = el.getAttribute('data-csr-pin-slot');
-                el.innerHTML = (isLive && selNum && num === selNum)
-                    ? `<span class="ax-pinned-tag">방송 소개중</span>`
-                    : '';
-            });
         };
 
         document.addEventListener('keydown', (ev) => {

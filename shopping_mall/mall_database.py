@@ -801,17 +801,8 @@ def create_mall_order(order_data):
             resolved_items = []
             subtotal = 0
 
-            # 현재 라이브 방송 중인지 확인 (라이브커머스 페이지 주문이거나 방송 중일 때는 라이브 가격 적용)
-            cur.execute("SELECT value FROM mall_live_state WHERE key = 'is_live'")
-            live_row = cur.fetchone()
-            is_currently_live = False
-            if live_row:
-                try:
-                    is_currently_live = bool(json.loads(live_row["value"]))
-                except Exception:
-                    is_currently_live = str(live_row["value"]).lower() in ("true", "1")
-
-            use_live_pricing = (source_page == "LIVE") or is_currently_live
+            # 라이브 커머스 전용관(/live) 주문일 때만 라이브 특가 적용 (일반 쇼핑몰은 항상 일반 판매가 적용)
+            use_live_pricing = (source_page == "LIVE")
 
             for it in items_req:
                 if not isinstance(it, dict):

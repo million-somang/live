@@ -136,42 +136,6 @@ img {
 }
 
 /* --------------------------------------------------------------------------
-   Top Promo Ticker Bar (Subtle Slate Neutral)
-   -------------------------------------------------------------------------- */
-.ax-promo-bar {
-    background: var(--ax-surface-tertiary);
-    border-bottom: 1px solid var(--ax-border-subtle);
-    color: var(--ax-text-secondary);
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 7px 16px;
-}
-
-.ax-promo-inner {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    text-align: center;
-}
-
-.ax-promo-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background: var(--ax-charcoal);
-    color: #ffffff;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-
-/* --------------------------------------------------------------------------
    1-Row Slim Sticky Header
    -------------------------------------------------------------------------- */
 .ax-header {
@@ -285,14 +249,6 @@ img {
     box-shadow: 0 4px 12px rgba(79, 70, 229, 0.24);
 }
 
-.ax-nav-live.disabled {
-    background: var(--ax-surface-secondary);
-    color: var(--ax-text-muted);
-    border-color: var(--ax-border-subtle);
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
 .ax-live-dot {
     width: 7px;
     height: 7px;
@@ -309,12 +265,6 @@ img {
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
 }
 
-.ax-nav-live.disabled .ax-live-dot {
-    background: var(--ax-text-muted);
-    box-shadow: none;
-    animation: none;
-}
-
 .ax-nav-status-tag {
     font-size: 0.6875rem;
     font-weight: 700;
@@ -323,11 +273,6 @@ img {
     background: var(--ax-success);
     color: #ffffff;
     line-height: 1.4;
-}
-
-.ax-nav-live.disabled .ax-nav-status-tag {
-    background: var(--ax-border-strong);
-    color: var(--ax-text-secondary);
 }
 
 @keyframes axPulseLive {
@@ -819,41 +764,8 @@ img {
 }
 
 /* --------------------------------------------------------------------------
-   Home Storefront (/): Hero Card, Toolbar, Product Grid
+   Home Storefront (/): Toolbar & Product Grid
    -------------------------------------------------------------------------- */
-.ax-hero-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 60%, #eef2ff 100%);
-    border: 1px solid var(--ax-border-subtle);
-    border-radius: var(--ax-radius-lg);
-    padding: 30px 32px;
-    margin-bottom: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 20px;
-    box-shadow: var(--ax-shadow-card);
-}
-
-.ax-hero-content {
-    max-width: 680px;
-}
-
-.ax-hero-title {
-    font-size: 1.75rem;
-    font-weight: 800;
-    letter-spacing: -0.025em;
-    line-height: 1.28;
-    color: var(--ax-text-primary);
-    margin: 10px 0 8px;
-}
-
-.ax-hero-desc {
-    font-size: 0.925rem;
-    color: var(--ax-text-secondary);
-    line-height: 1.6;
-}
-
 .ax-toolbar {
     background: var(--ax-surface-primary);
     border: 1px solid var(--ax-border-subtle);
@@ -928,22 +840,6 @@ img {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.74rem;
     font-weight: 700;
-}
-
-.ax-pinned-tag {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: var(--ax-accent-primary);
-    color: #ffffff;
-    padding: 4px 10px;
-    border-radius: 7px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
 }
 
 .ax-product-body {
@@ -1679,12 +1575,6 @@ img {
     }
     .ax-hide-mobile {
         display: none;
-    }
-    .ax-hero-card {
-        padding: 20px 18px;
-    }
-    .ax-hero-title {
-        font-size: 1.35rem;
     }
     .ax-live-detail-card,
     .ax-card-pad {

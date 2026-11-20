@@ -22,5 +22,6 @@
 - POST 폼은 `<input type="hidden" name="csrf_token" value="{{ csrf_token }}">`을 유지합니다.
 - 주문 품목 목록 순회 시 `ord.order_items if ord.order_items is defined else ord['items']` 패턴을 유지합니다.
 - `/live` 템플릿에는 서버 영상 스트림(`/api/camera/stream`)을 절대 포함하지 않습니다.
+- **일반 스토어 ↔ `/live` UI·가격 분리**: 일반 스토어 페이지(`/`, `/product/<num>`, `/cart`, `/checkout`, `/orders`, `/auth/*`)에는 상단 헤더의 `라이브 커머스` 메뉴 버튼 외에 다른 라이브·OBS 문구·배너·배지·버튼을 추가하지 마세요. 일반 스토어는 항상 일반 판매가(`price`)를 표시·결제하고, `/live` 진입 시에만 라이브 특가(`live_price`)를 적용합니다.
 - **IDE 파서 무에러 원칙**: HTML `style="..."`, `<script>`, `onclick`/`onchange`, 태그 내부(`<option ... {% if ... %}>`)에 Jinja2 표현식을 직접 섞지 마세요. 조건부 스타일은 CSS 클래스(`.ax-is-hidden` 등)로, JS 데이터 전달은 `hidden data-*` (`| tojson | forceescape`) + `JSON.parse(el.dataset.*)`로 처리하세요.
 - UI 변경 후에는 정적 HTML/CSS/JS 구문 검사, Flask 렌더링 테스트(HTTP 200, DOM ID 보존, 태그 균형), Playwright 데스크톱/모바일 뷰포트 검증을 통과한 뒤 작업을 완료하세요.
