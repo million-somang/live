@@ -1,32 +1,37 @@
 {% extends "base.html" %}
-{% block title %}📦 주문/배송 조회 — 골라방 LIVE 몰{% endblock %}
+{% block title %}주문/배송 조회 — 골라방 LIVE{% endblock %}
 
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
-    <h1 style="font-size:1.65rem; font-weight:900;">
-        📦 {% if current_mall_user %}{{ current_mall_user.name }}님의 주문 / 배송 내역{% else %}비회원 주문 / 배송 조회{% endif %}
-    </h1>
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">ORDER TRACKING</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">
+                {% if current_mall_user %}{{ current_mall_user.name }}님의 주문 / 배송 내역{% else %}비회원 주문 / 배송 조회{% endif %}
+            </h1>
+        </div>
+    </div>
     {% if not current_mall_user %}
-    <a href="/auth/login?next=/orders" style="padding:9px 16px; border-radius:10px; background:#4f46e5; color:#fff; font-size:0.86rem; font-weight:800;">
-        🔐 회원 로그인으로 내 주문 전체 보기
+    <a href="/auth/login?next=/orders" class="ax-btn ax-btn-primary">
+        회원 로그인으로 내 주문 전체 보기
     </a>
     {% endif %}
 </div>
 
 <!-- 비회원 3중 검증 조회 폼 (주문번호 + 연락처 + 비회원 주문 비밀번호) -->
-<form id="guestOrderLookupForm" method="POST" action="/orders" style="background:#fff; border-radius:18px; padding:20px; border:1px solid var(--border); margin-bottom:24px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+<form id="guestOrderLookupForm" method="POST" action="/orders" class="ax-card ax-lookup-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="text" id="lookupOrderCode" name="order_code" value="{{ order_code }}" class="form-input" placeholder="주문번호 (예: ORD-20261115-...)" style="width:240px;" required>
-    <input type="text" id="lookupBuyerPhone" name="buyer_phone" value="{{ buyer_phone }}" class="form-input" placeholder="수령인 휴대폰 번호 전체" style="width:200px;" required>
-    <input type="password" id="lookupGuestPassword" name="guest_password" class="form-input" placeholder="비회원 주문조회 비밀번호" style="width:210px;" required>
-    <button type="submit" style="padding:11px 22px; border-radius:10px; border:none; background:#0f172a; color:#fff; font-weight:900; cursor:pointer;">🔍 안전 조회하기</button>
+    <input type="text" id="lookupOrderCode" name="order_code" value="{{ order_code }}" class="ax-input ax-num" placeholder="주문번호 (예: ORD-20261115-...)" required>
+    <input type="text" id="lookupBuyerPhone" name="buyer_phone" value="{{ buyer_phone }}" class="ax-input ax-num" placeholder="수령인 휴대폰 번호 전체" required>
+    <input type="password" id="lookupGuestPassword" name="guest_password" class="ax-input" placeholder="비회원 주문조회 비밀번호" required>
+    <button type="submit" class="ax-btn ax-btn-charcoal">안전 조회하기</button>
     {% if current_mall_user %}
-    <a href="/orders" style="padding:11px 16px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.86rem; font-weight:700;">내 회원 주문 보기</a>
+    <a href="/orders" class="ax-btn ax-btn-secondary">내 회원 주문 보기</a>
     {% endif %}
 </form>
 
 {% if lookup_error %}
-<div style="background:#fff1f2; border:1px solid #fecdd3; color:#be123c; padding:14px 18px; border-radius:14px; font-size:0.9rem; font-weight:700; margin-bottom:20px;">
+<div class="ax-callout-danger" style="margin-bottom:20px;">
     {{ lookup_error }}
 </div>
 {% endif %}
@@ -34,49 +39,50 @@
 {% if orders %}
 <div style="display:flex; flex-direction:column; gap:16px;">
     {% for ord in orders %}
-    <div style="background:#fff; border-radius:20px; padding:22px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid #f1f5f9; margin-bottom:14px;">
-            <div>
-                <span style="font-weight:900; font-size:1rem; color:#0f172a;">주문번호: {{ ord.order_code }}</span>
-                <span style="font-size:0.82rem; color:#64748b; margin-left:10px;">{{ ord.created_at }}</span>
+    <div class="ax-card ax-order-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid var(--ax-border-subtle); margin-bottom:14px;">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span class="ax-code-chip">{{ ord.order_code }}</span>
+                <span class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary);">{{ ord.created_at }}</span>
             </div>
-            <div style="display:flex; gap:8px;">
-                <span style="background:#ecfdf5; color:#059669; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:900;">{{ ord.payment_status }}</span>
-                <span style="background:#eff6ff; color:#2563eb; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:900;">{{ ord.order_status }}</span>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <span class="ax-badge {% if ord.payment_status == '입금완료' %}ax-badge-success{% elif ord.payment_status == '환불완료' %}ax-badge-live{% else %}ax-badge-warning{% endif %}">{{ ord.payment_status }}</span>
+                <span class="ax-badge {% if ord.order_status == '배송완료' %}ax-badge-success{% elif ord.order_status == '주문취소' %}ax-badge-live{% else %}ax-badge-indigo{% endif %}">{{ ord.order_status }}</span>
             </div>
         </div>
-        <div style="margin-bottom:12px; font-size:0.88rem; color:#475569;">
-            <strong>수령인:</strong> {{ ord.buyer_name }} ({{ ord.buyer_phone }}) • <strong>배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
+        <div style="margin-bottom:12px; font-size:0.86rem; color:var(--ax-text-secondary);">
+            <strong style="color:var(--ax-text-primary);">수령인:</strong> {{ ord.buyer_name }} (<span class="ax-num">{{ ord.buyer_phone }}</span>) ·
+            <strong style="color:var(--ax-text-primary);">배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
         </div>
-        <div style="background:#f8fafc; border-radius:12px; padding:12px 16px;">
+        <div class="ax-surface-muted">
             {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
             {% for it in (item_list or []) %}
-            <div style="display:flex; justify-content:space-between; padding:6px 0; font-size:0.9rem;">
-                <span><strong>#{{ it.product_num }} {{ it.product_name }}</strong> ({{ it.color }}/{{ it.size }}) × {{ it.quantity }}개</span>
-                <strong>{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
+            <div style="display:flex; justify-content:space-between; gap:10px; padding:6px 0; font-size:0.88rem; {% if not loop.last %}border-bottom:1px dashed var(--ax-border-subtle);{% endif %}">
+                <span><strong>#{{ it.product_num }} {{ it.product_name }}</strong> ({{ it.color }}/{{ it.size }}) × <span class="ax-num">{{ it.quantity }}개</span></span>
+                <strong class="ax-num">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
             </div>
             {% endfor %}
         </div>
-        <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:10px 14px; margin-top:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <span style="font-size:0.86rem; font-weight:800; color:#92400e;">🏦 입금 계좌: <strong style="color:#0f172a;">카카오뱅크 3333 233 094904</strong> (예금주: 박창현)</span>
-            <button type="button" onclick="copyMallBankAccount()" style="padding:4px 10px; border-radius:8px; border:1px solid #f59e0b; background:#fff; color:#92400e; font-size:0.76rem; font-weight:800; cursor:pointer;">📋 계좌 복사</button>
+        <div class="ax-bank-box" style="margin-top:12px;">
+            <span class="ax-num" style="font-size:0.84rem; font-weight:700; color:var(--ax-warning);">입금 계좌: <strong style="color:var(--ax-text-primary);">카카오뱅크 3333 233 094904</strong> (예금주: 박창현)</span>
+            <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
         </div>
         {% set safe_total = (ord.total_amount or 0)|int %}
         {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
         {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
-        <div style="text-align:right; margin-top:12px; font-size:1.1rem; font-weight:900; color:#e11d48;">
-            <span style="font-size:0.84rem; color:#475569; font-weight:700; margin-right:8px;">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</span>
+        <div class="ax-num" style="text-align:right; margin-top:12px; font-size:1.08rem; font-weight:800; color:var(--ax-accent-primary);">
+            <span style="font-size:0.82rem; color:var(--ax-text-secondary); font-weight:600; margin-right:8px;">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</span>
             총 결제 금액: {{ "{:,}".format(safe_total) }}원
         </div>
     </div>
     {% endfor %}
 </div>
 {% else %}
-<div style="background:#fff; border-radius:20px; padding:50px 20px; text-align:center; border:1px solid var(--border); color:#64748b;">
+<div class="ax-card" style="padding:48px 20px; text-align:center; color:var(--ax-text-secondary); font-size:0.9rem;">
     {% if current_mall_user %}
         아직 주문하신 내역이 없습니다.
     {% else %}
-        개인정보 보호를 위해 비회원 주문 내역은 <strong>주문번호 + 휴대폰 번호 + 주문 비밀번호</strong>가 모두 일치할 때만 열람됩니다.
+        개인정보 보호를 위해 비회원 주문 내역은 <strong style="color:var(--ax-text-primary);">주문번호 + 휴대폰 번호 + 주문 비밀번호</strong>가 모두 일치할 때만 열람됩니다.
     {% endif %}
 </div>
 {% endif %}

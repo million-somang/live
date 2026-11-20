@@ -1,74 +1,81 @@
 {% extends "base.html" %}
-{% block title %}💳 주문/결제 — 골라방 LIVE 몰{% endblock %}
+{% block title %}주문/결제 — 골라방 LIVE{% endblock %}
 
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
-    <h1 style="font-size:1.65rem; font-weight:900;">💳 주문서 작성 및 결제</h1>
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">CHECKOUT</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">주문서 작성 및 결제</h1>
+        </div>
+    </div>
     {% if not current_mall_user %}
-    <span style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; padding:7px 14px; border-radius:999px; font-size:0.84rem; font-weight:900;">
-        ✅ 비회원 주문 진행 중 (로그인 없이 전 상품 구매 가능)
+    <span class="ax-badge ax-badge-success" style="padding:6px 12px; font-size:0.8rem;">
+        비회원 주문 진행 중 (로그인 없이 전 상품 구매 가능)
     </span>
     {% endif %}
 </div>
 
-<form id="checkoutForm" onsubmit="submitCheckoutForm(event)" style="display:grid; grid-template-columns:1fr 380px; gap:24px; align-items:start;">
-    <div style="background:#fff; border-radius:20px; padding:26px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
-        <h3 style="font-size:1.12rem; font-weight:900; margin-bottom:16px;">📦 배송지 정보</h3>
-        <div class="form-group">
-            <label class="form-label">수령인 성함 *</label>
-            <input type="text" id="coBuyerName" class="form-input" required placeholder="홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}">
+<form id="checkoutForm" onsubmit="submitCheckoutForm(event)" class="ax-split-layout-wide">
+    <div class="ax-card ax-card-pad">
+        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:16px;">배송지 정보</h3>
+        <div class="ax-form-row-2">
+            <div class="ax-field">
+                <label class="ax-label" for="coBuyerName">수령인 성함 *</label>
+                <input type="text" id="coBuyerName" class="ax-input" required placeholder="홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="coBuyerPhone">연락처 *</label>
+                <input type="tel" id="coBuyerPhone" class="ax-input ax-num" required placeholder="010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}">
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">연락처 *</label>
-            <input type="tel" id="coBuyerPhone" class="form-input" required placeholder="010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}">
-        </div>
-        <div class="form-group">
-            <label class="form-label">배송지 주소 *</label>
-            <input type="text" id="coAddress" class="form-input" required placeholder="기본 주소 입력" style="margin-bottom:8px;" value="{{ current_mall_user.address if current_mall_user else '' }}">
-            <input type="text" id="coAddressDetail" class="form-input" placeholder="상세 주소 입력" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
+        <div class="ax-field">
+            <label class="ax-label" for="coAddress">배송지 주소 *</label>
+            <input type="text" id="coAddress" class="ax-input" required placeholder="기본 주소 입력" style="margin-bottom:8px;" value="{{ current_mall_user.address if current_mall_user else '' }}">
+            <input type="text" id="coAddressDetail" class="ax-input" placeholder="상세 주소 입력" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
         </div>
         {% if not current_mall_user %}
-        <div class="form-group" style="background:#fff1f2; border:1px solid #fecdd3; border-radius:12px; padding:14px 16px;">
-            <label class="form-label" style="color:#be123c; font-weight:900;">🔒 비회원 주문조회 비밀번호 * (4자 이상)</label>
-            <input type="password" id="coGuestPassword" class="form-input" required minlength="4" placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)">
-            <div style="font-size:0.78rem; color:#9f1239; margin-top:5px;">* 회원가입 없이 바로 주문 가능하며, [주문조회] 메뉴에서 주문번호·연락처·비밀번호로 배송 상태를 확인하실 수 있습니다.</div>
+        <div class="ax-field ax-callout-indigo">
+            <label class="ax-label" for="coGuestPassword" style="color:#3730a3;">비회원 주문조회 비밀번호 * (4자 이상)</label>
+            <input type="password" id="coGuestPassword" class="ax-input" required minlength="4" placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)" style="background:#ffffff;">
+            <div style="font-size:0.76rem; color:#4338ca; margin-top:5px;">회원가입 없이 바로 주문 가능하며, [주문조회] 메뉴에서 주문번호·연락처·비밀번호로 배송 상태를 확인하실 수 있습니다.</div>
         </div>
         {% endif %}
-        <div class="form-group">
-            <label class="form-label">배송 메모</label>
-            <input type="text" id="coMemo" class="form-input" placeholder="부재 시 문 앞에 놓아주세요">
+        <div class="ax-field">
+            <label class="ax-label" for="coMemo">배송 메모</label>
+            <input type="text" id="coMemo" class="ax-input" placeholder="부재 시 문 앞에 놓아주세요">
         </div>
 
-        <h3 style="font-size:1.12rem; font-weight:900; margin:24px 0 12px;">🏦 결제 수단 (계좌입금 전용)</h3>
-        <select id="coPaymentMethod" class="form-input" style="font-weight:800; background:#f8fafc;">
-            <option value="BANK" selected>🏦 계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
+        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin:24px 0 12px;">결제 수단 (계좌입금 전용)</h3>
+        <select id="coPaymentMethod" class="ax-select" style="font-weight:700;">
+            <option value="BANK" selected>계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
         </select>
-        <div style="margin-top:10px; background:#fffbeb; border:1.5px solid #fcd34d; border-radius:14px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div class="ax-bank-box" style="margin-top:10px;">
             <div>
-                <div style="font-size:0.78rem; font-weight:800; color:#92400e;">🏦 입금 계좌 번호 (택배비 4,000원 포함 총 결제금액 입금)</div>
-                <div style="font-size:1.05rem; font-weight:900; color:#0f172a; margin-top:3px;">카카오뱅크 <span style="color:#d97706;">3333 233 094904</span> (예금주: 박창현)</div>
+                <div style="font-size:0.76rem; font-weight:700; color:var(--ax-warning);">입금 계좌 번호 (택배비 4,000원 포함 총 결제금액 입금)</div>
+                <div class="ax-num" style="font-size:1rem; font-weight:800; color:var(--ax-text-primary); margin-top:3px;">카카오뱅크 <span style="color:var(--ax-warning);">3333 233 094904</span> (예금주: 박창현)</div>
             </div>
-            <button type="button" onclick="copyMallBankAccount()" style="padding:8px 14px; border-radius:10px; border:1px solid #f59e0b; background:#ffffff; color:#92400e; font-size:0.8rem; font-weight:800; cursor:pointer;">📋 계좌번호 복사</button>
+            <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌번호 복사</button>
         </div>
     </div>
 
-    <div style="background:#fff; border-radius:20px; padding:26px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
-        <h3 style="font-size:1.1rem; font-weight:900; margin-bottom:14px;">🛍️ 주문 상품 확인</h3>
+    <div class="ax-card ax-card-pad ax-sticky-panel">
+        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:14px;">주문 상품 확인</h3>
         <div id="coOrderItemsSummary" style="margin-bottom:14px; max-height:280px; overflow-y:auto;"></div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.9rem; color:#475569;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.88rem; color:var(--ax-text-secondary);">
             <span>총 상품 금액</span>
-            <strong id="coSubtotalAmount" style="color:#0f172a;">0원</strong>
+            <strong id="coSubtotalAmount" class="ax-num" style="color:var(--ax-text-primary);">0원</strong>
         </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.9rem; color:#475569;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.88rem; color:var(--ax-text-secondary);">
             <span>택배비용 (필수 추가)</span>
-            <strong id="coShippingAmount" style="color:#0f172a;">+4,000원</strong>
+            <strong id="coShippingAmount" class="ax-num" style="color:var(--ax-text-primary);">+4,000원</strong>
         </div>
-        <div style="border-top:2px solid #f1f5f9; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
-            <span style="font-weight:900;">최종 결제 금액</span>
-            <span id="coTotalAmount" style="font-size:1.5rem; font-weight:900; color:#e11d48;">0원</span>
+        <div style="border-top:1px solid var(--ax-border-subtle); padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
+            <span style="font-weight:800; color:var(--ax-text-primary);">최종 결제 금액</span>
+            <span id="coTotalAmount" class="ax-num" style="font-size:1.45rem; font-weight:800; color:var(--ax-accent-primary);">0원</span>
         </div>
-        <button type="submit" id="coSubmitBtn" style="width:100%; padding:16px; border-radius:14px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:1.02rem; font-weight:900; cursor:pointer; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
-            ⚡ 주문 완료하기 (계좌입금)
+        <button type="submit" id="coSubmitBtn" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block">
+            주문 완료하기 (계좌입금)
         </button>
     </div>
 </form>
@@ -88,9 +95,9 @@
             const line = (Number(it.price) || 0) * (Number(it.quantity) || 1);
             sub += line;
             return `
-                <div style="padding:10px 0; border-bottom:1px solid #f1f5f9; font-size:0.86rem;">
-                    <div style="font-weight:900; color:#0f172a;">#${it.num} ${it.name}</div>
-                    <div style="color:#64748b;">${it.color}/${it.size} × ${it.quantity}개 = <strong>${line.toLocaleString()}원</strong></div>
+                <div style="padding:10px 0; border-bottom:1px solid var(--ax-border-subtle); font-size:0.85rem;">
+                    <div style="font-weight:700; color:var(--ax-text-primary);">#${it.num} ${it.name}</div>
+                    <div class="ax-num" style="color:var(--ax-text-secondary); margin-top:2px;">${it.color}/${it.size} × ${it.quantity}개 = <strong style="color:var(--ax-text-primary);">${line.toLocaleString()}원</strong></div>
                 </div>
             `;
         }).join('');
@@ -140,7 +147,7 @@
 
         try {
             btn.disabled = true;
-            btn.innerText = '⏳ 주문 처리 중...';
+            btn.innerText = '주문 처리 중...';
             const res = await fetch('/api/orders/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -176,7 +183,7 @@
             alert('오류: ' + err.message);
         } finally {
             btn.disabled = false;
-            btn.innerText = '⚡ 주문 완료하기 (계좌입금)';
+            btn.innerText = '주문 완료하기 (계좌입금)';
         }
     }
 

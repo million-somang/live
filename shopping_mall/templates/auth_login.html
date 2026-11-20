@@ -1,29 +1,27 @@
 {% extends "base.html" %}
-{% block title %}로그인 — THE VINE LIVE MALL{% endblock %}
+{% block title %}로그인 — 골라방 LIVE{% endblock %}
 
 {% block content %}
-<div style="max-width:440px; margin:48px auto; background:#fff; border:1px solid var(--border); border-radius:22px; padding:34px 30px; box-shadow:var(--shadow-md);">
-    <div style="display:inline-block; padding:4px 10px; border-radius:999px; background:#ffe4e6; color:#e11d48; font-size:0.76rem; font-weight:800; margin-bottom:10px;">
-        🛍️ 쇼핑몰 회원 전용 인증
-    </div>
-    <h1 style="font-size:1.5rem; font-weight:900; color:#0f172a; margin-bottom:6px;">쇼핑몰 로그인</h1>
-    <p style="font-size:0.88rem; color:var(--text-sub); margin-bottom:14px; line-height:1.5;">
+<div class="ax-card ax-auth-card">
+    <span class="ax-badge-eyebrow" style="margin-bottom:10px;">MEMBER LOGIN</span>
+    <h1 style="font-size:1.45rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:6px; letter-spacing:-0.02em;">골라방 LIVE 로그인</h1>
+    <p style="font-size:0.86rem; color:var(--ax-text-secondary); margin-bottom:16px; line-height:1.55;">
         회원 로그인 시 기본 배송지 자동 입력 및 전체 주문 내역 통합 조회가 가능합니다.
     </p>
-    <div style="padding:12px 14px; border-radius:12px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; font-size:0.84rem; font-weight:800; margin-bottom:18px; line-height:1.5;">
-        ✅ <strong>비회원도 쇼핑몰의 모든 상품(일반 스토어 · 장바구니 · 라이브)을 로그인 없이 즉시 구매</strong>하실 수 있습니다!
-        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" onclick="goGuestPurchaseNow()" style="padding:8px 14px; border-radius:8px; border:none; background:#059669; color:#fff; font-size:0.82rem; font-weight:900; cursor:pointer;">
-                🛍️ 로그인 없이 비회원으로 바로 구매하러 가기 ➔
+    <div class="ax-callout-success" style="margin-bottom:18px; line-height:1.55;">
+        <strong>비회원도 쇼핑몰의 모든 상품(일반 스토어 · 장바구니 · 라이브)을 로그인 없이 즉시 구매</strong>하실 수 있습니다.
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" onclick="goGuestPurchaseNow()" class="ax-btn ax-btn-charcoal ax-btn-sm">
+                로그인 없이 비회원으로 바로 구매하기
             </button>
-            <a href="/checkout" id="guestCheckoutQuickLink" style="display:none; padding:8px 14px; border-radius:8px; background:#e11d48; color:#fff; font-size:0.82rem; font-weight:900;">
-                💳 장바구니 상품 비회원 결제하기 ➔
+            <a href="/checkout" id="guestCheckoutQuickLink" class="ax-btn ax-btn-primary ax-btn-sm" style="display:none;">
+                장바구니 상품 비회원 결제하기
             </a>
         </div>
     </div>
 
     {% if error %}
-    <div style="padding:12px 14px; border-radius:12px; background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-size:0.86rem; font-weight:700; margin-bottom:16px;">
+    <div class="ax-callout-danger" style="margin-bottom:16px;">
         {{ error }}
     </div>
     {% endif %}
@@ -32,26 +30,24 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="next" value="{{ next_url or '/' }}">
 
-        <div style="margin-bottom:14px;">
-            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:6px;">이메일 주소</label>
-            <input type="email" name="email" required autofocus placeholder="example@email.com"
-                   style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.94rem;">
+        <div class="ax-field">
+            <label class="ax-label" for="loginEmail">이메일 주소</label>
+            <input type="email" id="loginEmail" name="email" required autofocus placeholder="example@email.com" class="ax-input">
         </div>
 
-        <div style="margin-bottom:18px;">
-            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:6px;">비밀번호</label>
-            <input type="password" name="password" required placeholder="비밀번호 입력"
-                   style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.94rem;">
+        <div class="ax-field" style="margin-bottom:18px;">
+            <label class="ax-label" for="loginPassword">비밀번호</label>
+            <input type="password" id="loginPassword" name="password" required placeholder="비밀번호 입력" class="ax-input">
         </div>
 
-        <button type="submit" style="width:100%; padding:13px; border-radius:12px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.98rem; font-weight:900; cursor:pointer;">
+        <button type="submit" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block">
             로그인하기
         </button>
     </form>
 
-    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border); text-align:center; font-size:0.88rem; color:var(--text-sub);">
+    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--ax-border-subtle); text-align:center; font-size:0.86rem; color:var(--ax-text-secondary);">
         아직 쇼핑몰 회원이 아니신가요?
-        <a href="/auth/register?next={{ next_url or '/' }}" style="color:#e11d48; font-weight:800; margin-left:6px;">회원가입하기 ➔</a>
+        <a href="/auth/register?next={{ next_url or '/' }}" style="color:var(--ax-accent-primary); font-weight:700; margin-left:6px;">회원가입하기</a>
     </div>
 </div>
 {% endblock %}
@@ -87,7 +83,7 @@
             const cart = typeof getMallCart === 'function' ? getMallCart() : [];
             const btn = document.getElementById('guestCheckoutQuickLink');
             if (btn && Array.isArray(cart) && cart.length > 0) {
-                btn.style.display = 'inline-block';
+                btn.style.display = 'inline-flex';
             }
         } catch (e) {}
     });

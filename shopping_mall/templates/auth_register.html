@@ -1,18 +1,16 @@
 {% extends "base.html" %}
-{% block title %}회원가입 — THE VINE LIVE MALL{% endblock %}
+{% block title %}회원가입 — 골라방 LIVE{% endblock %}
 
 {% block content %}
-<div style="max-width:480px; margin:40px auto; background:#fff; border:1px solid var(--border); border-radius:22px; padding:34px 30px; box-shadow:var(--shadow-md);">
-    <div style="display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#4f46e5; font-size:0.76rem; font-weight:800; margin-bottom:10px;">
-        ✨ THE VINE LIVE MALL 신규 회원가입
-    </div>
-    <h1 style="font-size:1.5rem; font-weight:900; color:#0f172a; margin-bottom:6px;">쇼핑몰 회원가입</h1>
-    <p style="font-size:0.88rem; color:var(--text-sub); margin-bottom:20px; line-height:1.5;">
+<div class="ax-card ax-auth-card ax-auth-card-wide">
+    <span class="ax-badge-eyebrow" style="margin-bottom:10px;">CREATE ACCOUNT</span>
+    <h1 style="font-size:1.45rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:6px; letter-spacing:-0.02em;">골라방 LIVE 회원가입</h1>
+    <p style="font-size:0.86rem; color:var(--ax-text-secondary); margin-bottom:20px; line-height:1.55;">
         비회원으로도 모든 상품 구매가 가능하며, 회원가입 시 기본 배송지 자동 입력과 마이 주문 내역 통합 조회가 제공됩니다.
     </p>
 
     {% if error %}
-    <div style="padding:12px 14px; border-radius:12px; background:#fff1f2; border:1px solid #fecdd3; color:#be123c; font-size:0.86rem; font-weight:700; margin-bottom:16px;">
+    <div class="ax-callout-danger" style="margin-bottom:16px;">
         {{ error }}
     </div>
     {% endif %}
@@ -21,47 +19,41 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="next" value="{{ next_url or '/' }}">
 
-        <div style="margin-bottom:13px;">
-            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:5px;">이메일 주소 (로그인 ID) *</label>
-            <input type="email" name="email" required value="{{ prefill.email if prefill else '' }}" placeholder="example@email.com"
-                   style="width:100%; padding:10px 13px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.93rem;">
+        <div class="ax-field">
+            <label class="ax-label" for="regEmail">이메일 주소 (로그인 ID) *</label>
+            <input type="email" id="regEmail" name="email" required value="{{ prefill.email if prefill else '' }}" placeholder="example@email.com" class="ax-input">
         </div>
 
-        <div style="margin-bottom:13px;">
-            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:5px;">비밀번호 * (8자 이상, 문자+숫자 포함)</label>
-            <input type="password" name="password" required placeholder="비밀번호 8자 이상"
-                   style="width:100%; padding:10px 13px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.93rem;">
+        <div class="ax-field">
+            <label class="ax-label" for="regPassword">비밀번호 * (8자 이상, 문자+숫자 포함)</label>
+            <input type="password" id="regPassword" name="password" required placeholder="비밀번호 8자 이상" class="ax-input">
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:13px;">
-            <div>
-                <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:5px;">성함 *</label>
-                <input type="text" name="name" required value="{{ prefill.name if prefill else '' }}" placeholder="홍길동"
-                       style="width:100%; padding:10px 13px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.93rem;">
+        <div class="ax-form-row-2">
+            <div class="ax-field">
+                <label class="ax-label" for="regName">성함 *</label>
+                <input type="text" id="regName" name="name" required value="{{ prefill.name if prefill else '' }}" placeholder="홍길동" class="ax-input">
             </div>
-            <div>
-                <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:5px;">휴대폰 번호 *</label>
-                <input type="text" name="phone" required value="{{ prefill.phone if prefill else '' }}" placeholder="010-1234-5678"
-                       style="width:100%; padding:10px 13px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.93rem;">
+            <div class="ax-field">
+                <label class="ax-label" for="regPhone">휴대폰 번호 *</label>
+                <input type="text" id="regPhone" name="phone" required value="{{ prefill.phone if prefill else '' }}" placeholder="010-1234-5678" class="ax-input ax-num">
             </div>
         </div>
 
-        <div style="margin-bottom:13px;">
-            <label style="display:block; font-size:0.84rem; font-weight:800; color:#334155; margin-bottom:5px;">기본 배송지 주소 (선택)</label>
-            <input type="text" name="address" value="{{ prefill.address if prefill else '' }}" placeholder="도로명 또는 지번 주소"
-                   style="width:100%; padding:10px 13px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.93rem; margin-bottom:7px;">
-            <input type="text" name="address_detail" value="{{ prefill.address_detail if prefill else '' }}" placeholder="상세 주소 (동/호수)"
-                   style="width:100%; padding:10px 13px; border-radius:10px; border:1px solid #cbd5e1; font-size:0.93rem;">
+        <div class="ax-field">
+            <label class="ax-label" for="regAddress">기본 배송지 주소 (선택)</label>
+            <input type="text" id="regAddress" name="address" value="{{ prefill.address if prefill else '' }}" placeholder="도로명 또는 지번 주소" class="ax-input" style="margin-bottom:7px;">
+            <input type="text" id="regAddressDetail" name="address_detail" value="{{ prefill.address_detail if prefill else '' }}" placeholder="상세 주소 (동/호수)" class="ax-input">
         </div>
 
-        <button type="submit" style="width:100%; padding:13px; border-radius:12px; border:none; background:linear-gradient(135deg,#4f46e5,#4338ca); color:#fff; font-size:0.98rem; font-weight:900; cursor:pointer; margin-top:6px;">
+        <button type="submit" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block" style="margin-top:6px;">
             회원가입 완료하기
         </button>
     </form>
 
-    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border); text-align:center; font-size:0.88rem; color:var(--text-sub);">
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--ax-border-subtle); text-align:center; font-size:0.86rem; color:var(--ax-text-secondary);">
         이미 계정이 있으신가요?
-        <a href="/auth/login?next={{ next_url or '/' }}" style="color:#4f46e5; font-weight:800; margin-left:6px;">로그인하기 ➔</a>
+        <a href="/auth/login?next={{ next_url or '/' }}" style="color:var(--ax-accent-primary); font-weight:700; margin-left:6px;">로그인하기</a>
     </div>
 </div>
 {% endblock %}

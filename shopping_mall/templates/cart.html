@@ -1,33 +1,49 @@
 {% extends "base.html" %}
-{% block title %}🛒 장바구니 — 골라방 LIVE 몰{% endblock %}
+{% block title %}장바구니 — 골라방 LIVE{% endblock %}
 
 {% block content %}
-<h1 style="font-size:1.65rem; font-weight:900; margin-bottom:20px;">🛒 장바구니</h1>
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">SHOPPING CART</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">장바구니</h1>
+        </div>
+    </div>
+</div>
 
-<div style="display:grid; grid-template-columns:1fr 360px; gap:24px; align-items:start;">
-    <div id="cartItemsContainer" style="background:#fff; border-radius:20px; padding:24px; border:1px solid var(--border); box-shadow:var(--shadow-sm);">
+<div class="ax-split-layout">
+    <div id="cartItemsContainer" class="ax-card ax-card-pad">
     </div>
 
-    <div style="background:#fff; border-radius:20px; padding:24px; border:1px solid var(--border); box-shadow:var(--shadow-sm); position:sticky; top:90px;">
-        <h3 style="font-size:1.1rem; font-weight:900; margin-bottom:16px;">💳 결제 예정 금액</h3>
-        <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.92rem; color:#475569;">
+    <div class="ax-card ax-card-pad ax-sticky-panel">
+        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:16px;">결제 예정 금액</h3>
+        <div
+            style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.89rem; color:var(--ax-text-secondary);">
             <span>총 상품 금액</span>
-            <strong id="cartSubtotalText" style="color:#0f172a;">0원</strong>
+            <strong id="cartSubtotalText" class="ax-num" style="color:var(--ax-text-primary);">0원</strong>
         </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.92rem; color:#475569;">
+        <div
+            style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.89rem; color:var(--ax-text-secondary);">
             <span>택배비용 (필수 추가)</span>
-            <strong id="cartShippingText" style="color:#0f172a;">4,000원</strong>
+            <strong id="cartShippingText" class="ax-num" style="color:var(--ax-text-primary);">4,000원</strong>
         </div>
-        <div style="border-top:2px solid #f1f5f9; padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:20px;">
-            <span style="font-size:1rem; font-weight:900;">총 결제 금액</span>
-            <span id="cartTotalText" style="font-size:1.5rem; font-weight:900; color:#e11d48;">0원</span>
+        <div
+            style="border-top:1px solid var(--ax-border-subtle); padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
+            <span style="font-size:0.95rem; font-weight:800; color:var(--ax-text-primary);">총 결제 금액</span>
+            <span id="cartTotalText" class="ax-num"
+                style="font-size:1.45rem; font-weight:800; color:var(--ax-accent-primary);">0원</span>
         </div>
-        <a href="/checkout" id="btnGoCheckout" style="display:block; text-align:center; padding:16px; border-radius:14px; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-weight:900; font-size:1rem; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
-            전체 상품 주문하기 (비회원/회원) ➔
+        <a href="/checkout" id="btnGoCheckout" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block">
+            <span>전체 상품 주문하기 (비회원/회원)</span>
+            <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+            </svg>
         </a>
         {% if not current_mall_user %}
-        <div style="margin-top:10px; font-size:0.8rem; color:#059669; font-weight:800; text-align:center;">
-            ✅ 회원가입·로그인 없이 비회원으로도 바로 주문 가능합니다!
+        <div class="ax-callout-success" style="margin-top:12px; text-align:center;">
+            회원가입·로그인 없이 비회원으로도 바로 주문 가능합니다.
         </div>
         {% endif %}
     </div>
@@ -42,14 +58,16 @@
         if (!box) return;
         if (cart.length === 0) {
             box.innerHTML = `
-                <div style="padding:50px 20px; text-align:center; color:#64748b;">
-                    <div style="font-size:3rem; margin-bottom:10px;">🛒</div>
-                    <h3 style="font-size:1.15rem; font-weight:900; color:#0f172a;">장바구니가 비어 있습니다</h3>
-                    <p style="margin:8px 0 18px;">라이브 커머스 전용관이나 스토어 홈에서 원하는 상품을 담아보세요!</p>
+                <div style="padding:48px 16px; text-align:center; color:var(--ax-text-secondary);">
+                    <div style="width:52px; height:52px; margin:0 auto 12px; border-radius:14px; background:var(--ax-surface-tertiary); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted);">
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                    </div>
+                    <h3 style="font-size:1.1rem; font-weight:800; color:var(--ax-text-primary);">장바구니가 비어 있습니다</h3>
+                    <p style="margin:8px 0 18px; font-size:0.875rem;">라이브 커머스 전용관이나 스토어 홈에서 원하는 상품을 담아보세요.</p>
                     {% if live_state and live_state.is_live %}
-                    <a href="/live" style="display:inline-block; padding:12px 22px; border-radius:999px; background:#e11d48; color:#fff; font-weight:900;">🔴 라이브 커머스 보러가기</a>
+                    <a href="/live" class="ax-btn ax-btn-primary">라이브 커머스 보러가기</a>
                     {% else %}
-                    <a href="/" style="display:inline-block; padding:12px 22px; border-radius:999px; background:#0f172a; color:#fff; font-weight:900;">🛍️ 스토어 홈으로 가기</a>
+                    <a href="/" class="ax-btn ax-btn-charcoal">스토어 홈으로 가기</a>
                     {% endif %}
                 </div>
             `;
@@ -64,22 +82,24 @@
             const line = (Number(item.price) || 0) * (Number(item.quantity) || 1);
             subtotal += line;
             return `
-                <div style="display:flex; align-items:center; gap:16px; padding:16px 0; border-bottom:1px solid #f1f5f9;">
+                <div class="ax-cart-row">
                     ${item.image_url
-                        ? `<img src="${item.image_url}" style="width:76px; height:76px; border-radius:12px; object-fit:cover; border:1px solid #e2e8f0;">`
-                        : `<div style="width:76px; height:76px; border-radius:12px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; font-size:1.8rem;">🛍️</div>`}
-                    <div style="flex:1;">
-                        <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 상품</div>
-                        <div style="font-size:1rem; font-weight:900; color:#0f172a;">${item.name}</div>
-                        <div style="font-size:0.84rem; color:#64748b; margin-top:2px;">옵션: ${item.color} / ${item.size}</div>
-                        <div style="font-size:0.95rem; font-weight:900; color:#0f172a; margin-top:4px;">${line.toLocaleString()}원</div>
+                    ? `<img src="${item.image_url}" alt="" style="width:74px; height:74px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
+                    : `<div style="width:74px; height:74px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;"><svg class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></div>`}
+                    <div style="flex:1; min-width:0;">
+                        <div style="margin-bottom:4px;">
+                            <span class="ax-code-chip">#${item.num}번 상품</span>
+                        </div>
+                        <div style="font-size:0.96rem; font-weight:800; color:var(--ax-text-primary);">${item.name}</div>
+                        <div style="font-size:0.82rem; color:var(--ax-text-secondary); margin-top:2px;">옵션: ${item.color} / ${item.size}</div>
+                        <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-top:4px;">${line.toLocaleString()}원</div>
                     </div>
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <button type="button" onclick="updateCartItemQty(${idx}, -1)" style="width:30px; height:30px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; font-weight:900; cursor:pointer;">−</button>
-                        <span style="min-width:28px; text-align:center; font-weight:800;">${item.quantity}</span>
-                        <button type="button" onclick="updateCartItemQty(${idx}, 1)" style="width:30px; height:30px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; font-weight:900; cursor:pointer;">+</button>
+                    <div class="ax-qty-stepper">
+                        <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, -1)" aria-label="수량 감소">−</button>
+                        <span class="ax-num" style="min-width:30px; text-align:center; font-weight:700; font-size:0.875rem;">${item.quantity}</span>
+                        <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, 1)" aria-label="수량 증가">+</button>
                     </div>
-                    <button type="button" onclick="removeCartItem(${idx})" style="border:none; background:#fee2e2; color:#b91c1c; padding:7px 11px; border-radius:8px; font-size:0.78rem; font-weight:800; cursor:pointer;">삭제</button>
+                    <button type="button" onclick="removeCartItem(${idx})" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
                 </div>
             `;
         }).join('');

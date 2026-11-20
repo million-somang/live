@@ -3,518 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}THE VINE LIVE MALL — 실시간 라이브 커머스 쇼핑몰{% endblock %}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-body: #f8fafc;
-            --bg-card: #ffffff;
-            --text-main: #0f172a;
-            --text-sub: #475569;
-            --text-muted: #94a3b8;
-            --primary: #e11d48;
-            --primary-dark: #be123c;
-            --accent: #4f46e5;
-            --border: #e2e8f0;
-            --shadow-sm: 0 2px 10px rgba(15, 23, 42, 0.05);
-            --shadow-md: 0 12px 32px rgba(15, 23, 42, 0.08);
-        }
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-body);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        a {
-            color: inherit;
-            text-decoration: none;
-        }
-        /* 상단 공지 티커 바 (화사한 웜 로즈 라이트 배너) */
-        .top-promo-bar {
-            background: #fff1f2;
-            border-bottom: 1px solid #fecdd3;
-            color: #881337;
-            font-size: 0.8rem;
-            font-weight: 700;
-            padding: 8px 16px;
-            text-align: center;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
-        }
-        .top-promo-bar .live-pill {
-            background: #e11d48;
-            color: #fff;
-            padding: 2px 8px;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            font-weight: 900;
-            animation: pulseLive 1.5s infinite;
-        }
-        @keyframes pulseLive {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.78; transform: scale(0.96); }
-        }
-        /* 글로벌 내비게이션 헤더 */
-        .site-header {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: rgba(255, 255, 255, 0.96);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border);
-            box-shadow: var(--shadow-sm);
-        }
-        .header-inner {
-            max-width: 1360px;
-            margin: 0 auto;
-            padding: 0 20px;
-            height: 68px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 14px;
-            flex-wrap: nowrap;
-        }
-        .brand-logo {
-            display: inline-flex;
-            align-items: center;
-            gap: 9px;
-            font-size: 1.24rem;
-            font-weight: 900;
-            letter-spacing: -0.5px;
-            color: #0f172a;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-        .brand-logo .logo-mark {
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-            background: #e11d48;
-            color: #fff;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.05rem;
-            font-weight: 900;
-            flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(225, 29, 72, 0.22);
-        }
-        .main-nav {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            flex-wrap: nowrap;
-            flex: 1;
-            min-width: 0;
-            overflow-x: auto;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-        .main-nav::-webkit-scrollbar {
-            display: none;
-        }
-        .nav-link {
-            padding: 8px 13px;
-            border-radius: 999px;
-            font-size: 0.89rem;
-            font-weight: 700;
-            color: var(--text-sub);
-            transition: all 0.18s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-        .nav-link:hover {
-            background: #f1f5f9;
-            color: var(--text-main);
-        }
-        .nav-link.active {
-            background: #0f172a;
-            color: #ffffff;
-        }
-        .nav-link.nav-live {
-            background: linear-gradient(135deg, #fff1f2, #ffe4e6);
-            color: #e11d48;
-            border: 1.5px solid #fda4af;
-            font-weight: 900;
-        }
-        .nav-link.nav-live:hover,
-        .nav-link.nav-live.active {
-            background: linear-gradient(135deg, #e11d48, #be123c);
-            color: #ffffff;
-            border-color: #e11d48;
-            box-shadow: 0 6px 18px rgba(225, 29, 72, 0.32);
-        }
-        .live-dot-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #ef4444;
-            display: inline-block;
-            flex-shrink: 0;
-            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.28);
-            animation: pulseLive 1.4s infinite;
-        }
-        .nav-link.nav-live.active .live-dot-indicator {
-            background: #ffffff;
-            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
-        }
-        .nav-link.nav-live.disabled {
-            background: #f1f5f9;
-            color: #94a3b8;
-            border-color: #cbd5e1;
-            opacity: 0.72;
-            cursor: not-allowed;
-            pointer-events: none;
-            box-shadow: none;
-        }
-        .nav-link.nav-live.disabled .live-dot-indicator {
-            background: #94a3b8;
-            box-shadow: none;
-            animation: none;
-        }
-        .header-actions {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            flex-shrink: 0;
-            white-space: nowrap;
-        }
-        .cart-pill-btn {
-            position: relative;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: #f8fafc;
-            border: 1px solid var(--border);
-            font-size: 0.86rem;
-            font-weight: 800;
-            color: var(--text-main);
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-            flex-shrink: 0;
-            transition: all 0.15s;
-        }
-        .cart-pill-btn:hover {
-            border-color: #94a3b8;
-            background: #f1f5f9;
-        }
-        .cart-count-badge {
-            background: var(--primary);
-            color: #fff;
-            font-size: 0.72rem;
-            font-weight: 900;
-            min-width: 20px;
-            height: 20px;
-            padding: 0 6px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .main-container {
-            max-width: 1320px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 28px 20px 60px;
-            flex: 1;
-        }
-        .site-footer {
-            background: #0f172a;
-            color: #94a3b8;
-            padding: 36px 20px;
-            font-size: 0.83rem;
-            margin-top: auto;
-        }
-        .footer-inner {
-            max-width: 1320px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        /* 토스트 알림 */
-        #mallToastContainer {
-            position: fixed;
-            bottom: 26px;
-            right: 26px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .mall-toast {
-            background: rgba(15, 23, 42, 0.95);
-            color: #fff;
-            padding: 13px 20px;
-            border-radius: 14px;
-            font-size: 0.88rem;
-            font-weight: 700;
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
-            border-left: 4px solid #e11d48;
-            animation: slideUpToast 0.22s ease;
-        }
-        @keyframes slideUpToast {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        /* 즉시 구매 모달 (라이브 페이지 이탈 방지용) */
-        .quick-modal-backdrop {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.65);
-            backdrop-filter: blur(4px);
-            z-index: 2000;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 16px;
-        }
-        .quick-modal-card {
-            background: #fff;
-            border-radius: 22px;
-            max-width: 520px;
-            width: 100%;
-            padding: 26px;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.3);
-            max-height: 92vh;
-            overflow-y: auto;
-        }
-        .form-group {
-            margin-bottom: 13px;
-        }
-        .form-label {
-            display: block;
-            font-size: 0.82rem;
-            font-weight: 800;
-            color: #334155;
-            margin-bottom: 5px;
-        }
-        .form-input {
-            width: 100%;
-            padding: 11px 13px;
-            border: 1.5px solid #cbd5e1;
-            border-radius: 10px;
-            font-size: 0.92rem;
-            font-family: inherit;
-        }
-        .form-input:focus {
-            outline: none;
-            border-color: #e11d48;
-        }
-        @media (max-width: 768px) {
-            .header-inner {
-                height: auto;
-                padding: 12px 16px;
-                flex-wrap: wrap;
-            }
-            .main-nav {
-                width: 100%;
-                order: 3;
-                justify-content: center;
-                padding-top: 6px;
-                border-top: 1px solid #f1f5f9;
-            }
-        }
-    </style>
-    <link rel="stylesheet" href="/static/css/mall_light_theme.css">
+    <title>{% block title %}골라방 LIVE — 실시간 라이브 커머스 스토어{% endblock %}</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+    <link rel="stylesheet" href="/static/css/astryx_mall.css">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <div class="top-promo-bar">
-        <span class="live-pill">LIVE STORE</span>
-        <span id="topBarTickerText">
-            {{ live_state.ticker_message if live_state and live_state.ticker_message else '실시간 라이브 방송 중 선택된 상품을 [🔴 라이브 커머스] 메뉴에서 바로 확인하세요!' }}
-        </span>
+    <!-- 상단 공지 티커 바 -->
+    <div class="ax-promo-bar">
+        <div class="ax-container ax-promo-inner">
+            <span class="ax-promo-pill">LIVE STORE</span>
+            <span id="topBarTickerText">
+                {{ live_state.ticker_message if live_state and live_state.ticker_message else '실시간 라이브 방송 중 선택된 상품을 [라이브 커머스] 메뉴에서 바로 확인하세요.' }}
+            </span>
+        </div>
     </div>
 
-    <header class="site-header">
-        <div class="header-inner">
-            <a href="/" class="brand-logo">
-                <span class="logo-mark">V</span>
-                <span>골라방 <span style="color:#e11d48;">LIVE</span> 몰</span>
+    <!-- 1단 슬림 Astryx 헤더 -->
+    <header class="ax-header">
+        <div class="ax-container ax-header-inner">
+            <a href="/" class="ax-brand">
+                <span class="ax-logo-mark">G</span>
+                <span>골라방 <span class="ax-brand-accent">LIVE</span></span>
             </a>
 
-            <nav class="main-nav">
-                <a href="/" class="nav-link {% if active_nav == 'home' %}active{% endif %}">
-                    🏠 스토어 홈
+            <nav class="ax-nav" aria-label="주 메뉴">
+                <a href="/" class="ax-nav-link {% if active_nav == 'home' %}active{% endif %}">
+                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
+                    <span>스토어 홈</span>
                 </a>
                 <span id="mallNavLiveSlot" data-active-nav="{{ active_nav or '' }}" style="display:inline-flex;">
                 {% if live_state and live_state.is_live %}
-                <a href="/live" class="nav-link nav-live {% if active_nav == 'live' %}active{% endif %}">
-                    <span class="live-dot-indicator"></span>
-                    라이브 커머스
-                    <span style="font-size:0.7rem; background:#10b981; color:#fff; padding:1px 6px; border-radius:6px;">방송중</span>
+                <a href="/live" class="ax-nav-link ax-nav-live {% if active_nav == 'live' %}active{% endif %}">
+                    <span class="ax-live-dot"></span>
+                    <span>라이브 커머스</span>
+                    <span class="ax-nav-status-tag">방송중</span>
                 </a>
                 {% else %}
-                <span class="nav-link nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">
-                    <span class="live-dot-indicator"></span>
-                    라이브 커머스
-                    <span style="font-size:0.7rem; background:#94a3b8; color:#fff; padding:1px 6px; border-radius:6px;">대기중</span>
+                <span class="ax-nav-link ax-nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">
+                    <span class="ax-live-dot"></span>
+                    <span>라이브 커머스</span>
+                    <span class="ax-nav-status-tag">대기중</span>
                 </span>
                 {% endif %}
                 </span>
-                <a href="/?category=TOP" class="nav-link {% if current_category == 'TOP' %}active{% endif %}">
-                    👕 상의/탑
-                </a>
-                <a href="/?category=OUTER" class="nav-link {% if current_category == 'OUTER' %}active{% endif %}">
-                    🧥 아우터
-                </a>
-                <a href="/?category=BOTTOM" class="nav-link {% if current_category == 'BOTTOM' %}active{% endif %}">
-                    👖 팬츠/스커트
-                </a>
-                <a href="/?category=DRESS" class="nav-link {% if current_category == 'DRESS' %}active{% endif %}">
-                    👗 원피스/세트
-                </a>
-                <a href="/orders" class="nav-link {% if active_nav == 'orders' %}active{% endif %}">
-                    📦 주문조회
+                <a href="/orders" class="ax-nav-link {% if active_nav == 'orders' %}active{% endif %}">
+                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    <span>주문조회</span>
                 </a>
             </nav>
 
-            <div class="header-actions" style="display:flex; align-items:center; gap:8px;">
-                <a href="{{ studio_public_url or 'http://localhost:5000' }}" target="_blank" rel="noopener" class="cart-pill-btn" style="padding:8px 11px; color:#4f46e5; font-size:0.8rem;" title="OBS 스튜디오 및 홍보 홈페이지 이동">
-                    🎬 OBS 홍보홈 ↗
+            <div class="ax-header-actions">
+                <a href="{{ studio_public_url or 'http://localhost:5000' }}" target="_blank" rel="noopener" class="ax-util-btn ax-util-btn-indigo ax-hide-mobile" title="OBS 스튜디오 및 홍보 홈페이지 이동">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg>
+                    <span>OBS 스튜디오</span>
                 </a>
-                <a href="/cart" class="cart-pill-btn">
-                    🛒 장바구니
-                    <span class="cart-count-badge" id="navCartBadge">0</span>
+                <a href="/cart" class="ax-util-btn">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                    <span>장바구니</span>
+                    <span class="ax-cart-badge" id="navCartBadge">0</span>
                 </a>
                 {% if current_mall_user %}
-                    <a href="/orders" class="cart-pill-btn" style="padding:8px 11px; color:#0f172a; font-size:0.82rem;">
-                        👤 {{ current_mall_user.name }}님
+                    <a href="/orders" class="ax-util-btn ax-hide-mobile">
+                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                        <span>{{ current_mall_user.name }}님</span>
                     </a>
                     {% if current_mall_user.role == 'ADMIN' %}
-                    <a href="/admin" class="cart-pill-btn" style="padding:8px 11px; color:#e11d48; font-size:0.82rem;" title="쇼핑몰 관리자">
-                        ⚙️ 관리자
+                    <a href="/admin" class="ax-util-btn ax-util-btn-indigo" title="쇼핑몰 관리자">
+                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        <span>관리자</span>
                     </a>
                     {% endif %}
-                    <a href="/auth/logout" class="cart-pill-btn" style="padding:8px 11px; color:#64748b; font-size:0.8rem;">
-                        로그아웃
-                    </a>
+                    <a href="/auth/logout" class="ax-util-btn ax-util-btn-muted">로그아웃</a>
                 {% else %}
-                    <a href="/auth/login" class="cart-pill-btn" style="padding:8px 12px; color:#0f172a; font-size:0.82rem;">
-                        🔐 로그인
-                    </a>
-                    <a href="/auth/register" class="cart-pill-btn" style="padding:8px 12px; background:#0f172a; color:#fff; font-size:0.82rem;">
-                        ✨ 회원가입
-                    </a>
+                    <a href="/auth/login" class="ax-util-btn">로그인</a>
+                    <a href="/auth/register" class="ax-util-btn ax-util-btn-primary">회원가입</a>
                 {% endif %}
             </div>
         </div>
     </header>
 
-    <main class="main-container">
-        {% block content %}{% endblock %}
+    <main class="ax-main">
+        <div class="ax-container">
+            {% block content %}{% endblock %}
+        </div>
     </main>
 
-    <!-- ⚡ 페이지 이동 없는 즉시 구매 모달 -->
-    <div class="quick-modal-backdrop" id="instantBuyModal">
-        <div class="quick-modal-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <h3 style="font-size:1.16rem; font-weight:900; color:#0f172a;">⚡ 빠른 바로구매 주문서 <span style="font-size:0.78rem; color:#e11d48; font-weight:800;">(비회원·회원 공용)</span></h3>
-                <button type="button" onclick="closeInstantBuyModal()" style="border:none; background:#f1f5f9; width:32px; height:32px; border-radius:50%; font-weight:900; cursor:pointer;">✕</button>
+    <!-- 페이지 이동 없는 즉시 구매 모달 (Astryx Dialog) -->
+    <div class="ax-dialog-backdrop" id="instantBuyModal" role="dialog" aria-modal="true" aria-labelledby="instantBuyDialogTitle" onclick="if(event.target===this) closeInstantBuyModal()">
+        <div class="ax-dialog-card">
+            <div class="ax-dialog-header">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <h3 id="instantBuyDialogTitle" style="font-size:1.08rem; font-weight:800; color:var(--ax-text-primary);">빠른 바로구매 주문서</h3>
+                    <span class="ax-badge ax-badge-indigo">비회원·회원 공용</span>
+                </div>
+                <button type="button" class="ax-icon-btn" onclick="closeInstantBuyModal()" aria-label="주문서 닫기">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
             {% if not current_mall_user %}
-            <div style="background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:10px; padding:8px 12px; font-size:0.78rem; font-weight:800; margin-bottom:12px;">
-                ✅ 비회원 바로구매 진행 중 — 회원가입 없이 수령인 정보와 조회용 비밀번호만 입력하시면 즉시 주문됩니다!
+            <div class="ax-callout-success" style="margin-bottom:12px;">
+                비회원 바로구매 진행 중 — 회원가입 없이 수령인 정보와 조회용 비밀번호만 입력하시면 즉시 주문됩니다.
             </div>
             {% endif %}
-            <div id="ibProductSelectorRow" style="display:none; margin-bottom:10px;">
-                <label class="form-label" style="margin-bottom:4px;">구매 상품 선택</label>
-                <select id="ibProductSelect" class="form-input" style="padding:8px 10px; font-weight:800;" onchange="onChangeInstantBuyProduct(this.value)"></select>
+            <div id="ibProductSelectorRow" class="ax-field" style="display:none;">
+                <label class="ax-label" for="ibProductSelect">구매 상품 선택</label>
+                <select id="ibProductSelect" class="ax-select" style="font-weight:700;" onchange="onChangeInstantBuyProduct(this.value)"></select>
             </div>
-            <div id="instantBuyItemSummary" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:14px; margin-bottom:12px; display:flex; gap:12px; align-items:center;">
+            <div id="instantBuyItemSummary" class="ax-surface-muted" style="margin-bottom:12px; display:flex; gap:12px; align-items:center;">
             </div>
-            <div id="ibOptionQtyRow" style="display:none; grid-template-columns:1fr 100px; gap:10px; margin-bottom:12px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px;">
+            <div id="ibOptionQtyRow" class="ax-surface-muted" style="display:none; grid-template-columns:1fr 96px; gap:10px; margin-bottom:14px; background:#fff;">
                 <div>
-                    <label class="form-label" style="margin-bottom:4px;">옵션 (색상 / 사이즈)</label>
-                    <select id="ibOptionSelect" class="form-input" style="padding:8px 10px; font-weight:800;" onchange="onChangeInstantBuyOptionQty()"></select>
+                    <label class="ax-label" for="ibOptionSelect">옵션 (색상 / 사이즈)</label>
+                    <select id="ibOptionSelect" class="ax-select ax-select-compact" style="font-weight:700;" onchange="onChangeInstantBuyOptionQty()"></select>
                 </div>
                 <div>
-                    <label class="form-label" style="margin-bottom:4px;">수량</label>
-                    <input type="number" id="ibQtyInput" class="form-input" value="1" min="1" max="99" style="padding:8px 10px; font-weight:800;" onchange="onChangeInstantBuyOptionQty()">
+                    <label class="ax-label" for="ibQtyInput">수량</label>
+                    <input type="number" id="ibQtyInput" class="ax-input ax-input-compact ax-num" value="1" min="1" max="99" style="font-weight:700;" onchange="onChangeInstantBuyOptionQty()">
                 </div>
             </div>
             <form id="instantBuyForm" onsubmit="submitInstantBuyOrder(event)">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                    <div class="form-group">
-                        <label class="form-label">수령인 성함 *</label>
-                        <input type="text" id="ibBuyerName" class="form-input" placeholder="예: 홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}" required>
+                <div class="ax-form-row-2">
+                    <div class="ax-field">
+                        <label class="ax-label" for="ibBuyerName">수령인 성함 *</label>
+                        <input type="text" id="ibBuyerName" class="ax-input" placeholder="예: 홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}" required>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">연락처 (휴대폰) *</label>
-                        <input type="tel" id="ibBuyerPhone" class="form-input" placeholder="예: 010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
+                    <div class="ax-field">
+                        <label class="ax-label" for="ibBuyerPhone">연락처 (휴대폰) *</label>
+                        <input type="tel" id="ibBuyerPhone" class="ax-input ax-num" placeholder="예: 010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">배송지 주소 *</label>
-                    <input type="text" id="ibAddress" class="form-input" placeholder="도로명 또는 지번 주소 입력" value="{{ current_mall_user.address if current_mall_user else '' }}" required style="margin-bottom:6px;">
-                    <input type="text" id="ibAddressDetail" class="form-input" placeholder="상세 주소 (동/호수)" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
+                <div class="ax-field">
+                    <label class="ax-label" for="ibAddress">배송지 주소 *</label>
+                    <input type="text" id="ibAddress" class="ax-input" placeholder="도로명 또는 지번 주소 입력" value="{{ current_mall_user.address if current_mall_user else '' }}" required style="margin-bottom:6px;">
+                    <input type="text" id="ibAddressDetail" class="ax-input" placeholder="상세 주소 (동/호수)" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
                 </div>
                 {% if not current_mall_user %}
-                <div class="form-group" id="ibGuestPasswordGroup" style="background:#fff1f2; border:1px solid #fecdd3; border-radius:10px; padding:11px 12px;">
-                    <label class="form-label" style="color:#be123c;">🔒 비회원 주문조회 비밀번호 * (4자 이상)</label>
-                    <input type="password" id="ibGuestPassword" class="form-input" placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)" minlength="4" required>
-                    <div style="font-size:0.75rem; color:#9f1239; margin-top:4px;">* 비회원 주문 내역 열람 시 주문번호·연락처와 함께 검증됩니다.</div>
+                <div class="ax-field ax-callout-indigo" id="ibGuestPasswordGroup">
+                    <label class="ax-label" for="ibGuestPassword" style="color:#3730a3;">비회원 주문조회 비밀번호 * (4자 이상)</label>
+                    <input type="password" id="ibGuestPassword" class="ax-input" placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)" minlength="4" required style="background:#ffffff;">
+                    <div style="font-size:0.75rem; color:#4338ca; margin-top:5px;">비회원 주문 내역 열람 시 주문번호·연락처와 함께 검증됩니다.</div>
                 </div>
                 {% endif %}
-                <div class="form-group">
-                    <label class="form-label">배송 요청사항</label>
-                    <input type="text" id="ibMemo" class="form-input" placeholder="예: 문 앞에 놓아주세요 (당일출고 요청)">
+                <div class="ax-field">
+                    <label class="ax-label" for="ibMemo">배송 요청사항</label>
+                    <input type="text" id="ibMemo" class="ax-input" placeholder="예: 문 앞에 놓아주세요 (당일출고 요청)">
                 </div>
-                <div class="form-group">
-                    <label class="form-label">결제 수단 (계좌입금 전용)</label>
-                    <select id="ibPaymentMethod" class="form-input" style="font-weight:800; background:#f8fafc;">
-                        <option value="BANK" selected>🏦 계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
+                <div class="ax-field">
+                    <label class="ax-label" for="ibPaymentMethod">결제 수단 (계좌입금 전용)</label>
+                    <select id="ibPaymentMethod" class="ax-select" style="font-weight:700;">
+                        <option value="BANK" selected>계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
                     </select>
-                    <div style="margin-top:8px; background:#fffbeb; border:1.5px solid #fcd34d; border-radius:12px; padding:11px 14px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div class="ax-bank-box" style="margin-top:8px;">
                         <div>
-                            <div style="font-size:0.75rem; font-weight:800; color:#92400e;">🏦 입금 계좌 안내 (택배비 4,000원 포함 금액 입금)</div>
-                            <div style="font-size:0.95rem; font-weight:900; color:#0f172a; margin-top:2px;">카카오뱅크 <span style="color:#d97706;">3333 233 094904</span> (예금주: 박창현)</div>
+                            <div style="font-size:0.74rem; font-weight:700; color:var(--ax-warning);">입금 계좌 안내 (택배비 4,000원 포함 금액 입금)</div>
+                            <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;" class="ax-num">카카오뱅크 <span style="color:var(--ax-warning);">3333 233 094904</span> (예금주: 박창현)</div>
                         </div>
-                        <button type="button" onclick="copyMallBankAccount()" style="padding:6px 11px; border-radius:8px; border:1px solid #f59e0b; background:#ffffff; color:#92400e; font-size:0.76rem; font-weight:800; cursor:pointer; white-space:nowrap;">📋 계좌 복사</button>
+                        <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
                     </div>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:18px;">
-                    <button type="button" onclick="closeInstantBuyModal()" style="flex:1; padding:14px; border-radius:12px; border:1px solid #cbd5e1; background:#fff; font-weight:800; cursor:pointer;">취소</button>
-                    <button type="submit" id="ibSubmitBtn" style="flex:2; padding:14px; border-radius:12px; border:none; background:linear-gradient(135deg,#e11d48,#be123c); color:#fff; font-size:0.98rem; font-weight:900; cursor:pointer; box-shadow:0 8px 20px rgba(225,29,72,0.3);">
-                        ⚡ 지금 바로 주문 완료하기
-                    </button>
+                    <button type="button" onclick="closeInstantBuyModal()" class="ax-btn ax-btn-secondary" style="flex:1;">취소</button>
+                    <button type="submit" id="ibSubmitBtn" class="ax-btn ax-btn-primary" style="flex:2;">지금 바로 주문 완료하기</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="mallToastContainer"></div>
+    <div id="mallToastContainer" aria-live="polite"></div>
 
-    <footer class="site-footer" style="background:#f1f5f9; border-top:1px solid #e2e8f0; color:#475569;">
-        <div class="footer-inner">
+    <footer class="ax-footer">
+        <div class="ax-container ax-footer-inner">
             <div>
-                <div style="font-weight:900; color:#0f172a; font-size:1rem; margin-bottom:4px;">골라방 LIVE COMMERCE MALL</div>
-                <div style="color:#64748b;">OBS 방송 스튜디오 실시간 연동 공식 온라인 스토어 • Port 6001 독립 운영</div>
+                <div style="font-weight:800; color:var(--ax-text-primary); font-size:0.95rem; margin-bottom:3px;">골라방 LIVE</div>
+                <div style="color:var(--ax-text-secondary);">OBS 방송 스튜디오 실시간 연동 공식 온라인 스토어</div>
             </div>
-            <div style="display:flex; gap:16px;">
-                <a href="/live" style="color:#e11d48; font-weight:800;">🔴 실시간 라이브 커머스</a>
-                <a href="/orders" style="color:#334155; font-weight:600;">주문/배송 조회</a>
-                <a href="/admin" style="color:#334155; font-weight:600;">스토어 어드민</a>
+            <div class="ax-footer-links">
+                <a href="/live" style="color:var(--ax-accent-primary); font-weight:700;">실시간 라이브 커머스</a>
+                <a href="/orders" style="font-weight:600;">주문/배송 조회</a>
+                <a href="/cart" style="font-weight:600;">장바구니</a>
+                <a href="/admin" style="font-weight:600;">스토어 어드민</a>
             </div>
         </div>
     </footer>
@@ -574,14 +243,14 @@
                 });
             }
             saveMallCart(cart);
-            showMallToast(`🛒 [${item.name} (${color}/${size}) ${qty}개] 장바구니에 담았습니다!`);
+            showMallToast(`[${item.name} (${color}/${size}) ${qty}개] 장바구니에 담았습니다.`);
         }
 
         function showMallToast(msg) {
             const box = document.getElementById('mallToastContainer');
             if (!box) return;
             const el = document.createElement('div');
-            el.className = 'mall-toast';
+            el.className = 'ax-toast';
             el.innerText = msg;
             box.appendChild(el);
             setTimeout(() => {
@@ -599,16 +268,19 @@
             const ship = 4000;
             const total = subtotal + ship;
             const imgHtml = item.image_url
-                ? `<img src="${item.image_url}" style="width:64px; height:64px; border-radius:10px; object-fit:cover; border:1px solid #e2e8f0;">`
-                : `<div style="width:64px; height:64px; border-radius:10px; background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-size:1.5rem;">🛍️</div>`;
+                ? `<img src="${item.image_url}" alt="" style="width:60px; height:60px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
+                : `<div style="width:60px; height:60px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;"><svg class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>`;
             if (sumEl) {
                 sumEl.innerHTML = `
                     ${imgHtml}
-                    <div style="flex:1;">
-                        <div style="font-size:0.76rem; font-weight:800; color:#e11d48;">#${item.num}번 상품 바로구매</div>
-                        <div style="font-size:0.96rem; font-weight:900; color:#0f172a;">${item.name}</div>
-                        <div style="font-size:0.82rem; color:#475569; margin-top:2px;">옵션: <strong>${item.color} / ${item.size}</strong> • 수량: <strong>${item.quantity}개</strong></div>
-                        <div style="font-size:0.95rem; font-weight:900; color:#e11d48; margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:#475569; font-weight:700;">(상품 ${subtotal.toLocaleString()}원 + 택배비 4,000원)</span></div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+                            <span class="ax-code-chip">#${item.num}</span>
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--ax-accent-primary);">바로구매 상품</span>
+                        </div>
+                        <div style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary);">${item.name}</div>
+                        <div style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">옵션: <strong>${item.color} / ${item.size}</strong> · 수량: <strong class="ax-num">${item.quantity}개</strong></div>
+                        <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-accent-primary); margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:var(--ax-text-secondary); font-weight:600;">(상품 ${subtotal.toLocaleString()}원 + 택배비 4,000원)</span></div>
                     </div>
                 `;
             }
@@ -741,7 +413,8 @@
         }
 
         function closeInstantBuyModal() {
-            document.getElementById('instantBuyModal').style.display = 'none';
+            const modal = document.getElementById('instantBuyModal');
+            if (modal) modal.style.display = 'none';
             const prodRow = document.getElementById('ibProductSelectorRow');
             if (prodRow) prodRow.style.display = 'none';
             pendingInstantBuyItem = null;
@@ -751,10 +424,10 @@
             const acc = '3333 233 094904';
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(acc).then(() => {
-                    showMallToast('🏦 입금 계좌번호(카카오뱅크 3333 233 094904 박창현)가 복사되었습니다!');
+                    showMallToast('입금 계좌번호(카카오뱅크 3333 233 094904 박창현)가 복사되었습니다.');
                 }).catch(() => {});
             } else {
-                showMallToast('🏦 입금 계좌: 카카오뱅크 3333 233 094904 (박창현)');
+                showMallToast('입금 계좌: 카카오뱅크 3333 233 094904 (박창현)');
             }
         }
 
@@ -786,7 +459,7 @@
             try {
                 if (btn) {
                     btn.disabled = true;
-                    btn.innerText = '⏳ 주문 처리 중...';
+                    btn.innerText = '주문 처리 중...';
                 }
                 const res = await fetch('/api/orders/create', {
                     method: 'POST',
@@ -825,7 +498,7 @@
                         }));
                     }
                 } catch (e) {}
-                showMallToast(`🎉 주문 완료! 주문번호 [${data.order.order_code}] • 총 ${data.order.total_amount.toLocaleString()}원 (카카오뱅크 3333 233 094904 박창현)`);
+                showMallToast(`주문 완료! 주문번호 [${data.order.order_code}] · 총 ${data.order.total_amount.toLocaleString()}원 (카카오뱅크 3333 233 094904 박창현)`);
                 if (typeof onLiveOrderCompleted === 'function') {
                     onLiveOrderCompleted(data.order);
                 } else if (orderSrc !== 'LIVE') {
@@ -838,7 +511,7 @@
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerText = '⚡ 지금 바로 주문 완료하기';
+                    btn.innerText = '지금 바로 주문 완료하기';
                 }
             }
         }
@@ -852,16 +525,16 @@
             if (navSlot && isLive !== __mallLastIsLive) {
                 const isLiveNav = navSlot.getAttribute('data-active-nav') === 'live';
                 if (isLive) {
-                    navSlot.innerHTML = `<a href="/live" class="nav-link nav-live ${isLiveNav ? 'active' : ''}"><span class="live-dot-indicator"></span>라이브 커머스<span style="font-size:0.7rem; background:#10b981; color:#fff; padding:1px 6px; border-radius:6px;">방송중</span></a>`;
+                    navSlot.innerHTML = `<a href="/live" class="ax-nav-link ax-nav-live ${isLiveNav ? 'active' : ''}"><span class="ax-live-dot"></span><span>라이브 커머스</span><span class="ax-nav-status-tag">방송중</span></a>`;
                 } else {
-                    navSlot.innerHTML = `<span class="nav-link nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다"><span class="live-dot-indicator"></span>라이브 커머스<span style="font-size:0.7rem; background:#94a3b8; color:#fff; padding:1px 6px; border-radius:6px;">대기중</span></span>`;
+                    navSlot.innerHTML = `<span class="ax-nav-link ax-nav-live disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다"><span class="ax-live-dot"></span><span>라이브 커머스</span><span class="ax-nav-status-tag">대기중</span></span>`;
                 }
             }
             const heroSlot = document.getElementById('mallHeroLiveSlot');
             if (heroSlot && isLive !== __mallLastIsLive) {
                 heroSlot.innerHTML = isLive
-                    ? `<a href="/live" class="hero-live-btn">🔴 라이브 커머스 전용관 입장하기 ➔</a>`
-                    : `<span class="hero-live-btn disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">⚪ 현재 라이브 방송 대기 중</span>`;
+                    ? `<a href="/live" class="ax-btn ax-btn-primary ax-btn-lg"><span class="ax-live-dot" style="background:#fff; box-shadow:none;"></span><span>라이브 커머스 전용관 입장하기</span></a>`
+                    : `<span class="ax-btn ax-btn-secondary ax-btn-lg disabled" aria-disabled="true" title="현재 진행 중인 라이브 방송이 없습니다">현재 라이브 방송 대기 중</span>`;
             }
             __mallLastIsLive = isLive;
 
@@ -872,7 +545,7 @@
                     const cat = el.getAttribute('data-csr-cat') || '';
                     const meta = state.product_stocks[num];
                     if (meta) {
-                        el.innerText = `${cat} • 잔여 ${Number(meta.total_stock || 0)}개`;
+                        el.innerText = `${cat} · 잔여 ${Number(meta.total_stock || 0)}개`;
                     }
                 });
             }
@@ -880,10 +553,19 @@
             document.querySelectorAll('[data-csr-pin-slot]').forEach(el => {
                 const num = el.getAttribute('data-csr-pin-slot');
                 el.innerHTML = (isLive && selNum && num === selNum)
-                    ? `<span class="pinned-now-tag">📌 방송 소개중</span>`
+                    ? `<span class="ax-pinned-tag">방송 소개중</span>`
                     : '';
             });
         };
+
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') {
+                const modal = document.getElementById('instantBuyModal');
+                if (modal && modal.style.display === 'flex') {
+                    closeInstantBuyModal();
+                }
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             updateNavCartBadge();
