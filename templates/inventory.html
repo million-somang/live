@@ -1413,6 +1413,21 @@
         let currentProducts = __invBootEl ? JSON.parse(__invBootEl.dataset.items || '[]') : [];
         let policyDefaults = __invBootEl ? JSON.parse(__invBootEl.dataset.policyDefaults || '{}') : {};
         let currentDetailImages = [];
+        let pendingUploadCount = 0;
+
+        function setUploadBusy(delta) {
+            pendingUploadCount = Math.max(0, pendingUploadCount + delta);
+            const saveBtn = document.getElementById('btnSaveProduct');
+            if (!saveBtn) return;
+            const editId = document.getElementById('editProductId')?.value;
+            if (pendingUploadCount > 0) {
+                saveBtn.disabled = true;
+                saveBtn.innerText = '이미지 업로드 중...';
+            } else {
+                saveBtn.disabled = false;
+                saveBtn.innerText = editId ? '💾 수정 내용 저장' : '💾 상품 등록 완료';
+            }
+        }
 
         // 실시간 모달 손익 및 할인율 계산기
         function calcModalMargin() {
@@ -1593,6 +1608,7 @@
             const statusEl = document.getElementById('detailImagesUploadStatus');
             const btnEl = document.getElementById('btnAddDetailFiles');
             if (btnEl) btnEl.disabled = true;
+            setUploadBusy(1);
 
             try {
                 let uploadedCount = 0;
@@ -1624,6 +1640,7 @@
             } finally {
                 event.target.value = '';
                 if (btnEl) btnEl.disabled = false;
+                setUploadBusy(-1);
             }
         }
 
@@ -1712,6 +1729,7 @@
             // 서버에 업로드
             const formData = new FormData();
             formData.append('image', file);
+            setUploadBusy(1);
 
             try {
                 const res = await fetch('/api/upload/image', {
@@ -1727,6 +1745,8 @@
                 }
             } catch (err) {
                 alert('업로드 중 네트워크 오류: ' + err.message);
+            } finally {
+                setUploadBusy(-1);
             }
         }
 
@@ -1776,6 +1796,11 @@
 
         // 상품 등록 / 수정 저장
         async function saveProduct() {
+            if (pendingUploadCount > 0) {
+                alert('이미지 업로드가 아직 진행 중입니다. 업로드가 완료된 뒤 다시 저장해 주세요.');
+                return;
+            }
+
             const editId = document.getElementById('editProductId').value;
             const num = parseInt(document.getElementById('prodNum').value, 10);
             const name = document.getElementById('prodName').value.trim();
@@ -1789,6 +1814,15 @@
             if (!num || !name || isNaN(price)) {
                 alert('방송 번호, 상품명, 판매가를 모두 올바르게 입력해주세요!');
                 return;
+            }
+
+            // 상세 이미지 URL 입력란에 입력만 하고 '+ URL 추가'를 안 누른 경우도 자동 포함
+            const pendingDetailUrlEl = document.getElementById('prodDetailImageUrlInput');
+            const pendingDetailUrl = pendingDetailUrlEl ? pendingDetailUrlEl.value.trim() : '';
+            if (pendingDetailUrl && currentDetailImages.length < 30 && !currentDetailImages.includes(pendingDetailUrl)) {
+                currentDetailImages.push(pendingDetailUrl);
+                pendingDetailUrlEl.value = '';
+                renderDetailImagesList();
             }
 
             // 옵션 목록 파싱
@@ -1844,7 +1878,19 @@
                 });
                 const data = await res.json();
 
-                if (data.status === 'ok') {
+                if (res.ok && data.status === 'ok') {
+                    const hasDetailSupport = (
+                        data.detail_fields_supported === true
+                        || (data.product && Object.prototype.hasOwnProperty.call(data.product, 'detail_content'))
+                    );
+                    if (!hasDetailSupport) {
+                        alert(
+                            '⚠️ 백엔드 서버(live_commerce_server.py)가 아직 최신 버전으로 재시작되지 않아\n'
+                            + '상세페이지·이미지·안내 항목이 저장되지 않았습니다.\n\n'
+                            + '서버에서 OBS/재고 서버(live_commerce_server.py)와 쇼핑몰(app.py)을 모두 재시작한 뒤 다시 저장해 주세요.'
+                        );
+                        return;
+                    }
                     alert(editId ? '상품 정보가 성공적으로 수정되었습니다!' : '새 상품이 성공적으로 등록되었습니다!');
                     location.reload();
                 } else {

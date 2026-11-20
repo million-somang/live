@@ -2221,24 +2221,27 @@ def api_upload_image():
 
 @app.route('/api/inventory/product/add', methods=['POST'])
 def api_inventory_product_add():
-    """새로운 상품 등록 API (사진, 사양, 옵션별 재고 포함)"""
+    """새로운 상품 등록 API (사진, 사양, 상세페이지, 4대 안내, 옵션별 재고 포함)"""
     data = request.get_json(silent=True) or {}
     name = str(data.get("name", "")).strip()
     if not name:
         return jsonify({"status": "error", "message": "상품명은 필수입니다."}), 400
     new_product = inventory_manager.add_product(data)
-    return jsonify({"status": "ok", "product": new_product}), 200
+    return jsonify({"status": "ok", "detail_fields_supported": True, "product": new_product}), 200
 
 
 @app.route('/api/inventory/product/update', methods=['POST'])
 def api_inventory_product_update():
-    """상품 정보/사양/옵션 수정 API"""
+    """상품 정보/사양/상세페이지/4대 안내/옵션 수정 API"""
     data = request.get_json(silent=True) or {}
     item_id = data.get("id")
     if not item_id:
         return jsonify({"status": "error", "message": "상품 ID가 누락되었습니다."}), 400
     success = inventory_manager.update_product(item_id, data)
-    return jsonify({"status": "ok" if success else "failed"}), 200
+    if not success:
+        return jsonify({"status": "error", "message": "상품 정보 수정에 실패했습니다."}), 400
+    updated_product = inventory_manager.get_item(item_id)
+    return jsonify({"status": "ok", "detail_fields_supported": True, "product": updated_product}), 200
 
 
 @app.route('/api/inventory/product/delete', methods=['POST'])

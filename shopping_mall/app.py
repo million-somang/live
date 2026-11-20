@@ -205,10 +205,7 @@ def _copy_or_download_product_image(image_url, image_b64=None):
     if os.path.exists(dest_path) and os.path.getsize(dest_path) > 0:
         return f"/static/uploads/products/{filename}"
 
-    if not _is_obs_pull_enabled():
-        return f"/static/uploads/products/{filename}"
-
-    # 1) 로컬 상위 폴더(c:\live\static\uploads\products)가 존재하는 경우 즉시 복사
+    # 1) 동일 서버 내 상위 폴더(c:\live\static\uploads\products)가 존재하는 경우 우선 복사 (클라우드 모드/동일 호스트 겸용)
     parent_upload_candidate = os.path.abspath(os.path.join(BASE_DIR, "..", "static", "uploads", "products", filename))
     if os.path.exists(parent_upload_candidate):
         try:
@@ -216,6 +213,9 @@ def _copy_or_download_product_image(image_url, image_b64=None):
             return f"/static/uploads/products/{filename}"
         except Exception:
             pass
+
+    if not _is_obs_pull_enabled():
+        return f"/static/uploads/products/{filename}"
 
     # 2) OBS 서버에서 HTTP로 이미지 다운로드
     if OBS_SERVER_URL:

@@ -437,75 +437,83 @@ def set_product_policy_defaults(policy_data):
 
 
 def add_product(product_data):
-    """신규 상품 및 옵션 매트릭스를 DB에 일괄 저장합니다."""
-    with db_lock:
-        conn = get_connection()
+    """신규 상품 및 옵션 매트릭스를 DB에 일괄 저장합니다 (구 스키마 자동 보정 포함)."""
+    for attempt in range(2):
         try:
-            cursor = conn.cursor()
+            with db_lock:
+                conn = get_connection()
+                try:
+                    cursor = conn.cursor()
 
-            # 상품 번호 배정 (지정되지 않았으면 MAX(num) + 1)
-            num = product_data.get("num")
-            if not num:
-                cursor.execute("SELECT COALESCE(MAX(num), 0) + 1 FROM products")
-                num = cursor.fetchone()[0]
+                    # 상품 번호 배정 (지정되지 않았으면 MAX(num) + 1)
+                    num = product_data.get("num")
+                    if not num:
+                        cursor.execute("SELECT COALESCE(MAX(num), 0) + 1 FROM products")
+                        num = cursor.fetchone()[0]
 
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sell_price = int(product_data.get("price", 0))
-            cons_price = int(product_data.get("consumer_price", 0))
-            live_price = int(product_data.get("live_price", 0))
-            cost_price = int(product_data.get("cost_price", 0))
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    sell_price = int(product_data.get("price", 0))
+                    cons_price = int(product_data.get("consumer_price", 0))
+                    live_price = int(product_data.get("live_price", 0))
+                    cost_price = int(product_data.get("cost_price", 0))
 
-            if sell_price <= 0 and cons_price > 0:
-                sell_price = cons_price
-            if cons_price <= 0 and sell_price > 0:
-                cons_price = sell_price
-            if live_price <= 0:
-                live_price = sell_price
+                    if sell_price <= 0 and cons_price > 0:
+                        sell_price = cons_price
+                    if cons_price <= 0 and sell_price > 0:
+                        cons_price = sell_price
+                    if live_price <= 0:
+                        live_price = sell_price
 
-            cursor.execute("""
-                INSERT INTO products (
-                    num, name, price, live_price, consumer_price, cost_price,
-                    image_url, specs, detail_content, detail_images,
-                    shipping_info, exchange_return_info, non_returnable_info, as_info,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                num,
-                product_data.get("name", "신규 상품"),
-                sell_price,
-                live_price,
-                cons_price,
-                cost_price,
-                str(product_data.get("image_url") or "").strip(),
-                str(product_data.get("specs") or "").strip(),
-                str(product_data.get("detail_content") or "").strip(),
-                _serialize_detail_images(product_data.get("detail_images")),
-                str(product_data.get("shipping_info") or "").strip(),
-                str(product_data.get("exchange_return_info") or "").strip(),
-                str(product_data.get("non_returnable_info") or "").strip(),
-                str(product_data.get("as_info") or "").strip(),
-                now_str
-            ))
-            product_id = cursor.lastrowid
+                    cursor.execute("""
+                        INSERT INTO products (
+                            num, name, price, live_price, consumer_price, cost_price,
+                            image_url, specs, detail_content, detail_images,
+                            shipping_info, exchange_return_info, non_returnable_info, as_info,
+                            created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        num,
+                        product_data.get("name", "신규 상품"),
+                        sell_price,
+                        live_price,
+                        cons_price,
+                        cost_price,
+                        str(product_data.get("image_url") or "").strip(),
+                        str(product_data.get("specs") or "").strip(),
+                        str(product_data.get("detail_content") or "").strip(),
+                        _serialize_detail_images(product_data.get("detail_images")),
+                        str(product_data.get("shipping_info") or "").strip(),
+                        str(product_data.get("exchange_return_info") or "").strip(),
+                        str(product_data.get("non_returnable_info") or "").strip(),
+                        str(product_data.get("as_info") or "").strip(),
+                        now_str
+                    ))
+                    product_id = cursor.lastrowid
 
-            # 옵션 저장
-            options = product_data.get("options", [])
-            for opt in options:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO product_options (product_id, color, size, stock)
-                    VALUES (?, ?, ?, ?)
-                """, (
-                    product_id,
-                    str(opt.get("color", "-")).strip(),
-                    str(opt.get("size", "-")).strip(),
-                    max(0, int(opt.get("stock", 0)))
-                ))
+                    # 옵션 저장
+                    options = product_data.get("options", [])
+                    for opt in options:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO product_options (product_id, color, size, stock)
+                            VALUES (?, ?, ?, ?)
+                        """, (
+                            product_id,
+                            str(opt.get("color", "-")).strip(),
+                            str(opt.get("size", "-")).strip(),
+                            max(0, int(opt.get("stock", 0)))
+                        ))
 
-            conn.commit()
-            created_prod = get_product_by_id(product_id)
-        finally:
-            conn.close()
+                    conn.commit()
+                    created_prod = get_product_by_id(product_id)
+                finally:
+                    conn.close()
+            break
+        except sqlite3.OperationalError as err:
+            if attempt == 0 and "no such column" in str(err).lower():
+                init_db(reset=False)
+                continue
+            raise
     try:
         sync_to_shopping_mall("upsert_product", {"product": created_prod})
     except Exception:
@@ -553,66 +561,86 @@ def get_product_by_id(product_id):
 
 
 def update_product(product_id, update_data):
-    """상품 기본 정보(소비자가, 원가, 상세페이지, 4대 안내 포함) 및 옵션 수정"""
-    with db_lock:
-        conn = get_connection()
-        try:
-            cursor = conn.cursor()
-            real_id = int(str(product_id).replace("item-", ""))
+    """상품 기본 정보(번호, 소비자가, 원가, 상세페이지, 4대 안내 포함) 및 옵션 수정"""
+    updated_prod = None
+    for attempt in range(2):
+        need_retry = False
+        with db_lock:
+            conn = get_connection()
+            try:
+                cursor = conn.cursor()
+                real_id = int(str(product_id).replace("item-", ""))
 
-            fields = []
-            vals = []
-            if "name" in update_data:
-                fields.append("name = ?")
-                vals.append(update_data["name"])
-            if "price" in update_data:
-                fields.append("price = ?")
-                vals.append(int(update_data["price"]))
-            if "live_price" in update_data:
-                fields.append("live_price = ?")
-                vals.append(int(update_data["live_price"] or update_data.get("price") or 0))
-            if "consumer_price" in update_data:
-                fields.append("consumer_price = ?")
-                vals.append(int(update_data["consumer_price"]))
-            if "cost_price" in update_data:
-                fields.append("cost_price = ?")
-                vals.append(int(update_data["cost_price"]))
-            for txt_col in ("image_url", "specs", "detail_content", *POLICY_FIELD_KEYS):
-                if txt_col in update_data:
-                    fields.append(f"{txt_col} = ?")
-                    vals.append(str(update_data[txt_col] or "").strip())
-            if "detail_images" in update_data:
-                fields.append("detail_images = ?")
-                vals.append(_serialize_detail_images(update_data["detail_images"]))
+                fields = []
+                vals = []
+                if "num" in update_data and update_data["num"] not in (None, ""):
+                    new_num = int(update_data["num"])
+                    cursor.execute("SELECT id FROM products WHERE num = ? AND id != ?", (new_num, real_id))
+                    if not cursor.fetchone():
+                        fields.append("num = ?")
+                        vals.append(new_num)
+                if "name" in update_data:
+                    fields.append("name = ?")
+                    vals.append(update_data["name"])
+                if "price" in update_data:
+                    fields.append("price = ?")
+                    vals.append(int(update_data["price"]))
+                if "live_price" in update_data:
+                    fields.append("live_price = ?")
+                    vals.append(int(update_data["live_price"] or update_data.get("price") or 0))
+                if "consumer_price" in update_data:
+                    fields.append("consumer_price = ?")
+                    vals.append(int(update_data["consumer_price"]))
+                if "cost_price" in update_data:
+                    fields.append("cost_price = ?")
+                    vals.append(int(update_data["cost_price"]))
+                for txt_col in ("image_url", "specs", "detail_content", *POLICY_FIELD_KEYS):
+                    if txt_col in update_data:
+                        fields.append(f"{txt_col} = ?")
+                        vals.append(str(update_data[txt_col] or "").strip())
+                if "detail_images" in update_data:
+                    fields.append("detail_images = ?")
+                    vals.append(_serialize_detail_images(update_data["detail_images"]))
 
-            if fields:
-                vals.append(real_id)
-                cursor.execute(f"UPDATE products SET {', '.join(fields)} WHERE id = ?", vals)
+                if fields:
+                    vals.append(real_id)
+                    cursor.execute(f"UPDATE products SET {', '.join(fields)} WHERE id = ?", vals)
 
-            # 옵션 목록도 함께 전달된 경우 재구성
-            if "options" in update_data and isinstance(update_data["options"], list):
-                cursor.execute("DELETE FROM product_options WHERE product_id = ?", (real_id,))
-                for opt in update_data["options"]:
-                    cursor.execute("""
-                        INSERT INTO product_options (product_id, color, size, stock)
-                        VALUES (?, ?, ?, ?)
-                    """, (
-                        real_id,
-                        str(opt.get("color", "-")).strip(),
-                        str(opt.get("size", "-")).strip(),
-                        max(0, int(opt.get("stock", 0)))
-                    ))
+                # 옵션 목록도 함께 전달된 경우 재구성
+                if "options" in update_data and isinstance(update_data["options"], list):
+                    cursor.execute("DELETE FROM product_options WHERE product_id = ?", (real_id,))
+                    for opt in update_data["options"]:
+                        cursor.execute("""
+                            INSERT INTO product_options (product_id, color, size, stock)
+                            VALUES (?, ?, ?, ?)
+                        """, (
+                            real_id,
+                            str(opt.get("color", "-")).strip(),
+                            str(opt.get("size", "-")).strip(),
+                            max(0, int(opt.get("stock", 0)))
+                        ))
 
-            conn.commit()
-            updated_prod = get_product_by_id(real_id)
-        except Exception as e:
-            print(f"⚠️ [상품 수정 실패] {e}")
-            return False
-        finally:
-            conn.close()
+                conn.commit()
+                updated_prod = get_product_by_id(real_id)
+            except sqlite3.OperationalError as e:
+                if attempt == 0 and "no such column" in str(e).lower():
+                    need_retry = True
+                else:
+                    print(f"⚠️ [상품 수정 실패] {e}")
+                    return False
+            except Exception as e:
+                print(f"⚠️ [상품 수정 실패] {e}")
+                return False
+            finally:
+                conn.close()
+        if need_retry:
+            init_db(reset=False)
+            continue
+        break
+    if not updated_prod:
+        return False
     try:
-        if updated_prod:
-            sync_to_shopping_mall("upsert_product", {"product": updated_prod})
+        sync_to_shopping_mall("upsert_product", {"product": updated_prod})
     except Exception:
         pass
     return True
@@ -2648,33 +2676,34 @@ def get_cloud_mall_config():
 
 
 def _read_local_product_image_b64_if_changed(base_dir, img_url, force=False):
-    """원격 클라우드 쇼핑몰로 전송할 상품 이미지를 Base64로 읽되, 이미 전송한 동일 파일(mtime+size)은 생략합니다."""
+    """원격 클라우드 쇼핑몰로 전송할 상품 이미지를 Base64로 읽되, 이미 전송 완료된 파일(mtime+size)은 생략합니다.
+    (전송 완료 캐시는 HTTP 응답 확인 후 호출자가 기록합니다.)
+    """
     import base64
     if not img_url or not str(img_url).startswith("/static/uploads/products/"):
-        return None, None
+        return None, None, None
     fname = os.path.basename(str(img_url).split("?")[0])
     if not fname:
-        return None, None
+        return None, None, None
     src_p = os.path.join(base_dir, "static", "uploads", "products", fname)
     if not os.path.exists(src_p):
-        return fname, None
+        return fname, None, None
     try:
         st = os.stat(src_p)
         sig = f"{st.st_size}:{int(st.st_mtime)}"
         if not force and _pushed_cloud_image_sig.get(fname) == sig:
-            return fname, None
+            return fname, None, None
         with open(src_p, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("ascii")
-        _pushed_cloud_image_sig[fname] = sig
-        return fname, b64
+        return fname, b64, sig
     except Exception:
-        return fname, None
+        return fname, None, None
 
 
 def sync_to_shopping_mall(action, payload=None, blocking=False):
     """
     OBS DB의 상품/옵션/재고 변경 또는 선택된(Pin) 상품 변경 시:
-    1) 로컬 shopping_mall 폴더가 존재하고 로컬 모드이면 shopping_mall.db에 직접 즉시 반영 및 이미지 파일 복사
+    1) 동일 호스트에 shopping_mall 폴더가 존재하면 이미지 파일 복사를 항상 수행하고, 로컬 모드이면 DB에도 즉시 반영
     2) 원격 클라우드 또는 로컬 쇼핑몰 서버(MALL_SERVER_URL)로 X-Mall-Sync-Secret 인증 헤더와 함께 Outbound 웹훅 푸시
     """
     import json
@@ -2692,33 +2721,45 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     mall_dir = os.path.join(base_dir, "shopping_mall")
 
-    # 1. 로컬 동시 운영 모드일 때만 로컬 shopping_mall DB 및 이미지 파일 직접 동기화
+    def _copy_local_img(img_url):
+        if not img_url or not str(img_url).startswith("/static/uploads/products/"):
+            return img_url
+        fname = os.path.basename(str(img_url).split("?")[0])
+        src_p = os.path.join(base_dir, "static", "uploads", "products", fname)
+        dst_dir = os.path.join(mall_dir, "static", "uploads", "products")
+        os.makedirs(dst_dir, exist_ok=True)
+        dst_p = os.path.join(dst_dir, fname)
+        if os.path.exists(src_p) and (not os.path.exists(dst_p) or os.path.getsize(dst_p) == 0):
+            shutil.copy2(src_p, dst_p)
+        return f"/static/uploads/products/{fname}"
+
+    def _copy_local_product_bundle(prod_dict):
+        cp = dict(prod_dict)
+        cp["image_url"] = _copy_local_img(cp.get("image_url"))
+        if "detail_images" in cp:
+            cp["detail_images"] = [
+                _copy_local_img(u) for u in _parse_detail_images(cp.get("detail_images"))
+            ]
+        return cp
+
+    # 동일 서버에 shopping_mall 폴더가 있으면 is_remote 여부와 무관하게 이미지 파일 선복제
+    if os.path.isdir(mall_dir):
+        try:
+            if action == "upsert_product" and isinstance(payload.get("product"), dict):
+                _copy_local_product_bundle(payload["product"])
+            elif action == "bulk_sync" and isinstance(payload.get("products"), list):
+                for p in payload["products"]:
+                    if isinstance(p, dict):
+                        _copy_local_product_bundle(p)
+        except Exception:
+            pass
+
+    # 1. 로컬 동시 운영 모드일 때만 로컬 shopping_mall DB 직접 동기화
     if os.path.isdir(mall_dir) and not is_remote:
         try:
             if mall_dir not in sys.path:
                 sys.path.append(mall_dir)
             import mall_database as mdb
-
-            def _copy_local_img(img_url):
-                if not img_url or not str(img_url).startswith("/static/uploads/products/"):
-                    return img_url
-                fname = os.path.basename(str(img_url).split("?")[0])
-                src_p = os.path.join(base_dir, "static", "uploads", "products", fname)
-                dst_dir = os.path.join(mall_dir, "static", "uploads", "products")
-                os.makedirs(dst_dir, exist_ok=True)
-                dst_p = os.path.join(dst_dir, fname)
-                if os.path.exists(src_p) and not os.path.exists(dst_p):
-                    shutil.copy2(src_p, dst_p)
-                return f"/static/uploads/products/{fname}"
-
-            def _copy_local_product_bundle(prod_dict):
-                cp = dict(prod_dict)
-                cp["image_url"] = _copy_local_img(cp.get("image_url"))
-                if "detail_images" in cp:
-                    cp["detail_images"] = [
-                        _copy_local_img(u) for u in _parse_detail_images(cp.get("detail_images"))
-                    ]
-                return cp
 
             if action == "upsert_product" and isinstance(payload.get("product"), dict):
                 mdb.upsert_product_from_obs(_copy_local_product_bundle(payload["product"]))
@@ -2755,8 +2796,9 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
         except Exception as local_sync_err:
             print(f"⚠️ [로컬 쇼핑몰 DB 동기화 경고] {local_sync_err}")
 
-    # 2. 쇼핑몰 HTTP 서버(원격 클라우드 또는 로컬 Port 3000)로 Outbound 웹훅 전송
+    # 2. 쇼핑몰 HTTP 서버(원격 클라우드 또는 로컬 Port 6001)로 Outbound 웹훅 전송
     if mall_url:
+        pending_image_sigs = {}
         # 원격 클라우드 서버인 경우 변경된 로컬 상품 이미지(대표 + 상세 이미지 전체)를 Base64로 함께 첨부
         if is_remote or not os.path.isdir(mall_dir):
             def _collect_prod_b64(prod_dict, images_map):
@@ -2764,19 +2806,27 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
                     return
                 urls = [prod_dict.get("image_url")] + _parse_detail_images(prod_dict.get("detail_images"))
                 for img_u in urls:
-                    fname, b64 = _read_local_product_image_b64_if_changed(base_dir, img_u)
+                    fname, b64, sig = _read_local_product_image_b64_if_changed(base_dir, img_u)
                     if fname and b64:
                         images_map[fname] = b64
+                        if sig:
+                            pending_image_sigs[fname] = sig
 
             images_b64 = dict(payload.get("images_b64") or {})
             if action == "upsert_product" and isinstance(payload.get("product"), dict):
-                _, main_b64 = _read_local_product_image_b64_if_changed(base_dir, payload["product"].get("image_url"))
+                main_fn, main_b64, main_sig = _read_local_product_image_b64_if_changed(
+                    base_dir, payload["product"].get("image_url")
+                )
                 if main_b64:
                     payload["image_b64"] = main_b64
+                    if main_fn and main_sig:
+                        pending_image_sigs[main_fn] = main_sig
                 for d_u in _parse_detail_images(payload["product"].get("detail_images")):
-                    fname, b64 = _read_local_product_image_b64_if_changed(base_dir, d_u)
+                    fname, b64, sig = _read_local_product_image_b64_if_changed(base_dir, d_u)
                     if fname and b64:
                         images_b64[fname] = b64
+                        if sig:
+                            pending_image_sigs[fname] = sig
                 if images_b64:
                     payload["images_b64"] = images_b64
             elif action == "bulk_sync" and isinstance(payload.get("products"), list):
@@ -2784,6 +2834,9 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
                     _collect_prod_b64(p, images_b64)
                 if images_b64:
                     payload["images_b64"] = images_b64
+
+        has_b64_payload = bool(payload.get("image_b64") or payload.get("images_b64"))
+        req_timeout = 15.0 if has_b64_payload else 5.0
 
         def _push_webhook():
             try:
@@ -2797,9 +2850,14 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
                     headers=headers,
                     method="POST"
                 )
-                urllib.request.urlopen(req, timeout=3.5).read()
+                with urllib.request.urlopen(req, timeout=req_timeout) as resp:
+                    resp.read()
+                if pending_image_sigs:
+                    _pushed_cloud_image_sig.update(pending_image_sigs)
                 return True
-            except Exception:
+            except Exception as push_err:
+                if action != "heartbeat":
+                    print(f"⚠️ [쇼핑몰 웹훅 동기화 경고] {mall_url} ({action}): {push_err}")
                 return False
 
         if blocking:
