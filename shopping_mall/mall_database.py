@@ -363,85 +363,97 @@ def upsert_product_from_obs(prod_data):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     created_at = str(prod_data.get("created_at") or now_str)
 
-    with mall_db_lock:
-        conn = get_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info
-                FROM mall_products WHERE num = ?
-            """, (num,))
-            existing = cur.fetchone()
-            if existing:
-                mall_pid = existing["id"]
-                ext_keys = set(existing.keys())
-                resolved_text = {
-                    col: (
-                        str(prod_data[col] or "").strip()
-                        if col in prod_data
-                        else str(existing[col] or "" if col in ext_keys else "")
+    for attempt in range(2):
+        need_retry = False
+        with mall_db_lock:
+            conn = get_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT id, detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info
+                    FROM mall_products WHERE num = ?
+                """, (num,))
+                existing = cur.fetchone()
+                if existing:
+                    mall_pid = existing["id"]
+                    ext_keys = set(existing.keys())
+                    resolved_text = {
+                        col: (
+                            str(prod_data[col] or "").strip()
+                            if col in prod_data
+                            else str(existing[col] or "" if col in ext_keys else "")
+                        )
+                        for col in MALL_DETAIL_TEXT_FIELDS
+                    }
+                    resolved_detail_imgs = (
+                        _serialize_detail_images(prod_data["detail_images"])
+                        if "detail_images" in prod_data
+                        else (existing["detail_images"] if "detail_images" in ext_keys and existing["detail_images"] else "[]")
                     )
-                    for col in MALL_DETAIL_TEXT_FIELDS
-                }
-                resolved_detail_imgs = (
-                    _serialize_detail_images(prod_data["detail_images"])
-                    if "detail_images" in prod_data
-                    else (existing["detail_images"] if "detail_images" in ext_keys and existing["detail_images"] else "[]")
-                )
-                cur.execute("""
-                    UPDATE mall_products
-                    SET obs_product_id = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
-                        image_url = ?, specs = ?,
-                        detail_content = ?, detail_images = ?,
-                        shipping_info = ?, exchange_return_info = ?, non_returnable_info = ?, as_info = ?,
-                        updated_at = ?
-                    WHERE id = ?
-                """, (
-                    obs_id, name, category, price, live_price, consumer_price,
-                    image_url, specs,
-                    resolved_text["detail_content"], resolved_detail_imgs,
-                    resolved_text["shipping_info"], resolved_text["exchange_return_info"],
-                    resolved_text["non_returnable_info"], resolved_text["as_info"],
-                    now_str, mall_pid
-                ))
-            else:
-                cur.execute("""
-                    INSERT INTO mall_products
-                    (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs,
-                     detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info,
-                     is_featured, updated_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                """, (
-                    obs_id, num, name, category, price, live_price, consumer_price, image_url, specs,
-                    str(prod_data.get("detail_content") or "").strip(),
-                    _serialize_detail_images(prod_data.get("detail_images")),
-                    str(prod_data.get("shipping_info") or "").strip(),
-                    str(prod_data.get("exchange_return_info") or "").strip(),
-                    str(prod_data.get("non_returnable_info") or "").strip(),
-                    str(prod_data.get("as_info") or "").strip(),
-                    now_str, created_at
-                ))
-                mall_pid = cur.lastrowid
-
-            if "options" in prod_data and isinstance(prod_data["options"], list):
-                cur.execute("DELETE FROM mall_product_options WHERE product_id = ?", (mall_pid,))
-                options = prod_data["options"]
-                if not options:
-                    options = [{"color": "기본", "size": "FREE", "stock": 10}]
-                for opt in options:
-                    c = str(opt.get("color") or "-").strip() or "-"
-                    s = str(opt.get("size") or "-").strip() or "-"
-                    stk = max(0, int(opt.get("stock") or 0))
                     cur.execute("""
-                        INSERT OR REPLACE INTO mall_product_options (product_id, color, size, stock)
-                        VALUES (?, ?, ?, ?)
-                    """, (mall_pid, c, s, stk))
+                        UPDATE mall_products
+                        SET obs_product_id = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
+                            image_url = ?, specs = ?,
+                            detail_content = ?, detail_images = ?,
+                            shipping_info = ?, exchange_return_info = ?, non_returnable_info = ?, as_info = ?,
+                            updated_at = ?
+                        WHERE id = ?
+                    """, (
+                        obs_id, name, category, price, live_price, consumer_price,
+                        image_url, specs,
+                        resolved_text["detail_content"], resolved_detail_imgs,
+                        resolved_text["shipping_info"], resolved_text["exchange_return_info"],
+                        resolved_text["non_returnable_info"], resolved_text["as_info"],
+                        now_str, mall_pid
+                    ))
+                else:
+                    cur.execute("""
+                        INSERT INTO mall_products
+                        (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs,
+                         detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info,
+                         is_featured, updated_at, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    """, (
+                        obs_id, num, name, category, price, live_price, consumer_price, image_url, specs,
+                        str(prod_data.get("detail_content") or "").strip(),
+                        _serialize_detail_images(prod_data.get("detail_images")),
+                        str(prod_data.get("shipping_info") or "").strip(),
+                        str(prod_data.get("exchange_return_info") or "").strip(),
+                        str(prod_data.get("non_returnable_info") or "").strip(),
+                        str(prod_data.get("as_info") or "").strip(),
+                        now_str, created_at
+                    ))
+                    mall_pid = cur.lastrowid
 
-            conn.commit()
-            bump_state_version(bump_catalog=True)
-            return get_mall_product_by_num(num)
-        finally:
-            conn.close()
+                if "options" in prod_data and isinstance(prod_data["options"], list):
+                    cur.execute("DELETE FROM mall_product_options WHERE product_id = ?", (mall_pid,))
+                    options = prod_data["options"]
+                    if not options:
+                        options = [{"color": "기본", "size": "FREE", "stock": 10}]
+                    for opt in options:
+                        c = str(opt.get("color") or "-").strip() or "-"
+                        s = str(opt.get("size") or "-").strip() or "-"
+                        stk = max(0, int(opt.get("stock") or 0))
+                        cur.execute("""
+                            INSERT OR REPLACE INTO mall_product_options (product_id, color, size, stock)
+                            VALUES (?, ?, ?, ?)
+                        """, (mall_pid, c, s, stk))
+
+                conn.commit()
+                bump_state_version(bump_catalog=True)
+                return get_mall_product_by_num(num)
+            except sqlite3.OperationalError as err:
+                if attempt == 0 and "no such column" in str(err).lower():
+                    need_retry = True
+                else:
+                    raise
+            finally:
+                conn.close()
+        if need_retry:
+            init_mall_db()
+            continue
+        break
+    return None
 
 
 def bulk_sync_products_from_obs(products_list, delete_missing=True):

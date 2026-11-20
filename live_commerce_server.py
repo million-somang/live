@@ -889,6 +889,7 @@ class PlatformTracker:
             all_members.sort(key=lambda x: (x["seconds_ago"], -x["order_count"], -x["chat_count"]))
 
             tt_online_count = sum(1 for m in tt_members if m["is_online"])
+            tt_active_count = sum(1 for m in tt_members if m["is_active"])
             raw_concurrent = int(self.tiktok_live_meta.get("concurrent_viewers") or 0)
             total_views = int(self.tiktok_live_meta.get("view_count") or 0)
             tt_connected_count = tt_online_count if raw_concurrent == 0 else min(len(tt_members), max(tt_online_count, raw_concurrent))
@@ -991,6 +992,7 @@ class PlatformTracker:
             all_members.sort(key=lambda x: (x["seconds_ago"], -x["order_count"], -x["chat_count"]))
 
             ig_online_count = sum(1 for m in ig_members if m["is_online"])
+            ig_active_count = sum(1 for m in ig_members if m["is_active"])
             raw_concurrent = int(self.instagram_live_meta.get("concurrent_viewers") or 0)
             total_views = int(self.instagram_live_meta.get("view_count") or 0)
             ig_connected_count = ig_online_count if raw_concurrent == 0 else min(len(ig_members), max(ig_online_count, raw_concurrent))
@@ -2206,11 +2208,12 @@ def api_upload_image():
     if 'image' not in request.files:
         return jsonify({"status": "error", "message": "이미지 파일이 전송되지 않았습니다."}), 400
     file = request.files['image']
-    if file.filename == '':
+    filename = str(file.filename or '').strip()
+    if not filename:
         return jsonify({"status": "error", "message": "선택된 파일이 없습니다."}), 400
-    if file and allowed_file(file.filename):
+    if file and allowed_file(filename):
         import uuid
-        ext = file.filename.rsplit('.', 1)[1].lower()
+        ext = filename.rsplit('.', 1)[1].lower()
         unique_name = f"prod_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:8]}.{ext}"
         save_path = os.path.join(UPLOAD_FOLDER, unique_name)
         file.save(save_path)
@@ -2227,7 +2230,12 @@ def api_inventory_product_add():
     if not name:
         return jsonify({"status": "error", "message": "상품명은 필수입니다."}), 400
     new_product = inventory_manager.add_product(data)
-    return jsonify({"status": "ok", "detail_fields_supported": True, "product": new_product}), 200
+    return jsonify({
+        "status": "ok",
+        "detail_fields_supported": True,
+        "product": new_product,
+        "mall_sync": database.get_last_mall_sync_status()
+    }), 200
 
 
 @app.route('/api/inventory/product/update', methods=['POST'])
@@ -2241,7 +2249,12 @@ def api_inventory_product_update():
     if not success:
         return jsonify({"status": "error", "message": "상품 정보 수정에 실패했습니다."}), 400
     updated_product = inventory_manager.get_item(item_id)
-    return jsonify({"status": "ok", "detail_fields_supported": True, "product": updated_product}), 200
+    return jsonify({
+        "status": "ok",
+        "detail_fields_supported": True,
+        "product": updated_product,
+        "mall_sync": database.get_last_mall_sync_status()
+    }), 200
 
 
 @app.route('/api/inventory/product/delete', methods=['POST'])
@@ -3784,13 +3797,15 @@ def api_mall_manual_sync():
     cnt = database.sync_all_products_to_shopping_mall(
         is_live=snap["is_live"],
         live_urls=snap["live_urls"],
-        youtube_embed_url=snap["youtube_embed_url"]
+        youtube_embed_url=snap["youtube_embed_url"],
+        blocking=True
     )
     cfg = database.get_cloud_mall_config()
     return jsonify({
         "status": "ok",
         "synced_count": cnt,
         "mall_url": cfg["mall_url"],
+        "mall_sync": database.get_last_mall_sync_status(),
         "message": f"🛍️ 쇼핑몰({cfg['mall_url']})에 상품 {cnt}건 및 현재 방송 상태 동기화가 완료되었습니다!"
     }), 200
 
@@ -4111,10 +4126,10 @@ def ensure_ssl_certs(local_ip="127.0.0.1"):
     try:
         import ipaddress
         from datetime import datetime, timedelta, timezone
-        from cryptography import x509
-        from cryptography.x509.oid import NameOID
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography import x509  # type: ignore[import-not-found]
+        from cryptography.x509.oid import NameOID  # type: ignore[import-not-found]
+        from cryptography.hazmat.primitives import hashes, serialization  # type: ignore[import-not-found]
+        from cryptography.hazmat.primitives.asymmetric import rsa  # type: ignore[import-not-found]
 
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         subject = issuer = x509.Name([

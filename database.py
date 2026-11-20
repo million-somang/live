@@ -12,14 +12,18 @@ import json
 import sqlite3
 from datetime import datetime
 from threading import RLock
+from typing import Optional
 import openpyxl
 
 # 윈도우 콘솔 UTF-8 출력 설정 (이모지 및 한글 깨짐/인코딩 에러 방지)
 if sys.platform.startswith("win"):
     try:
-        if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        reconf_out = getattr(sys.stdout, "reconfigure", None)
+        reconf_err = getattr(sys.stderr, "reconfigure", None)
+        if callable(reconf_out):
+            reconf_out(encoding="utf-8", errors="replace")
+        if callable(reconf_err):
+            reconf_err(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -438,6 +442,7 @@ def set_product_policy_defaults(policy_data):
 
 def add_product(product_data):
     """신규 상품 및 옵션 매트릭스를 DB에 일괄 저장합니다 (구 스키마 자동 보정 포함)."""
+    created_prod = None
     for attempt in range(2):
         try:
             with db_lock:
@@ -515,7 +520,7 @@ def add_product(product_data):
                 continue
             raise
     try:
-        sync_to_shopping_mall("upsert_product", {"product": created_prod})
+        sync_to_shopping_mall("upsert_product", {"product": created_prod}, blocking=True)
     except Exception:
         pass
     return created_prod
@@ -640,7 +645,7 @@ def update_product(product_id, update_data):
     if not updated_prod:
         return False
     try:
-        sync_to_shopping_mall("upsert_product", {"product": updated_prod})
+        sync_to_shopping_mall("upsert_product", {"product": updated_prod}, blocking=True)
     except Exception:
         pass
     return True
@@ -1268,7 +1273,7 @@ def save_chat(platform, sender, message, category="CHAT", ai_reply="", return_du
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (now_str, plat_up, norm_sender, norm_msg, category, ai_reply))
             conn.commit()
-            new_id = int(cursor.lastrowid)
+            new_id = int(cursor.lastrowid or 0)
             return (new_id, False) if return_duplicate_flag else new_id
         finally:
             conn.close()
@@ -1548,7 +1553,10 @@ def export_orders_to_excel(excel_path="live_orders.xlsx"):
 
             wb = openpyxl.Workbook()
             ws = wb.active
-            ws.title = "실시간주문목록"
+            if ws is None:
+                ws = wb.create_sheet(title="실시간주문목록")
+            else:
+                ws.title = "실시간주문목록"
 
             # 헤더
             headers = ["주문시간", "플랫폼", "고객닉네임", "상품명(번호)", "색상", "사이즈", "수량", "판매단가", "원가", "주문이익(마진)", "확인상태", "원본댓글", "AI안내메시지"]
@@ -2591,7 +2599,10 @@ def export_session_orders_to_excel(session_id, excel_path):
     orders = list(reversed(detail.get("orders", [])))
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "이전방송주문목록"
+    if ws is None:
+        ws = wb.create_sheet(title="이전방송주문목록")
+    else:
+        ws.title = "이전방송주문목록"
 
     headers = ["주문시간", "플랫폼", "고객닉네임", "상품명(번호)", "색상", "사이즈", "수량", "판매단가", "원가", "주문이익(마진)", "확인상태", "원본댓글", "AI안내메시지"]
     ws.append(headers)
@@ -2628,6 +2639,22 @@ def export_session_orders_to_excel(session_id, excel_path):
 # 🛍️ 독립 쇼핑몰(shopping_mall/shopping_mall.db & Port 6001) 실시간 동기화 브릿지
 # ==============================================================================
 _pushed_cloud_image_sig = {}
+_mall_db_inited = False
+_last_mall_sync_status = {
+    "ok": True,
+    "action": "",
+    "mall_url": "",
+    "local_db_synced": False,
+    "webhook_ok": False,
+    "detail_fields_supported": True,
+    "stale_mall_server": False,
+    "error": ""
+}
+
+
+def get_last_mall_sync_status():
+    """가장 최근 쇼핑몰 동기화(상품 등록/수정/삭제/일괄동기화) 상태 진단 정보를 반환합니다."""
+    return dict(_last_mall_sync_status)
 
 
 def _normalize_mall_port_url(raw_url: str, default_port: int = 6001) -> str:
@@ -2704,11 +2731,14 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
     """
     OBS DB의 상품/옵션/재고 변경 또는 선택된(Pin) 상품 변경 시:
     1) 동일 호스트에 shopping_mall 폴더가 존재하면 이미지 파일 복사를 항상 수행하고, 로컬 모드이면 DB에도 즉시 반영
-    2) 원격 클라우드 또는 로컬 쇼핑몰 서버(MALL_SERVER_URL)로 X-Mall-Sync-Secret 인증 헤더와 함께 Outbound 웹훅 푸시
+    2) 원격 클라우드 또는 로컬 쇼핑몰 서버(MALL_SERVER_URL)로 메타데이터를 우선 푸시하고(413 방지),
+       변경된 상품 이미지는 개별 upload_product_image 액션으로 비동기 업로드합니다.
     """
+    global _mall_db_inited, _last_mall_sync_status
     import json
     import shutil
     import threading
+    import urllib.error
     import urllib.request
 
     cfg = get_cloud_mall_config()
@@ -2718,6 +2748,9 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
 
     payload = dict(payload or {})
     payload["action"] = action
+    payload.pop("image_b64", None)
+    payload.pop("images_b64", None)
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
     mall_dir = os.path.join(base_dir, "shopping_mall")
 
@@ -2754,25 +2787,33 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
         except Exception:
             pass
 
-    # 1. 로컬 동시 운영 모드일 때만 로컬 shopping_mall DB 직접 동기화
+    # 1. 로컬 동시 운영 모드일 때만 로컬 shopping_mall DB 직접 동기화 (init_mall_db 선행 보장)
+    local_db_synced = False
+    local_sync_error = ""
     if os.path.isdir(mall_dir) and not is_remote:
         try:
             if mall_dir not in sys.path:
                 sys.path.append(mall_dir)
             import mall_database as mdb
+            if not _mall_db_inited:
+                mdb.init_mall_db()
+                _mall_db_inited = True
 
             if action == "upsert_product" and isinstance(payload.get("product"), dict):
                 mdb.upsert_product_from_obs(_copy_local_product_bundle(payload["product"]))
+                local_db_synced = True
             elif action == "bulk_sync" and isinstance(payload.get("products"), list):
                 prods = [_copy_local_product_bundle(p) for p in payload["products"] if isinstance(p, dict)]
                 mdb.bulk_sync_products_from_obs(prods, delete_missing=True)
                 if isinstance(payload.get("live_state"), dict):
                     mdb.update_live_state_bundle(payload["live_state"])
+                local_db_synced = True
             elif action == "delete_product":
                 mdb.delete_product_by_num_or_obs_id(
                     num=payload.get("num"),
                     obs_product_id=payload.get("obs_product_id")
                 )
+                local_db_synced = True
             elif action in ("pin_product", "live_state", "heartbeat"):
                 state_bundle = {
                     k: payload[k]
@@ -2793,76 +2834,154 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
                     state_bundle["heartbeat"] = True
                 if state_bundle:
                     mdb.update_live_state_bundle(state_bundle)
+                    local_db_synced = True
         except Exception as local_sync_err:
+            local_sync_error = str(local_sync_err)
             print(f"⚠️ [로컬 쇼핑몰 DB 동기화 경고] {local_sync_err}")
 
     # 2. 쇼핑몰 HTTP 서버(원격 클라우드 또는 로컬 Port 6001)로 Outbound 웹훅 전송
+    pending_images = []
+    if (is_remote or not os.path.isdir(mall_dir)) and action in ("upsert_product", "bulk_sync"):
+        seen_fnames = set()
+
+        def _queue_prod_images(prod_dict):
+            if not isinstance(prod_dict, dict):
+                return
+            urls = [prod_dict.get("image_url")] + _parse_detail_images(prod_dict.get("detail_images"))
+            for img_u in urls:
+                fname, b64, sig = _read_local_product_image_b64_if_changed(base_dir, img_u)
+                if fname and b64 and fname not in seen_fnames:
+                    seen_fnames.add(fname)
+                    pending_images.append((fname, b64, sig))
+
+        if action == "upsert_product" and isinstance(payload.get("product"), dict):
+            _queue_prod_images(payload["product"])
+        elif action == "bulk_sync" and isinstance(payload.get("products"), list):
+            for p in payload["products"]:
+                _queue_prod_images(p)
+
     if mall_url:
-        pending_image_sigs = {}
-        # 원격 클라우드 서버인 경우 변경된 로컬 상품 이미지(대표 + 상세 이미지 전체)를 Base64로 함께 첨부
-        if is_remote or not os.path.isdir(mall_dir):
-            def _collect_prod_b64(prod_dict, images_map):
-                if not isinstance(prod_dict, dict):
-                    return
-                urls = [prod_dict.get("image_url")] + _parse_detail_images(prod_dict.get("detail_images"))
-                for img_u in urls:
-                    fname, b64, sig = _read_local_product_image_b64_if_changed(base_dir, img_u)
-                    if fname and b64:
-                        images_map[fname] = b64
-                        if sig:
-                            pending_image_sigs[fname] = sig
+        meta_timeout = 5.0 if is_remote else 2.5
 
-            images_b64 = dict(payload.get("images_b64") or {})
-            if action == "upsert_product" and isinstance(payload.get("product"), dict):
-                main_fn, main_b64, main_sig = _read_local_product_image_b64_if_changed(
-                    base_dir, payload["product"].get("image_url")
-                )
-                if main_b64:
-                    payload["image_b64"] = main_b64
-                    if main_fn and main_sig:
-                        pending_image_sigs[main_fn] = main_sig
-                for d_u in _parse_detail_images(payload["product"].get("detail_images")):
-                    fname, b64, sig = _read_local_product_image_b64_if_changed(base_dir, d_u)
-                    if fname and b64:
-                        images_b64[fname] = b64
-                        if sig:
-                            pending_image_sigs[fname] = sig
-                if images_b64:
-                    payload["images_b64"] = images_b64
-            elif action == "bulk_sync" and isinstance(payload.get("products"), list):
-                for p in payload["products"]:
-                    _collect_prod_b64(p, images_b64)
-                if images_b64:
-                    payload["images_b64"] = images_b64
-
-        has_b64_payload = bool(payload.get("image_b64") or payload.get("images_b64"))
-        req_timeout = 15.0 if has_b64_payload else 5.0
-
-        def _push_webhook():
+        def _post_sync_json(target_url, body_obj, timeout_sec):
             try:
-                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                body = json.dumps(body_obj, ensure_ascii=False).encode("utf-8")
                 headers = {"Content-Type": "application/json"}
                 if sync_secret:
                     headers["X-Mall-Sync-Secret"] = sync_secret
                 req = urllib.request.Request(
-                    f"{mall_url}/api/sync/from-obs",
+                    f"{target_url}/api/sync/from-obs",
                     data=body,
                     headers=headers,
                     method="POST"
                 )
-                with urllib.request.urlopen(req, timeout=req_timeout) as resp:
-                    resp.read()
-                if pending_image_sigs:
-                    _pushed_cloud_image_sig.update(pending_image_sigs)
-                return True
-            except Exception as push_err:
-                if action != "heartbeat":
-                    print(f"⚠️ [쇼핑몰 웹훅 동기화 경고] {mall_url} ({action}): {push_err}")
-                return False
+                with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                    raw_text = resp.read().decode("utf-8", errors="replace")
+                try:
+                    parsed = json.loads(raw_text) if raw_text else {}
+                except Exception:
+                    parsed = {}
+                return True, parsed, 200, ""
+            except urllib.error.HTTPError as http_err:
+                return False, None, int(getattr(http_err, "code", 0) or 0), f"HTTP {http_err.code}"
+            except Exception as exc:
+                return False, None, 0, str(exc)
+
+        def _upload_pending_images(target_url):
+            for fname, b64, sig in pending_images:
+                ok_img, _, _, _ = _post_sync_json(
+                    target_url,
+                    {
+                        "action": "upload_product_image",
+                        "filename": fname,
+                        "image_b64": b64,
+                    },
+                    15.0,
+                )
+                if ok_img and sig:
+                    _pushed_cloud_image_sig[fname] = sig
+
+        def _push_webhook():
+            global _last_mall_sync_status
+            effective_url = mall_url
+            webhook_ok, resp_data, http_status, err_msg = _post_sync_json(effective_url, payload, meta_timeout)
+
+            # 동일 호스트 NAT 헤어핀 차단 폴백 (공인 IP로 직접 연결 불가 시 127.0.0.1 로컬 포트로 1회 재시도)
+            agent_only_env = os.getenv("AGENT_ONLY_MODE", "0").strip() in ("1", "true", "True", "yes")
+            if not webhook_ok and http_status == 0 and is_remote and os.path.isdir(mall_dir) and not agent_only_env:
+                fallback_port = int(os.getenv("MALL_PORT", 6001))
+                fallback_url = f"http://127.0.0.1:{fallback_port}"
+                if fallback_url != effective_url:
+                    fb_ok, fb_data, fb_status, fb_err = _post_sync_json(fallback_url, payload, 2.5)
+                    if fb_ok or fb_status > 0:
+                        effective_url = fallback_url
+                        webhook_ok, resp_data, http_status, err_msg = fb_ok, fb_data, fb_status, fb_err
+
+            stale_mall_server = False
+            detail_supported = True
+            if webhook_ok and action in ("upsert_product", "bulk_sync"):
+                if action == "upsert_product":
+                    detail_supported = bool(
+                        isinstance(resp_data, dict) and (
+                            resp_data.get("detail_fields_supported") is True
+                            or (isinstance(resp_data.get("product"), dict) and "detail_content" in resp_data["product"])
+                        )
+                    )
+                else:
+                    detail_supported = bool(
+                        isinstance(resp_data, dict) and resp_data.get("detail_fields_supported") is True
+                    )
+                if not detail_supported:
+                    stale_mall_server = True
+                    err_msg = "쇼핑몰 서버(shopping_mall/app.py)가 이전 버전으로 실행 중입니다. 쇼핑몰 서버를 재시작해 주세요."
+                    print(f"⚠️ [구버전 쇼핑몰 서버 감지] {effective_url} ({action}): {err_msg}")
+
+            if not webhook_ok and action != "heartbeat":
+                print(f"⚠️ [쇼핑몰 웹훅 동기화 경고] {effective_url} ({action}): {err_msg}")
+
+            if webhook_ok and pending_images:
+                threading.Thread(
+                    target=_upload_pending_images,
+                    args=(effective_url,),
+                    daemon=True
+                ).start()
+
+            if action in ("upsert_product", "bulk_sync", "delete_product"):
+                if http_status == 403:
+                    sync_ok = False
+                    final_err = "HTTP 403 (MALL_SYNC_SECRET 불일치 또는 클라우드 시크릿 미설정)"
+                elif stale_mall_server:
+                    sync_ok = False
+                    final_err = err_msg
+                else:
+                    sync_ok = bool(webhook_ok or local_db_synced)
+                    final_err = "" if sync_ok else (err_msg or local_sync_error or "동기화 실패")
+                _last_mall_sync_status = {
+                    "ok": sync_ok,
+                    "action": action,
+                    "mall_url": effective_url,
+                    "local_db_synced": local_db_synced,
+                    "webhook_ok": webhook_ok,
+                    "detail_fields_supported": detail_supported,
+                    "stale_mall_server": stale_mall_server,
+                    "error": final_err,
+                }
+            return bool(webhook_ok and not stale_mall_server)
 
         if blocking:
             return _push_webhook()
         threading.Thread(target=_push_webhook, daemon=True).start()
+    elif action in ("upsert_product", "bulk_sync", "delete_product"):
+        _last_mall_sync_status = {
+            "ok": local_db_synced,
+            "action": action,
+            "mall_url": "",
+            "local_db_synced": local_db_synced,
+            "webhook_ok": False,
+            "detail_fields_supported": True,
+            "stale_mall_server": False,
+            "error": "" if local_db_synced else (local_sync_error or "MALL_SERVER_URL 미설정"),
+        }
     return True
 
 
@@ -3172,7 +3291,7 @@ def list_studio_users():
             conn.close()
 
 
-def update_studio_user_status(user_id: int, new_status: str, new_role: str = None, actor_id: str = "", ip_address: str = "") -> bool:
+def update_studio_user_status(user_id: int, new_status: str, new_role: Optional[str] = None, actor_id: str = "", ip_address: str = "") -> bool:
     allowed_status = {"PENDING", "APPROVED", "REJECTED", "SUSPENDED"}
     st = str(new_status or "").upper()
     if st not in allowed_status:

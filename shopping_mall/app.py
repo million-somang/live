@@ -27,9 +27,12 @@ import mall_security
 # 윈도우 콘솔 UTF-8 출력 보장
 if sys.platform.startswith("win"):
     try:
-        if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        reconf_out = getattr(sys.stdout, "reconfigure", None)
+        reconf_err = getattr(sys.stderr, "reconfigure", None)
+        if callable(reconf_out):
+            reconf_out(encoding="utf-8", errors="replace")
+        if callable(reconf_err):
+            reconf_err(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -175,6 +178,7 @@ def _mall_security_after_request(response):
     return response
 
 _last_obs_poll_ts = 0.0
+_last_obs_catalog_poll_ts = 0.0
 
 
 def _copy_or_download_product_image(image_url, image_b64=None):
@@ -253,7 +257,7 @@ def _sync_product_detail_images(prod_dict, images_b64=None):
     return prod_dict
 
 
-def pull_sync_from_obs_server(force=False):
+def pull_sync_from_obs_server(force=False, force_catalog=False):
     """
     OBS 서버(OBS_SERVER_URL)의 최신 상품 목록 및 라이브 상태(현재 선택된 상품 번호, 방송중 여부, 타이머, 안내 자막)를
     조회하여 쇼핑몰 DB(shopping_mall.db)에 실시간 반영합니다.
@@ -262,60 +266,68 @@ def pull_sync_from_obs_server(force=False):
     if not _is_obs_pull_enabled():
         return False
 
-    global _last_obs_poll_ts
+    global _last_obs_poll_ts, _last_obs_catalog_poll_ts
     now = time.time()
-    if not force and (now - _last_obs_poll_ts) < 0.8:
+    need_overlay_poll = force or (now - _last_obs_poll_ts) >= 0.8
+    need_catalog_poll = (
+        force
+        or len(mall_database.get_all_mall_products()) == 0
+        or (force_catalog and (now - _last_obs_catalog_poll_ts) >= 5.0)
+    )
+    if not need_overlay_poll and not need_catalog_poll:
         return False
-    _last_obs_poll_ts = now
 
     synced_any = False
 
-    # 1. OBS 서버 HTTP API 조회 시도
-    try:
-        req_ov = urllib.request.Request(
-            f"{OBS_SERVER_URL}/api/overlay/data",
-            headers={"User-Agent": "ShoppingMallLivePoll/1.0"}
-        )
-        with urllib.request.urlopen(req_ov, timeout=1.2) as resp:
-            ov_data = json.loads(resp.read().decode("utf-8", errors="replace"))
-            if isinstance(ov_data, dict) and ov_data.get("status") == "ok":
-                pinned_prod = ov_data.get("pinned_product")
-                pinned_num = pinned_prod.get("num") if isinstance(pinned_prod, dict) else None
-                yt_rtmp = ov_data.get("youtube_rtmp") or {}
-                tt_rtmp = ov_data.get("tiktok_rtmp") or {}
-                ig_rtmp = ov_data.get("instagram_rtmp") or {}
-                is_live = bool(yt_rtmp.get("active") or tt_rtmp.get("active") or ig_rtmp.get("active"))
+    # 1. OBS 서버 HTTP API 조회 시도 (라이브 상태 / 핀 고정 상품)
+    if need_overlay_poll:
+        _last_obs_poll_ts = now
+        try:
+            req_ov = urllib.request.Request(
+                f"{OBS_SERVER_URL}/api/overlay/data",
+                headers={"User-Agent": "ShoppingMallLivePoll/1.0"}
+            )
+            with urllib.request.urlopen(req_ov, timeout=1.2) as resp:
+                ov_data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                if isinstance(ov_data, dict) and ov_data.get("status") == "ok":
+                    pinned_prod = ov_data.get("pinned_product")
+                    pinned_num = pinned_prod.get("num") if isinstance(pinned_prod, dict) else None
+                    yt_rtmp = ov_data.get("youtube_rtmp") or {}
+                    tt_rtmp = ov_data.get("tiktok_rtmp") or {}
+                    ig_rtmp = ov_data.get("instagram_rtmp") or {}
+                    is_live = bool(yt_rtmp.get("active") or tt_rtmp.get("active") or ig_rtmp.get("active"))
 
-                if isinstance(pinned_prod, dict):
-                    pinned_prod["image_url"] = _copy_or_download_product_image(pinned_prod.get("image_url"))
-                    _sync_product_detail_images(pinned_prod)
-                    mall_database.upsert_product_from_obs(pinned_prod)
+                    if isinstance(pinned_prod, dict):
+                        pinned_prod["image_url"] = _copy_or_download_product_image(pinned_prod.get("image_url"))
+                        _sync_product_detail_images(pinned_prod)
+                        mall_database.upsert_product_from_obs(pinned_prod)
 
-                live_urls_data = ov_data.get("live_urls") or {}
-                yt_emb = ""
-                if isinstance(live_urls_data.get("YOUTUBE"), dict):
-                    yt_emb = live_urls_data["YOUTUBE"].get("embed_url") or ""
-                mall_database.update_live_state_bundle({
-                    "is_live": is_live,
-                    "pinned_product_num": pinned_num,
-                    "ticker_message": ov_data.get("latest_reply") or "",
-                    "timer": ov_data.get("timer") or {"active": False},
-                    "live_urls": live_urls_data,
-                    "youtube_embed_url": yt_emb,
-                    "obs_server_url": OBS_SERVER_URL
-                })
-                synced_any = True
-    except Exception:
-        pass
+                    live_urls_data = ov_data.get("live_urls") or {}
+                    yt_emb = ""
+                    if isinstance(live_urls_data.get("YOUTUBE"), dict):
+                        yt_emb = live_urls_data["YOUTUBE"].get("embed_url") or ""
+                    mall_database.update_live_state_bundle({
+                        "is_live": is_live,
+                        "pinned_product_num": pinned_num,
+                        "ticker_message": ov_data.get("latest_reply") or "",
+                        "timer": ov_data.get("timer") or {"active": False},
+                        "live_urls": live_urls_data,
+                        "youtube_embed_url": yt_emb,
+                        "obs_server_url": OBS_SERVER_URL
+                    })
+                    synced_any = True
+        except Exception:
+            pass
 
-    # 상품 전체 목록 동기화 (강제 요청이거나 쇼핑몰 DB가 비어있을 때)
-    if force or len(mall_database.get_all_mall_products()) == 0:
+    # 2. 상품 전체 목록 동기화 (강제 요청, DB 공백, 또는 홈/상세 페이지 진입 시 5초 throttle 갱신)
+    if need_catalog_poll:
+        _last_obs_catalog_poll_ts = now
         try:
             req_pr = urllib.request.Request(
                 f"{OBS_SERVER_URL}/api/products",
                 headers={"User-Agent": "ShoppingMallProductSync/1.0"}
             )
-            with urllib.request.urlopen(req_pr, timeout=2.0) as resp:
+            with urllib.request.urlopen(req_pr, timeout=1.8) as resp:
                 pr_data = json.loads(resp.read().decode("utf-8", errors="replace"))
                 prods = pr_data.get("products") or pr_data.get("items") or []
                 for p in prods:
@@ -356,7 +368,7 @@ def serve_product_image(filename):
 @app.route("/", methods=["GET"])
 def mall_home():
     """쇼핑몰 메인 홈 페이지"""
-    pull_sync_from_obs_server(force=False)
+    pull_sync_from_obs_server(force=False, force_catalog=True)
     category = request.args.get("category", "ALL").upper()
     search = request.args.get("q", "").strip()
     sort = request.args.get("sort", "num_asc")
@@ -394,7 +406,7 @@ def mall_live_commerce():
 @app.route("/product/<int:num>", methods=["GET"])
 def mall_product_detail(num):
     """일반 쇼핑몰 개별 상품 상세 페이지"""
-    pull_sync_from_obs_server(force=False)
+    pull_sync_from_obs_server(force=False, force_catalog=True)
     product = mall_database.get_mall_product_by_num(num)
     if not product:
         return redirect(url_for("mall_home"))
@@ -762,7 +774,12 @@ def api_sync_from_obs():
             )
             _sync_product_detail_images(prod, images_b64=images_b64)
             saved = mall_database.upsert_product_from_obs(prod)
-            return jsonify({"status": "ok", "action": "upsert_product", "product": saved}), 200
+            return jsonify({
+                "status": "ok",
+                "action": "upsert_product",
+                "detail_fields_supported": True,
+                "product": saved
+            }), 200
 
     elif action == "bulk_sync":
         products = data.get("products") or []
@@ -779,7 +796,29 @@ def api_sync_from_obs():
         )
         if "live_state" in data and isinstance(data["live_state"], dict):
             mall_database.update_live_state_bundle(data["live_state"])
-        return jsonify({"status": "ok", "action": "bulk_sync", "synced_count": cnt}), 200
+        return jsonify({
+            "status": "ok",
+            "action": "bulk_sync",
+            "detail_fields_supported": True,
+            "synced_count": cnt
+        }), 200
+
+    elif action == "upload_product_image":
+        filename = os.path.basename(str(data.get("filename") or "").split("?")[0]).strip()
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        image_b64 = data.get("image_b64")
+        if not filename or ext not in ("jpg", "jpeg", "jfif", "png", "webp", "gif") or not isinstance(image_b64, str) or not image_b64.strip():
+            return jsonify({"status": "error", "message": "Invalid image upload payload"}), 400
+        saved_url = _copy_or_download_product_image(
+            f"/static/uploads/products/{filename}",
+            image_b64=image_b64.strip()
+        )
+        return jsonify({
+            "status": "ok",
+            "action": "upload_product_image",
+            "url": saved_url,
+            "detail_fields_supported": True
+        }), 200
 
     elif action == "delete_product":
         ok = mall_database.delete_product_by_num_or_obs_id(
@@ -880,6 +919,7 @@ def api_mall_products():
 
 @app.route("/api/products/<int:num>", methods=["GET"])
 def api_mall_product_detail(num):
+    pull_sync_from_obs_server(force=False, force_catalog=True)
     prod = mall_database.get_mall_product_by_num(num)
     if not prod:
         return jsonify({"status": "error", "message": "상품을 찾을 수 없습니다."}), 404

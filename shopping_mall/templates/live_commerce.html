@@ -319,10 +319,19 @@
                     selected_product.detail_content or selected_product.specs or '본 상품은 OBS 라이브 방송과 실시간 연동되는 정품 특가
                     상품입니다.' }}</div>
 
-                <div id="detailImagesStack" class="ax-detail-image-stack ax-is-hidden" style="margin-bottom:22px;">
+                <div id="detailImagesStack" class="ax-detail-image-stack{% if not selected_product.detail_images or selected_product.detail_images|length == 0 %} ax-is-hidden{% endif %}" style="margin-bottom:22px;">
+                    {% if selected_product.detail_images %}
+                    {% for img_url in selected_product.detail_images %}
+                    <img src="{{ img_url }}"
+                         alt="{{ selected_product.name }} 상세 이미지 {{ loop.index }}"
+                         class="ax-detail-image-item"
+                         loading="lazy">
+                    {% endfor %}
+                    {% endif %}
                 </div>
 
-                <details id="livePoliciesDisclosure" class="ax-policy-disclosure ax-is-hidden">
+                {% set live_has_policies = selected_product.shipping_info or selected_product.exchange_return_info or selected_product.non_returnable_info or selected_product.as_info %}
+                <details id="livePoliciesDisclosure" class="ax-policy-disclosure{% if not live_has_policies %} ax-is-hidden{% endif %}" open>
                     <summary class="ax-policy-disclosure-summary">
                         <span>배송 · 교환/반품 · 불가 사항 · A/S 안내 보기</span>
                         <svg class="ax-icon-sm ax-policy-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -331,7 +340,52 @@
                         </svg>
                     </summary>
                     <div class="ax-policy-disclosure-body">
-                        <div id="livePoliciesGrid" class="ax-policy-grid"></div>
+                        <div id="livePoliciesGrid" class="ax-policy-grid">
+                            {% if selected_product.shipping_info %}
+                            <article class="ax-policy-card">
+                                <div class="ax-policy-card-head">
+                                    <span class="ax-policy-icon-chip">
+                                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                    </span>
+                                    <span>배송 안내</span>
+                                </div>
+                                <div class="ax-policy-card-body">{{ selected_product.shipping_info }}</div>
+                            </article>
+                            {% endif %}
+                            {% if selected_product.exchange_return_info %}
+                            <article class="ax-policy-card">
+                                <div class="ax-policy-card-head">
+                                    <span class="ax-policy-icon-chip">
+                                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                    </span>
+                                    <span>교환 / 반품 안내</span>
+                                </div>
+                                <div class="ax-policy-card-body">{{ selected_product.exchange_return_info }}</div>
+                            </article>
+                            {% endif %}
+                            {% if selected_product.non_returnable_info %}
+                            <article class="ax-policy-card">
+                                <div class="ax-policy-card-head">
+                                    <span class="ax-policy-icon-chip is-warn">
+                                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                    </span>
+                                    <span>교환 / 반품 불가 사항 안내</span>
+                                </div>
+                                <div class="ax-policy-card-body">{{ selected_product.non_returnable_info }}</div>
+                            </article>
+                            {% endif %}
+                            {% if selected_product.as_info %}
+                            <article class="ax-policy-card">
+                                <div class="ax-policy-card-head">
+                                    <span class="ax-policy-icon-chip">
+                                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                    </span>
+                                    <span>A/S 안내</span>
+                                </div>
+                                <div class="ax-policy-card-body">{{ selected_product.as_info }}</div>
+                            </article>
+                            {% endif %}
+                        </div>
                     </div>
                 </details>
 
