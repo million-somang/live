@@ -28,7 +28,8 @@
             타임세일 <span id="liveFlashTimerText">00:00</span>
         </div>
         <div class="ax-obs-sync-chip" title="주소(/live)는 그대로 유지되면서 OBS에서 선택한 제품 상세 화면으로 자동 전환됩니다.">
-            <span style="width:7px; height:7px; border-radius:50%; background:var(--ax-success); display:inline-block;"></span>
+            <span
+                style="width:7px; height:7px; border-radius:50%; background:var(--ax-success); display:inline-block;"></span>
             <span id="obsSyncBadgeText">OBS 선택 상품 실시간 동기화 ON</span>
         </div>
     </div>
@@ -38,23 +39,33 @@
 <div id="liveAccessUrlBar" class="ax-card ax-live-url-bar{% if not live_state.is_live %} ax-is-hidden{% endif %}">
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0;">
         <span class="ax-badge ax-badge-indigo">라이브 접속 주소</span>
-        <code id="mallLiveUrlText" class="ax-code-chip" style="word-break:break-all; white-space:normal;">{{ request.url }}</code>
+        <code id="mallLiveUrlText" class="ax-code-chip"
+            style="word-break:break-all; white-space:normal;">{{ request.url }}</code>
         <button type="button" onclick="copyMallLiveUrl()" class="ax-btn ax-btn-secondary ax-btn-sm">
-            <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+            </svg>
             <span>주소 복사</span>
         </button>
     </div>
     <div id="platformLiveUrlList" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         {% if live_state.live_urls %}
-            {% for plat_key, info in live_state.live_urls.items() %}
-                {% if info.active and info.live_url %}
-                <a href="{{ info.live_url }}" target="_blank" rel="noopener noreferrer" class="ax-badge ax-badge-indigo" style="padding:5px 11px;">
-                    <span class="ax-live-dot" style="width:6px;height:6px;box-shadow:none;"></span>
-                    <span>{{ plat_key }} 바로가기</span>
-                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
-                </a>
-                {% endif %}
-            {% endfor %}
+        {% for plat_key, info in live_state.live_urls.items() %}
+        {% if info.active and info.live_url %}
+        <a href="{{ info.live_url }}" target="_blank" rel="noopener noreferrer" class="ax-badge ax-badge-indigo"
+            style="padding:5px 11px;">
+            <span class="ax-live-dot" style="width:6px;height:6px;box-shadow:none;"></span>
+            <span>{{ plat_key }} 바로가기</span>
+            <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 17 17 7" />
+                <path d="M7 7h10v10" />
+            </svg>
+        </a>
+        {% endif %}
+        {% endfor %}
         {% endif %}
     </div>
 </div>
@@ -65,11 +76,13 @@
     <aside class="ax-card ax-live-aside">
         <div class="ax-video-stage" id="liveVideoStage">
             <div class="ax-stage-overlay-top">
-                <span style="display:inline-flex; align-items:center; gap:5px; background:rgba(15,23,42,0.82); color:#fff; padding:4px 10px; border-radius:7px; font-size:0.72rem; font-weight:700; border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(4px);">
+                <span
+                    style="display:inline-flex; align-items:center; gap:5px; background:rgba(15,23,42,0.82); color:#fff; padding:4px 10px; border-radius:7px; font-size:0.72rem; font-weight:700; border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(4px);">
                     <span class="ax-live-dot" style="width:6px;height:6px;"></span>
                     <span>LIVE STREAM</span>
                 </span>
-                <span id="livePinnedMiniTag" class="ax-num" style="background:rgba(15,23,42,0.85); color:#c7d2fe; padding:4px 10px; border-radius:7px; font-size:0.72rem; font-weight:700; border:1px solid rgba(99,102,241,0.45); backdrop-filter:blur(4px);">
+                <span id="livePinnedMiniTag" class="ax-num"
+                    style="background:rgba(15,23,42,0.85); color:#c7d2fe; padding:4px 10px; border-radius:7px; font-size:0.72rem; font-weight:700; border:1px solid rgba(99,102,241,0.45); backdrop-filter:blur(4px);">
                     {% if selected_product %}
                     #{{ selected_product.num }}번 소개 중
                     {% else %}
@@ -79,19 +92,26 @@
             </div>
             <!-- 플랫폼 CDN 직결 플레이어 (YouTube iframe 임베드 + 다크 슬레이트 대기 스테이지) -->
             <iframe id="liveYoutubeEmbedFrame"
-                    class="ax-video-iframe{% if not (live_state.is_live and live_state.youtube_embed_url) %} ax-is-hidden{% endif %}"
-                    src="{% if live_state.is_live and live_state.youtube_embed_url %}{{ live_state.youtube_embed_url }}{% endif %}"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowfullscreen
-                    title="실시간 유튜브 라이브 방송"></iframe>
+                class="ax-video-iframe{% if not (live_state.is_live and live_state.youtube_embed_url) %} ax-is-hidden{% endif %}"
+                src="{% if live_state.is_live and live_state.youtube_embed_url %}{{ live_state.youtube_embed_url }}{% endif %}"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen title="실시간 유튜브 라이브 방송"></iframe>
             <div id="liveFallbackStage"
-                 class="ax-video-fallback{% if live_state.is_live and live_state.youtube_embed_url %} ax-is-hidden{% endif %}">
+                class="ax-video-fallback{% if live_state.is_live and live_state.youtube_embed_url %} ax-is-hidden{% endif %}">
                 <img id="liveFallbackProductImg"
-                     class="ax-fallback-thumb{% if not (selected_product and selected_product.image_url) %} ax-is-hidden{% endif %}"
-                     src="{% if selected_product and selected_product.image_url %}{{ selected_product.image_url }}{% endif %}"
-                     alt="현재 소개 상품">
-                <div id="liveFallbackEmoji" class="ax-fallback-icon{% if selected_product and selected_product.image_url %} ax-is-hidden{% endif %}">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>
+                    class="ax-fallback-thumb{% if not (selected_product and selected_product.image_url) %} ax-is-hidden{% endif %}"
+                    src="{% if selected_product and selected_product.image_url %}{{ selected_product.image_url }}{% endif %}"
+                    alt="현재 소개 상품">
+                <div id="liveFallbackEmoji"
+                    class="ax-fallback-icon{% if selected_product and selected_product.image_url %} ax-is-hidden{% endif %}">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" />
+                        <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" />
+                        <circle cx="12" cy="12" r="2" />
+                        <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" />
+                        <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
+                    </svg>
                 </div>
                 <div id="liveFallbackHeadline" style="font-size:0.95rem; font-weight:800; color:#f8fafc;">
                     {% if live_state.is_live %}실시간 라이브 방송 진행 중{% else %}라이브 방송 대기 중{% endif %}
@@ -99,37 +119,49 @@
                 <div style="font-size:0.78rem; color:#94a3b8; line-height:1.55;">
                     방송에서 선택된 상품이 우측 상세 화면에<br>새로고침 없이 실시간으로 동기화됩니다.
                 </div>
-                <div id="liveFallbackPlatformCtas" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:4px;"></div>
+                <div id="liveFallbackPlatformCtas"
+                    style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:4px;"></div>
             </div>
         </div>
 
         <div class="ax-lineup-box">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
-                <span class="ax-num" style="font-size:0.83rem; font-weight:800; color:var(--ax-text-primary);">방송 상품 라인업 ({{ all_products|length }}개)</span>
-                <label style="font-size:0.75rem; color:var(--ax-accent-primary); display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:700;">
-                    <input type="checkbox" id="chkAutoFollowObs" checked onchange="onToggleAutoFollowObs(this.checked)" style="accent-color:var(--ax-accent-primary);">
+                <span class="ax-num" style="font-size:0.83rem; font-weight:800; color:var(--ax-text-primary);">방송 상품 라인업
+                    ({{ all_products|length }}개)</span>
+                <label
+                    style="font-size:0.75rem; color:var(--ax-accent-primary); display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:700;">
+                    <input type="checkbox" id="chkAutoFollowObs" checked onchange="onToggleAutoFollowObs(this.checked)"
+                        style="accent-color:var(--ax-accent-primary);">
                     <span>OBS 자동추적</span>
                 </label>
             </div>
             <div id="liveLineupList" class="ax-lineup-list">
                 {% for p in all_products %}
                 <div class="ax-lineup-item {% if selected_product and selected_product.num == p.num %}active-pinned{% endif %}"
-                     id="lineupItem_{{ p.num }}"
-                     data-product-num="{{ p.num }}"
-                     onclick="manualPreviewProductOnLivePage(Number(this.dataset.productNum))">
+                    id="lineupItem_{{ p.num }}" data-product-num="{{ p.num }}"
+                    onclick="manualPreviewProductOnLivePage(Number(this.dataset.productNum))">
                     {% if p.image_url %}
-                    <img src="{{ p.image_url }}" alt="{{ p.name }}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); flex-shrink:0;">
+                    <img src="{{ p.image_url }}" alt="{{ p.name }}"
+                        style="width:44px; height:44px; border-radius:8px; object-fit:cover; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); flex-shrink:0;">
                     {% else %}
-                    <div style="width:44px; height:44px; border-radius:8px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;">
-                        <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg>
+                    <div
+                        style="width:44px; height:44px; border-radius:8px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;">
+                        <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+                            <path d="M3 6h18" />
+                        </svg>
                     </div>
                     {% endif %}
                     <div style="flex:1; min-width:0;">
                         <div style="display:flex; align-items:center; gap:5px; margin-bottom:2px;">
                             <span class="ax-code-chip" style="padding:1px 6px; font-size:0.6875rem;">#{{ p.num }}</span>
-                            <span class="ax-num" style="font-size:0.75rem; font-weight:700; color:var(--ax-accent-primary);">LIVE가 {{ "{:,}".format(p.live_price or p.price) }}원</span>
+                            <span class="ax-num"
+                                style="font-size:0.75rem; font-weight:700; color:var(--ax-accent-primary);">LIVE가 {{
+                                "{:,}".format(p.live_price or p.price) }}원</span>
                         </div>
-                        <div style="font-size:0.83rem; font-weight:700; color:var(--ax-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</div>
+                        <div
+                            style="font-size:0.83rem; font-weight:700; color:var(--ax-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                            {{ p.name }}</div>
                     </div>
                 </div>
                 {% endfor %}
@@ -139,7 +171,8 @@
 
     <!-- 우측(핵심): OBS에서 선택된 제품의 상세화면 (브라우저 주소 /live 변경 없이 내용만 즉시 전환!) -->
     <section class="ax-card ax-live-detail-card" id="liveSelectedProductDetail">
-        <div id="liveProductSwitchNotice" class="ax-callout-indigo" style="display:none; margin-bottom:18px; align-items:center; justify-content:space-between; gap:10px;">
+        <div id="liveProductSwitchNotice" class="ax-callout-indigo"
+            style="display:none; margin-bottom:18px; align-items:center; justify-content:space-between; gap:10px;">
             <span id="liveProductSwitchNoticeText">OBS 스튜디오에서 선택한 상품 상세 화면으로 전환되었습니다.</span>
             <span class="ax-code-chip">/live 고정</span>
         </div>
@@ -155,7 +188,12 @@
                     <img id="detailMainImg" src="{{ selected_product.image_url }}" alt="{{ selected_product.name }}">
                     {% else %}
                     <div id="detailMainImgPlaceholder" style="color:var(--ax-text-muted);">
-                        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.4">
+                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+                            <path d="M3 6h18" />
+                            <path d="M16 10a4 4 0 0 1-8 0" />
+                        </svg>
                     </div>
                     {% endif %}
                 </div>
@@ -173,36 +211,48 @@
                         </span>
                     </div>
 
-                    <h1 id="detailProductName" style="font-size:1.55rem; font-weight:800; color:var(--ax-text-primary); line-height:1.3; letter-spacing:-0.02em;">
+                    <h1 id="detailProductName"
+                        style="font-size:1.55rem; font-weight:800; color:var(--ax-text-primary); line-height:1.3; letter-spacing:-0.02em;">
                         {{ selected_product.name }}
                     </h1>
 
                     <div class="ax-detail-price-box">
-                        <span class="ax-badge ax-badge-live"><span class="ax-live-dot" style="width:5px;height:5px;box-shadow:none;"></span>LIVE 특가</span>
+                        <span class="ax-badge ax-badge-live"><span class="ax-live-dot"
+                                style="width:5px;height:5px;box-shadow:none;"></span>LIVE 특가</span>
                         {% set disp_live_p = selected_product.live_price or selected_product.price %}
-                        {% set disp_disc = selected_product.live_discount_rate if selected_product.live_discount_rate is defined else selected_product.discount_rate %}
+                        {% set disp_disc = selected_product.live_discount_rate if selected_product.live_discount_rate is
+                        defined else selected_product.discount_rate %}
                         {% if disp_disc > 0 %}
                         <span class="ax-detail-discount ax-num" id="detailDiscountPct">{{ disp_disc }}%</span>
                         {% else %}
                         <span class="ax-detail-discount ax-num" id="detailDiscountPct" style="display:none;"></span>
                         {% endif %}
-                        <span class="ax-detail-price is-live ax-num" id="detailSellPrice">{{ "{:,}".format(disp_live_p) }}원</span>
+                        <span class="ax-detail-price is-live ax-num" id="detailSellPrice">{{ "{:,}".format(disp_live_p)
+                            }}원</span>
                         {% if selected_product.price > disp_live_p %}
-                        <span class="ax-price-strike ax-num" id="detailRegularPrice" style="font-size:0.92rem;">판매가 {{ "{:,}".format(selected_product.price) }}원</span>
+                        <span class="ax-price-strike ax-num" id="detailRegularPrice" style="font-size:0.92rem;">판매가 {{
+                            "{:,}".format(selected_product.price) }}원</span>
                         {% else %}
-                        <span class="ax-price-strike ax-num" id="detailRegularPrice" style="display:none; font-size:0.92rem;"></span>
+                        <span class="ax-price-strike ax-num" id="detailRegularPrice"
+                            style="display:none; font-size:0.92rem;"></span>
                         {% endif %}
                         {% if selected_product.consumer_price > disp_live_p %}
-                        <span class="ax-price-strike ax-num" id="detailConsumerPrice" style="font-size:0.92rem;">정가 {{ "{:,}".format(selected_product.consumer_price) }}원</span>
+                        <span class="ax-price-strike ax-num" id="detailConsumerPrice" style="font-size:0.92rem;">정가 {{
+                            "{:,}".format(selected_product.consumer_price) }}원</span>
                         {% else %}
-                        <span class="ax-price-strike ax-num" id="detailConsumerPrice" style="display:none; font-size:0.92rem;"></span>
+                        <span class="ax-price-strike ax-num" id="detailConsumerPrice"
+                            style="display:none; font-size:0.92rem;"></span>
                         {% endif %}
                     </div>
 
                     <!-- 상품 핵심 스펙 요약 -->
                     <div class="ax-surface-muted" style="margin-bottom:16px;">
-                        <div style="font-size:0.78rem; font-weight:700; color:var(--ax-text-secondary); margin-bottom:5px;">상품 상세 사양 및 특징</div>
-                        <div id="detailSpecsShort" style="font-size:0.88rem; color:var(--ax-text-primary); line-height:1.6; white-space:pre-line;">{{ selected_product.specs or '라이브 방송 특가 상품입니다. 옵션을 선택하여 바로 주문하실 수 있습니다.' }}</div>
+                        <div
+                            style="font-size:0.78rem; font-weight:700; color:var(--ax-text-secondary); margin-bottom:5px;">
+                            상품 상세 사양 및 특징</div>
+                        <div id="detailSpecsShort"
+                            style="font-size:0.88rem; color:var(--ax-text-primary); line-height:1.6; white-space:pre-line;">
+                            {{ selected_product.specs or '라이브 방송 특가 상품입니다. 옵션을 선택하여 바로 주문하실 수 있습니다.' }}</div>
                     </div>
 
                     <!-- 옵션(색상/사이즈) 실시간 선택 -->
@@ -218,14 +268,18 @@
                         <div style="display:flex; align-items:center; gap:12px;">
                             <span style="font-size:0.84rem; font-weight:700; color:#3730a3;">구매 수량</span>
                             <div class="ax-qty-stepper">
-                                <button type="button" class="ax-qty-btn" onclick="changeLiveDetailQty(-1)" aria-label="수량 감소">−</button>
-                                <input type="number" id="detailQtyInput" class="ax-qty-input" value="1" min="1" max="99" onchange="updateLiveDetailTotalPrice()">
-                                <button type="button" class="ax-qty-btn" onclick="changeLiveDetailQty(1)" aria-label="수량 증가">+</button>
+                                <button type="button" class="ax-qty-btn" onclick="changeLiveDetailQty(-1)"
+                                    aria-label="수량 감소">−</button>
+                                <input type="number" id="detailQtyInput" class="ax-qty-input" value="1" min="1" max="99"
+                                    onchange="updateLiveDetailTotalPrice()">
+                                <button type="button" class="ax-qty-btn" onclick="changeLiveDetailQty(1)"
+                                    aria-label="수량 증가">+</button>
                             </div>
                         </div>
                         <div style="text-align:right;">
                             <div style="font-size:0.74rem; color:#4338ca; font-weight:600;">총 라이브 특가 상품 금액</div>
-                            <div id="detailTotalAmount" class="ax-num" style="font-size:1.35rem; font-weight:800; color:var(--ax-accent-primary);">
+                            <div id="detailTotalAmount" class="ax-num"
+                                style="font-size:1.35rem; font-weight:800; color:var(--ax-accent-primary);">
                                 {{ "{:,}".format(selected_product.live_price or selected_product.price) }}원
                             </div>
                         </div>
@@ -233,26 +287,56 @@
 
                     <!-- 장바구니 & 페이지 이탈 없는 즉시 구매 버튼 -->
                     <div class="ax-action-row">
-                        <button type="button" class="ax-btn ax-btn-outline-charcoal ax-btn-lg" style="flex:1;" onclick="handleLiveDetailAddToCart()">
-                            <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                        <button type="button" class="ax-btn ax-btn-outline-charcoal ax-btn-lg" style="flex:1;"
+                            onclick="handleLiveDetailAddToCart()">
+                            <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="8" cy="21" r="1" />
+                                <circle cx="19" cy="21" r="1" />
+                                <path
+                                    d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+                            </svg>
                             <span>장바구니 담기</span>
                         </button>
-                        <button type="button" class="ax-btn ax-btn-primary ax-btn-lg" style="flex:1.35;" onclick="handleLiveDetailInstantBuy()">
-                            <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        <button type="button" class="ax-btn ax-btn-primary ax-btn-lg" style="flex:1.35;"
+                            onclick="handleLiveDetailInstantBuy()">
+                            <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
                             <span>라이브 특가 바로 구매</span>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- 하단 상품 상세 설명 본문 & 실시간 옵션 재고표 & 구매후기 -->
+            <!-- 하단 상품 상세 설명 본문 & 상세 이미지 & 4대 안내 & 실시간 옵션 재고표 & 구매후기 -->
             <div class="ax-detail-section">
                 <h3 style="font-size:1.08rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:12px;">
                     <span id="detailBottomTitle">{{ selected_product.name }}</span> — 상세 정보 및 실시간 옵션 재고
                 </h3>
-                <div id="detailFullDescription" class="ax-surface-muted" style="line-height:1.75; font-size:0.9rem; color:var(--ax-text-primary); white-space:pre-line; margin-bottom:22px; padding:18px 20px;">{{ selected_product.specs or '본 상품은 OBS 라이브 방송과 실시간 연동되는 정품 특가 상품입니다.' }}</div>
+                <div id="detailFullDescription" class="ax-detail-content-body" style="margin-bottom:18px;">{{
+                    selected_product.detail_content or selected_product.specs or '본 상품은 OBS 라이브 방송과 실시간 연동되는 정품 특가
+                    상품입니다.' }}</div>
 
-                <h4 style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:10px;">옵션별 실시간 잔여 재고 현황</h4>
+                <div id="detailImagesStack" class="ax-detail-image-stack ax-is-hidden" style="margin-bottom:22px;">
+                </div>
+
+                <details id="livePoliciesDisclosure" class="ax-policy-disclosure ax-is-hidden">
+                    <summary class="ax-policy-disclosure-summary">
+                        <span>배송 · 교환/반품 · 불가 사항 · A/S 안내 보기</span>
+                        <svg class="ax-icon-sm ax-policy-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m6 9 6 6 6-6" />
+                        </svg>
+                    </summary>
+                    <div class="ax-policy-disclosure-body">
+                        <div id="livePoliciesGrid" class="ax-policy-grid"></div>
+                    </div>
+                </details>
+
+                <h4 style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:10px;">옵션별
+                    실시간 잔여 재고 현황</h4>
                 <div class="ax-table-wrap" style="margin-bottom:24px;">
                     <table class="ax-table">
                         <thead>
@@ -267,26 +351,41 @@
                     </table>
                 </div>
 
-                <!-- 실시간 구매 후기 영역 -->
+                <!-- 실시간 구매 후기 영역 (회원 전용 작성) -->
                 <div style="border-top:1px solid var(--ax-border-subtle); padding-top:20px;">
-                    <h4 style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:12px;">구매 고객 한줄 후기</h4>
+                    <h4 style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:12px;">구매
+                        고객 상품 리뷰</h4>
+                    {% if current_mall_user %}
                     <form onsubmit="submitLiveProductReview(event)" class="ax-review-form">
-                        <input type="text" id="revAuthor" class="ax-input ax-review-author" placeholder="작성자 닉네임" required>
+                        <span class="ax-badge ax-badge-indigo" style="padding:8px 12px;">작성자: {{ current_mall_user.name
+                            }}님</span>
                         <select id="revRating" class="ax-select ax-review-rating">
                             <option value="5">★★★★★ (5점)</option>
                             <option value="4">★★★★ (4점)</option>
                             <option value="3">★★★ (3점)</option>
+                            <option value="2">★★ (2점)</option>
+                            <option value="1">★ (1점)</option>
                         </select>
-                        <input type="text" id="revContent" class="ax-input ax-review-content" placeholder="라이브 상품 후기나 응원 댓글을 남겨주세요." required>
-                        <button type="submit" class="ax-btn ax-btn-charcoal">등록</button>
+                        <input type="text" id="revContent" class="ax-input ax-review-content" minlength="2"
+                            maxlength="1000" placeholder="상품 후기를 남겨주세요. (2자 이상)" required>
+                        <button type="submit" id="revSubmitBtn" class="ax-btn ax-btn-charcoal">등록</button>
                     </form>
+                    {% else %}
+                    <div class="ax-review-login-gate">
+                        <div style="font-size:0.84rem; color:var(--ax-text-secondary); font-weight:600;">
+                            상품 리뷰 작성은 로그인한 회원만 이용하실 수 있습니다.
+                        </div>
+                        <a href="/auth/login?next=/live" class="ax-btn ax-btn-primary ax-btn-sm">로그인하고 리뷰 작성하기</a>
+                    </div>
+                    {% endif %}
                     <div id="detailReviewsList" style="display:flex; flex-direction:column; gap:8px;"></div>
                 </div>
             </div>
             {% else %}
             <div style="padding:56px 20px; text-align:center; color:var(--ax-text-secondary);">
                 <h2 style="font-size:1.2rem; font-weight:800; color:var(--ax-text-primary);">현재 등록된 방송 상품이 없습니다</h2>
-                <p style="margin-top:8px; font-size:0.88rem;">OBS 스튜디오(재고 관리)에서 상품을 등록하거나 선택하면 이 화면에 즉시 상세 정보가 표시됩니다.</p>
+                <p style="margin-top:8px; font-size:0.88rem;">OBS 스튜디오(재고 관리)에서 상품을 등록하거나 선택하면 이 화면에 즉시 상세 정보가 표시됩니다.
+                </p>
             </div>
             {% endif %}
         </div>
@@ -298,22 +397,25 @@
 <div class="ax-mobile-sticky-bar" id="liveMobileStickyBar">
     <div style="min-width:0; margin-right:auto;">
         <div style="font-size:0.6875rem; font-weight:700; color:var(--ax-text-secondary);">라이브 특가 합계</div>
-        <div id="liveMobileStickyPrice" class="ax-num" style="font-size:1.05rem; font-weight:800; color:var(--ax-accent-primary);">{{ "{:,}".format(selected_product.live_price or selected_product.price) }}원</div>
+        <div id="liveMobileStickyPrice" class="ax-num"
+            style="font-size:1.05rem; font-weight:800; color:var(--ax-accent-primary);">{{
+            "{:,}".format(selected_product.live_price or selected_product.price) }}원</div>
     </div>
-    <button type="button" onclick="handleLiveDetailAddToCart()" class="ax-btn ax-btn-outline-charcoal ax-btn-sm" style="padding:11px 14px;">장바구니</button>
-    <button type="button" onclick="handleLiveDetailInstantBuy()" class="ax-btn ax-btn-primary ax-btn-sm" style="padding:11px 16px;">라이브 바로 구매</button>
+    <button type="button" onclick="handleLiveDetailAddToCart()" class="ax-btn ax-btn-outline-charcoal ax-btn-sm"
+        style="padding:11px 14px;">장바구니</button>
+    <button type="button" onclick="handleLiveDetailInstantBuy()" class="ax-btn ax-btn-primary ax-btn-sm"
+        style="padding:11px 16px;">라이브 바로 구매</button>
 </div>
 {% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
-<div id="mallLiveBootstrap" hidden
-     data-live-state="{{ (live_state or {}) | tojson | forceescape }}"
-     data-selected-product="{{ (selected_product or None) | tojson | forceescape }}"
-     data-all-products="{{ (all_products or []) | tojson | forceescape }}"
-     data-catalog-version="{{ (live_state.catalog_version or 1) | tojson | forceescape }}"
-     data-embed-url="{{ (live_state.youtube_embed_url or '') | tojson | forceescape }}"
-     data-initial-reviews="{{ (live_state.selected_product_reviews or []) | tojson | forceescape }}"></div>
+<div id="mallLiveBootstrap" hidden data-live-state="{{ (live_state or {}) | tojson | forceescape }}"
+    data-selected-product="{{ (selected_product or None) | tojson | forceescape }}"
+    data-all-products="{{ (all_products or []) | tojson | forceescape }}"
+    data-catalog-version="{{ (live_state.catalog_version or 1) | tojson | forceescape }}"
+    data-embed-url="{{ (live_state.youtube_embed_url or '') | tojson | forceescape }}"
+    data-initial-reviews="{{ (live_state.selected_product_reviews or []) | tojson | forceescape }}"></div>
 <script>
     const __liveBootEl = document.getElementById('mallLiveBootstrap');
     let currentLiveState = __liveBootEl ? JSON.parse(__liveBootEl.dataset.liveState || '{}') : {};
@@ -423,11 +525,13 @@
         }
 
         const specText = product.specs || '라이브 방송 특가 상품입니다. 옵션을 선택하여 바로 주문하실 수 있습니다.';
+        const fullText = product.detail_content || product.specs || '본 상품은 OBS 라이브 방송과 실시간 연동되는 정품 특가 상품입니다.';
         const shortSpecEl = document.getElementById('detailSpecsShort');
         if (shortSpecEl) shortSpecEl.innerText = specText;
         const fullSpecEl = document.getElementById('detailFullDescription');
-        if (fullSpecEl) fullSpecEl.innerText = specText;
+        if (fullSpecEl) fullSpecEl.innerText = fullText;
 
+        renderLiveDetailImagesAndPolicies(product);
         renderProductOptionsUI(product);
         updateLiveDetailTotalPrice();
 
@@ -448,6 +552,55 @@
                 setTimeout(() => card.classList.remove('flash-changed'), 1800);
             }
             showMallToast(`방송 상품 전환: #${product.num}번 ${product.name}`);
+        }
+    }
+
+    function renderLiveDetailImagesAndPolicies(product) {
+        const stack = document.getElementById('detailImagesStack');
+        if (stack) {
+            const imgs = Array.isArray(product && product.detail_images) ? product.detail_images.filter(Boolean) : [];
+            const imgsSig = JSON.stringify(imgs);
+            if (stack.dataset.renderedImgs !== imgsSig) {
+                stack.dataset.renderedImgs = imgsSig;
+                if (imgs.length > 0) {
+                    stack.innerHTML = imgs.map((u, idx) => `
+                        <img src="${window.mallEscapeHtml(u)}"
+                             alt="${window.mallEscapeHtml(product.name || '상품')} 상세 이미지 ${idx + 1}"
+                             class="ax-detail-image-item"
+                             loading="lazy">
+                    `).join('');
+                } else {
+                    stack.innerHTML = '';
+                }
+            }
+            stack.classList.toggle('ax-is-hidden', imgs.length === 0);
+        }
+
+        const disc = document.getElementById('livePoliciesDisclosure');
+        const pGrid = document.getElementById('livePoliciesGrid');
+        if (disc && pGrid) {
+            const entries = [
+                { key: 'shipping_info', label: '배송 안내', warn: false },
+                { key: 'exchange_return_info', label: '교환 / 반품 안내', warn: false },
+                { key: 'non_returnable_info', label: '교환 / 반품 불가 사항 안내', warn: true },
+                { key: 'as_info', label: 'A/S 안내', warn: false }
+            ].filter(item => product && String(product[item.key] || '').trim());
+            const pSig = JSON.stringify(entries.map(e => [e.key, product[e.key]]));
+            if (pGrid.dataset.renderedPolicies !== pSig) {
+                pGrid.dataset.renderedPolicies = pSig;
+                pGrid.innerHTML = entries.map(item => `
+                    <article class="ax-policy-card">
+                        <div class="ax-policy-card-head">
+                            <span class="ax-policy-icon-chip ${item.warn ? 'is-warn' : ''}">
+                                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            </span>
+                            <span>${item.label}</span>
+                        </div>
+                        <div class="ax-policy-card-body">${window.mallEscapeHtml(product[item.key])}</div>
+                    </article>
+                `).join('');
+            }
+            disc.classList.toggle('ax-is-hidden', entries.length === 0);
         }
     }
 
@@ -492,8 +645,8 @@
                         <td class="ax-num" style="font-weight:800; color:${stk > 0 ? 'var(--ax-text-primary)' : 'var(--ax-text-muted)'};">${stk}개</td>
                         <td>
                             ${stk > 0
-                                ? '<span class="ax-badge ax-badge-success">주문가능</span>'
-                                : '<span class="ax-badge ax-badge-live">품절</span>'}
+                        ? '<span class="ax-badge ax-badge-success">주문가능</span>'
+                        : '<span class="ax-badge ax-badge-live">품절</span>'}
                         </td>
                     </tr>
                 `;
@@ -593,7 +746,7 @@
             if (data.status === 'ok' && data.product) {
                 renderSelectedProductDetailInPlace(data.product, false, data.reviews || []);
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     function renderProductReviewsUI(reviews) {
@@ -603,43 +756,63 @@
             box.innerHTML = `<div class="ax-surface-muted" style="color:var(--ax-text-muted); font-size:0.84rem; text-align:center;">아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.</div>`;
             return;
         }
-        box.innerHTML = reviews.map(r => `
-            <div class="ax-review-item">
-                <div>
-                    <span style="color:#d97706; font-size:0.8rem; letter-spacing:1px;">${'★'.repeat(Number(r.rating || 5))}</span>
-                    <strong style="font-size:0.84rem; color:var(--ax-text-primary); margin-left:6px;">${r.author}</strong>
-                    <div style="font-size:0.86rem; color:var(--ax-text-secondary); margin-top:4px;">${r.content}</div>
+        box.innerHTML = reviews.map(r => {
+            const score = Math.max(1, Math.min(5, Number(r.rating || 5)));
+            const stars = `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`;
+            return `
+                <div class="ax-review-item">
+                    <div>
+                        <span style="color:#d97706; font-size:0.8rem; letter-spacing:1px;">${stars}</span>
+                        <strong style="font-size:0.84rem; color:var(--ax-text-primary); margin-left:6px;">${window.mallEscapeHtml(r.author)}</strong>
+                        <div style="font-size:0.86rem; color:var(--ax-text-secondary); margin-top:4px; white-space:pre-line;">${window.mallEscapeHtml(r.content)}</div>
+                    </div>
+                    <div class="ax-num" style="font-size:0.74rem; color:var(--ax-text-muted); white-space:nowrap;">${window.mallEscapeHtml(r.created_at || '')}</div>
                 </div>
-                <div class="ax-num" style="font-size:0.74rem; color:var(--ax-text-muted); white-space:nowrap;">${r.created_at || ''}</div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     async function submitLiveProductReview(e) {
         e.preventDefault();
         if (!currentDisplayedProduct) return;
-        const author = document.getElementById('revAuthor').value.trim();
-        const rating = document.getElementById('revRating').value;
-        const content = document.getElementById('revContent').value.trim();
-        if (!content) return;
+        const ratingEl = document.getElementById('revRating');
+        const contentEl = document.getElementById('revContent');
+        const submitBtn = document.getElementById('revSubmitBtn');
+        const rating = ratingEl ? ratingEl.value : 5;
+        const content = contentEl ? contentEl.value.trim() : '';
+        if (content.length < 2) {
+            alert('리뷰 내용을 2자 이상 입력해 주세요.');
+            return;
+        }
+        if (submitBtn) submitBtn.disabled = true;
         try {
             const res = await fetch('/api/reviews/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     product_num: currentDisplayedProduct.num,
-                    author,
                     rating,
                     content
                 })
             });
             const data = await res.json();
-            if (data.status === 'ok') {
-                document.getElementById('revContent').value = '';
-                renderProductReviewsUI(data.reviews || []);
-                showMallToast('상품 후기가 등록되었습니다.');
+            if (res.status === 401) {
+                alert(data.message || '로그인한 회원만 리뷰를 작성할 수 있습니다.');
+                window.location.href = '/auth/login?next=/live';
+                return;
             }
-        } catch (err) {}
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '리뷰 등록에 실패했습니다.');
+                return;
+            }
+            if (contentEl) contentEl.value = '';
+            renderProductReviewsUI(data.reviews || []);
+            showMallToast('상품 후기가 등록되었습니다.');
+        } catch (err) {
+            alert('리뷰 등록 중 네트워크 오류: ' + err.message);
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
     }
 
     function onLiveOrderCompleted(order) {
@@ -728,7 +901,7 @@
                 liveProductsMap = {};
                 csrCatalogCache.forEach(p => { liveProductsMap[p.num] = p; });
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     async function applyLiveCommerceState(state) {
@@ -807,7 +980,7 @@
             if (et) lastStateEtag = et;
             const state = await res.json();
             await applyLiveCommerceState(state);
-        } catch (e) {}
+        } catch (e) { }
     }
 
     function startLiveCommerceCsrStream() {
@@ -818,7 +991,7 @@
                     try {
                         const state = JSON.parse(ev.data);
                         applyLiveCommerceState(state);
-                    } catch (err) {}
+                    } catch (err) { }
                 });
                 liveSseSource.onerror = () => {
                     if (!fallbackPollTimer) {
@@ -826,7 +999,7 @@
                     }
                 };
                 return;
-            } catch (e) {}
+            } catch (e) { }
         }
         fallbackPollTimer = setInterval(pollLiveCommerceState, 2000);
     }
@@ -836,7 +1009,7 @@
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(urlText).then(() => {
                 if (typeof showMallToast === 'function') showMallToast('라이브 페이지 주소가 복사되었습니다.');
-            }).catch(() => {});
+            }).catch(() => { });
         }
     }
 

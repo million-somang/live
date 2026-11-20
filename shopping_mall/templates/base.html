@@ -185,6 +185,12 @@
         window.__LIVE_ORDER_TOKEN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.liveOrderToken || '""') : '';
         let pendingInstantBuyItem = null;
 
+        window.mallEscapeHtml = function(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        };
+
         function getMallCart() {
             try {
                 const raw = localStorage.getItem(MALL_CART_KEY);

@@ -379,7 +379,7 @@
             border: 1px solid #cbd5e1;
             border-radius: 20px;
             width: 100%;
-            max-width: 780px;
+            max-width: 920px;
             max-height: 92vh;
             overflow: hidden;
             box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.28);
@@ -740,6 +740,170 @@
         .product-card.highlight-focus {
             animation: cardHighlightPulse 1.8s ease-out;
         }
+
+        /* ==================================================== */
+        /* 🖼️ 상세페이지 이미지 다중 업로드 & 4대 안내 정책 스타일 */
+        /* ==================================================== */
+        .detail-section-card {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .detail-section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .detail-section-title {
+            font-size: 0.94rem;
+            font-weight: 800;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-count-badge {
+            background: #eef2ff;
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+            font-size: 0.74rem;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+
+        .detail-images-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .detail-images-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .detail-image-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+
+        .detail-image-thumb {
+            width: 58px;
+            height: 58px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 1px solid #e2e8f0;
+            background: #f1f5f9;
+            flex-shrink: 0;
+        }
+
+        .detail-image-meta {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .detail-order-badge {
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: #3730a3;
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            padding: 1px 7px;
+            border-radius: 4px;
+            width: fit-content;
+        }
+
+        .detail-url-text {
+            font-size: 0.78rem;
+            color: #475569;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .detail-row-btns {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .btn-mini-step {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-mini-step:hover:not(:disabled) {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .btn-mini-step:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .policy-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .policy-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .policy-grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .prod-meta-chips {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        .prod-meta-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #3730a3;
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body>
@@ -918,6 +1082,20 @@
                                 {% if item.specs %}
                                     <div class="product-specs">
                                         <strong>사양:</strong> {{ item.specs }}
+                                    </div>
+                                {% endif %}
+                                {% set policy_filled = (1 if item.shipping_info else 0) + (1 if item.exchange_return_info else 0) + (1 if item.non_returnable_info else 0) + (1 if item.as_info else 0) %}
+                                {% if (item.detail_images and item.detail_images|length > 0) or item.detail_content or policy_filled > 0 %}
+                                    <div class="prod-meta-chips">
+                                        {% if item.detail_images and item.detail_images|length > 0 %}
+                                            <span class="prod-meta-badge">🖼️ 상세 이미지 {{ item.detail_images|length }}장</span>
+                                        {% endif %}
+                                        {% if item.detail_content %}
+                                            <span class="prod-meta-badge">📄 상세 설명 등록됨</span>
+                                        {% endif %}
+                                        {% if policy_filled > 0 %}
+                                            <span class="prod-meta-badge">📋 안내 정책 {{ policy_filled }}/4</span>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </div>
@@ -1141,6 +1319,80 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- 5. 상품 상세페이지 설정 (다중 이미지 업로드 + 본문 설명) -->
+                <div class="detail-section-card">
+                    <div class="detail-section-head">
+                        <div class="detail-section-title">
+                            <span>🖼️ 상품 상세페이지 설정 (쇼핑몰 상세 화면 노출)</span>
+                            <span class="detail-count-badge" id="detailImagesCountBadge">이미지 0장</span>
+                        </div>
+                        <span id="detailImagesUploadStatus" style="font-size:0.78rem; color:#2563eb; font-weight:700;"></span>
+                    </div>
+
+                    <div class="detail-images-toolbar">
+                        <input type="file" id="prodDetailImagesFile" accept="image/*,.jfif" multiple style="display:none;" onchange="onDetailImageFilesSelected(event)">
+                        <button type="button" id="btnAddDetailFiles" class="btn-file-select" onclick="document.getElementById('prodDetailImagesFile').click()">
+                            📁 PC에서 상세 이미지 여러 장 추가
+                        </button>
+                        <input type="text" id="prodDetailImageUrlInput" class="form-input" placeholder="또는 상세 이미지 URL 입력 후 [추가]" style="flex:1; min-width:200px; font-size:0.84rem; padding:7px 11px;">
+                        <button type="button" class="btn-card-action" onclick="addDetailImageUrl()">+ URL 추가</button>
+                    </div>
+
+                    <div class="detail-images-list" id="detailImagesPreviewList">
+                        <!-- JS 동적 렌더링 -->
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="prodDetailContent">
+                            <span>상세페이지 본문 설명</span>
+                            <span style="font-size:0.76rem; color:#64748b; font-weight:600;">줄바꿈이 쇼핑몰 상세페이지에 그대로 유지됩니다</span>
+                        </label>
+                        <textarea id="prodDetailContent" class="form-textarea" rows="5" placeholder="상품의 소재 특징, 핏감, 스타일링 팁, 세탁/보관 주의사항 등 상세 설명을 입력하세요."></textarea>
+                    </div>
+                </div>
+
+                <!-- 6. 배송 · 교환/반품 · 교환/반품 불가 사항 · A/S 안내 (4개 별도 입력 + 공통 기본값) -->
+                <div class="detail-section-card">
+                    <div class="detail-section-head">
+                        <div class="detail-section-title">
+                            <span>📋 배송 · 교환/반품 · 불가 사항 · A/S 안내</span>
+                        </div>
+                        <div class="policy-toolbar">
+                            <button type="button" class="btn-card-action" onclick="applyPolicyDefaultsToForm()" title="저장된 공통 기본 안내 문구를 아래 4개 칸에 불러옵니다">
+                                📥 공통 기본 안내 불러오기
+                            </button>
+                            <button type="button" id="btnSavePolicyDefaults" class="btn-card-action" onclick="saveCurrentPoliciesAsDefaults()" style="color:#1d4ed8; border-color:#93c5fd; background:#eff6ff;" title="현재 작성한 4개 안내 문구를 앞으로 새 상품 등록 시 기본값으로 저장합니다">
+                                📌 현재 내용을 공통 기본값으로 저장
+                            </button>
+                            <button type="button" class="btn-card-action btn-card-delete" onclick="clearPolicyFields()" title="4개 안내 칸을 비웁니다 (비운 항목은 상세페이지에서 숨겨집니다)">
+                                🧹 비우기
+                            </button>
+                        </div>
+                    </div>
+                    <div style="font-size:0.78rem; color:#64748b;">
+                        * 새 상품 등록 시 저장된 공통 기본 안내가 자동으로 채워지며 상품별로 수정할 수 있습니다. (빈 칸으로 둔 항목은 상세페이지에 표시되지 않습니다.)
+                    </div>
+
+                    <div class="policy-grid-2">
+                        <div class="form-group">
+                            <label class="form-label" for="prodShippingInfo">🚚 배송 안내</label>
+                            <textarea id="prodShippingInfo" class="form-textarea" rows="4" placeholder="택배사, 출고 시간, 배송비 및 도서산간 안내"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="prodExchangeReturnInfo">🔄 교환 / 반품 안내</label>
+                            <textarea id="prodExchangeReturnInfo" class="form-textarea" rows="4" placeholder="교환·반품 신청 기간, 왕복 배송비, 접수 방법 안내"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="prodNonReturnableInfo">⚠️ 교환 / 반품 불가 사항 안내</label>
+                            <textarea id="prodNonReturnableInfo" class="form-textarea" rows="4" placeholder="착용/세탁/라벨 제거 등 교환·반품 불가 사유 안내"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="prodAsInfo">🛠️ A/S 안내</label>
+                            <textarea id="prodAsInfo" class="form-textarea" rows="4" placeholder="무상/유상 A/S 기준, 보증 기간, 고객센터 접수 안내"></textarea>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="modal-footer">
@@ -1152,9 +1404,15 @@
         </div>
     </div>
 
+    <div id="inventoryBootstrap" hidden
+         data-items="{{ items | tojson | forceescape }}"
+         data-policy-defaults="{{ (policy_defaults or {}) | tojson | forceescape }}"></div>
+
     <script>
-        // 서버에서 렌더링된 초기 상품 목록 JS 메모리에 보관
-        let currentProducts = {{ items|tojson }};
+        const __invBootEl = document.getElementById('inventoryBootstrap');
+        let currentProducts = __invBootEl ? JSON.parse(__invBootEl.dataset.items || '[]') : [];
+        let policyDefaults = __invBootEl ? JSON.parse(__invBootEl.dataset.policyDefaults || '{}') : {};
+        let currentDetailImages = [];
 
         // 실시간 모달 손익 및 할인율 계산기
         function calcModalMargin() {
@@ -1204,6 +1462,11 @@
             document.getElementById('prodCostPrice').value = '';
             document.getElementById('prodImageUrl').value = '';
             document.getElementById('prodSpecs').value = '';
+            document.getElementById('prodDetailContent').value = '';
+            document.getElementById('prodDetailImageUrlInput').value = '';
+            currentDetailImages = [];
+            renderDetailImagesList();
+            applyPolicyDefaultsToForm();
             resetImagePreview();
             calcModalMargin();
 
@@ -1236,6 +1499,14 @@
             document.getElementById('prodCostPrice').value = product.cost_price || 0;
             document.getElementById('prodImageUrl').value = product.image_url || '';
             document.getElementById('prodSpecs').value = product.specs || '';
+            document.getElementById('prodDetailContent').value = product.detail_content || '';
+            document.getElementById('prodDetailImageUrlInput').value = '';
+            currentDetailImages = Array.isArray(product.detail_images) ? [...product.detail_images] : [];
+            renderDetailImagesList();
+            document.getElementById('prodShippingInfo').value = product.shipping_info || '';
+            document.getElementById('prodExchangeReturnInfo').value = product.exchange_return_info || '';
+            document.getElementById('prodNonReturnableInfo').value = product.non_returnable_info || '';
+            document.getElementById('prodAsInfo').value = product.as_info || '';
             calcModalMargin();
 
             if (product.image_url) {
@@ -1252,6 +1523,151 @@
             });
 
             document.getElementById('productModal').classList.add('active');
+        }
+
+        function renderDetailImagesList() {
+            const listEl = document.getElementById('detailImagesPreviewList');
+            const badgeEl = document.getElementById('detailImagesCountBadge');
+            if (badgeEl) badgeEl.innerText = `이미지 ${currentDetailImages.length}장`;
+            if (!listEl) return;
+
+            if (currentDetailImages.length === 0) {
+                listEl.innerHTML = `
+                    <div style="text-align:center; padding:16px 12px; color:#64748b; font-size:0.82rem; background:#ffffff; border:1px dashed #cbd5e1; border-radius:8px;">
+                        등록된 상세 이미지가 없습니다. 위 버튼으로 여러 장을 한 번에 업로드하거나 이미지 URL을 추가하세요.
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = currentDetailImages.map((url, idx) => `
+                <div class="detail-image-row">
+                    <img class="detail-image-thumb" src="${escapeHtml(url)}" alt="상세 이미지 ${idx + 1}" onerror="this.style.opacity='0.35'">
+                    <div class="detail-image-meta">
+                        <span class="detail-order-badge">${idx + 1}번째 이미지</span>
+                        <span class="detail-url-text" title="${escapeHtml(url)}">${escapeHtml(url)}</span>
+                    </div>
+                    <div class="detail-row-btns">
+                        <button type="button" class="btn-mini-step" onclick="moveDetailImage(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="위로 이동">↑</button>
+                        <button type="button" class="btn-mini-step" onclick="moveDetailImage(${idx}, 1)" ${idx === currentDetailImages.length - 1 ? 'disabled' : ''} title="아래로 이동">↓</button>
+                        <button type="button" class="btn-mini-step" onclick="removeDetailImage(${idx})" style="color:#dc2626; border-color:#fecaca; background:#fef2f2;" title="삭제">✕</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function moveDetailImage(idx, delta) {
+            const target = idx + delta;
+            if (target < 0 || target >= currentDetailImages.length) return;
+            const tmp = currentDetailImages[idx];
+            currentDetailImages[idx] = currentDetailImages[target];
+            currentDetailImages[target] = tmp;
+            renderDetailImagesList();
+        }
+
+        function removeDetailImage(idx) {
+            currentDetailImages.splice(idx, 1);
+            renderDetailImagesList();
+        }
+
+        function addDetailImageUrl() {
+            const inp = document.getElementById('prodDetailImageUrlInput');
+            const val = (inp ? inp.value : '').trim();
+            if (!val) {
+                alert('추가할 상세 이미지 URL을 입력해 주세요.');
+                return;
+            }
+            if (currentDetailImages.length >= 30) {
+                alert('상세 이미지는 최대 30장까지 등록할 수 있습니다.');
+                return;
+            }
+            currentDetailImages.push(val);
+            inp.value = '';
+            renderDetailImagesList();
+        }
+
+        async function onDetailImageFilesSelected(event) {
+            const files = Array.from(event.target.files || []);
+            if (files.length === 0) return;
+
+            const statusEl = document.getElementById('detailImagesUploadStatus');
+            const btnEl = document.getElementById('btnAddDetailFiles');
+            if (btnEl) btnEl.disabled = true;
+
+            try {
+                let uploadedCount = 0;
+                for (let i = 0; i < files.length; i++) {
+                    if (currentDetailImages.length >= 30) {
+                        alert('상세 이미지는 최대 30장까지 등록할 수 있습니다.');
+                        break;
+                    }
+                    if (statusEl) statusEl.innerText = `업로드 중 (${i + 1}/${files.length})...`;
+                    const formData = new FormData();
+                    formData.append('image', files[i]);
+                    const res = await fetch('/api/upload/image', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (data.status === 'ok' && data.url) {
+                        currentDetailImages.push(data.url);
+                        uploadedCount++;
+                        renderDetailImagesList();
+                    } else {
+                        alert(`${files[i].name} 업로드 실패: ${data.message || '오류'}`);
+                    }
+                }
+                if (statusEl) statusEl.innerText = uploadedCount > 0 ? `${uploadedCount}장 업로드 완료` : '';
+            } catch (err) {
+                alert('상세 이미지 업로드 중 네트워크 오류: ' + err.message);
+                if (statusEl) statusEl.innerText = '';
+            } finally {
+                event.target.value = '';
+                if (btnEl) btnEl.disabled = false;
+            }
+        }
+
+        function applyPolicyDefaultsToForm() {
+            document.getElementById('prodShippingInfo').value = policyDefaults.shipping_info || '';
+            document.getElementById('prodExchangeReturnInfo').value = policyDefaults.exchange_return_info || '';
+            document.getElementById('prodNonReturnableInfo').value = policyDefaults.non_returnable_info || '';
+            document.getElementById('prodAsInfo').value = policyDefaults.as_info || '';
+        }
+
+        function clearPolicyFields() {
+            document.getElementById('prodShippingInfo').value = '';
+            document.getElementById('prodExchangeReturnInfo').value = '';
+            document.getElementById('prodNonReturnableInfo').value = '';
+            document.getElementById('prodAsInfo').value = '';
+        }
+
+        async function saveCurrentPoliciesAsDefaults() {
+            const btn = document.getElementById('btnSavePolicyDefaults');
+            const payload = {
+                shipping_info: document.getElementById('prodShippingInfo').value.trim(),
+                exchange_return_info: document.getElementById('prodExchangeReturnInfo').value.trim(),
+                non_returnable_info: document.getElementById('prodNonReturnableInfo').value.trim(),
+                as_info: document.getElementById('prodAsInfo').value.trim()
+            };
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/api/inventory/policy-defaults', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'ok') {
+                    policyDefaults = data.defaults || payload;
+                    alert('현재 4개 안내 문구가 공통 기본 안내로 저장되었습니다.\n앞으로 새 상품 등록 시 자동으로 채워집니다.');
+                } else {
+                    alert('공통 기본 안내 저장 실패: ' + (data.message || '오류'));
+                }
+            } catch (err) {
+                alert('공통 기본 안내 저장 중 오류: ' + err.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
         }
 
         function closeModal() {
@@ -1401,6 +1817,12 @@
                 cost_price: costPrice,
                 image_url: imageUrl,
                 specs: specs,
+                detail_content: document.getElementById('prodDetailContent').value.trim(),
+                detail_images: currentDetailImages.slice(),
+                shipping_info: document.getElementById('prodShippingInfo').value.trim(),
+                exchange_return_info: document.getElementById('prodExchangeReturnInfo').value.trim(),
+                non_returnable_info: document.getElementById('prodNonReturnableInfo').value.trim(),
+                as_info: document.getElementById('prodAsInfo').value.trim(),
                 options: options
             };
 

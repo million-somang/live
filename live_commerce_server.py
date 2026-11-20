@@ -2180,7 +2180,8 @@ def receive_chat():
 def inventory_view():
     """실시간 재고 관리 화면"""
     items = inventory_manager.get_all()
-    return render_template('inventory.html', items=items)
+    policy_defaults = database.get_product_policy_defaults()
+    return render_template('inventory.html', items=items, policy_defaults=policy_defaults)
 
 
 @app.route('/api/inventory/update', methods=['POST'])
@@ -2249,6 +2250,16 @@ def api_inventory_product_delete():
         return jsonify({"status": "error", "message": "상품 ID가 누락되었습니다."}), 400
     success = inventory_manager.delete_product(item_id)
     return jsonify({"status": "ok" if success else "failed"}), 200
+
+
+@app.route('/api/inventory/policy-defaults', methods=['GET', 'POST'])
+def api_inventory_policy_defaults():
+    """상품 등록 공통 기본 안내(배송/교환·반품/불가사항/A/S) 조회 및 저장 API"""
+    if request.method == 'GET':
+        return jsonify({"status": "ok", "defaults": database.get_product_policy_defaults()}), 200
+    data = request.get_json(silent=True) or {}
+    saved = database.set_product_policy_defaults(data)
+    return jsonify({"status": "ok", "defaults": saved}), 200
 
 
 # ==========================================

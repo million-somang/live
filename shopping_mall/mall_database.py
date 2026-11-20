@@ -85,6 +85,12 @@ def init_mall_db():
                     consumer_price INTEGER NOT NULL DEFAULT 0,
                     image_url TEXT DEFAULT '',
                     specs TEXT DEFAULT '',
+                    detail_content TEXT DEFAULT '',
+                    detail_images TEXT DEFAULT '[]',
+                    shipping_info TEXT DEFAULT '',
+                    exchange_return_info TEXT DEFAULT '',
+                    non_returnable_info TEXT DEFAULT '',
+                    as_info TEXT DEFAULT '',
                     is_featured INTEGER NOT NULL DEFAULT 1,
                     updated_at TEXT NOT NULL,
                     created_at TEXT NOT NULL
@@ -157,6 +163,7 @@ def init_mall_db():
                 CREATE TABLE IF NOT EXISTS mall_reviews (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     product_num INTEGER NOT NULL,
+                    user_id INTEGER DEFAULT NULL,
                     author TEXT NOT NULL,
                     rating INTEGER NOT NULL DEFAULT 5,
                     content TEXT NOT NULL,
@@ -184,18 +191,22 @@ def init_mall_db():
                 )
             """)
 
-            # 기존 mall_products 및 mall_orders 호환성 마이그레이션
-            try:
-                cur.execute("ALTER TABLE mall_products ADD COLUMN live_price INTEGER NOT NULL DEFAULT 0")
-            except Exception:
-                pass
-            for col_name, col_def in [
-                ("user_id", "INTEGER DEFAULT NULL"),
-                ("is_guest", "INTEGER NOT NULL DEFAULT 0"),
-                ("guest_password_hash", "TEXT DEFAULT ''")
+            # 기존 mall_products, mall_reviews 및 mall_orders 호환성 마이그레이션
+            for tbl, col_name, col_def in [
+                ("mall_products", "live_price", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_products", "detail_content", "TEXT DEFAULT ''"),
+                ("mall_products", "detail_images", "TEXT DEFAULT '[]'"),
+                ("mall_products", "shipping_info", "TEXT DEFAULT ''"),
+                ("mall_products", "exchange_return_info", "TEXT DEFAULT ''"),
+                ("mall_products", "non_returnable_info", "TEXT DEFAULT ''"),
+                ("mall_products", "as_info", "TEXT DEFAULT ''"),
+                ("mall_reviews", "user_id", "INTEGER DEFAULT NULL"),
+                ("mall_orders", "user_id", "INTEGER DEFAULT NULL"),
+                ("mall_orders", "is_guest", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_orders", "guest_password_hash", "TEXT DEFAULT ''"),
             ]:
                 try:
-                    cur.execute(f"ALTER TABLE mall_orders ADD COLUMN {col_name} {col_def}")
+                    cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_def}")
                 except Exception:
                     pass
 
@@ -227,7 +238,42 @@ def _infer_category(name, specs=""):
     return "TOP"
 
 
+MALL_DETAIL_TEXT_FIELDS = (
+    "detail_content",
+    "shipping_info",
+    "exchange_return_info",
+    "non_returnable_info",
+    "as_info",
+)
+
+
+def _parse_detail_images(raw):
+    items = []
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str):
+        s = raw.strip()
+        if s:
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    items = parsed
+            except Exception:
+                items = [line.strip() for line in s.splitlines() if line.strip()]
+    cleaned = []
+    for u in items:
+        su = str(u or "").strip()
+        if su and len(cleaned) < 30:
+            cleaned.append(su)
+    return cleaned
+
+
+def _serialize_detail_images(raw):
+    return json.dumps(_parse_detail_images(raw), ensure_ascii=False)
+
+
 def _format_product_row(prow, opt_rows):
+    keys = set(prow.keys())
     options = []
     total_stock = 0
     colors = []
@@ -248,7 +294,7 @@ def _format_product_row(prow, opt_rows):
             sizes.append(s)
 
     sell_p = int(prow["price"] or 0)
-    live_p = int(prow["live_price"] or 0) if "live_price" in prow.keys() and prow["live_price"] is not None else 0
+    live_p = int(prow["live_price"] or 0) if "live_price" in keys and prow["live_price"] is not None else 0
     if live_p <= 0:
         live_p = sell_p
     cons_p = int(prow["consumer_price"] or sell_p)
@@ -258,6 +304,7 @@ def _format_product_row(prow, opt_rows):
     live_discount_rate = round((cons_p - live_p) / cons_p * 100) if cons_p > live_p and cons_p > 0 else discount_rate
 
     img_url = str(prow["image_url"] or "").strip()
+    detail_images = _parse_detail_images(prow["detail_images"] if "detail_images" in keys else [])
 
     return {
         "id": prow["id"],
@@ -272,6 +319,12 @@ def _format_product_row(prow, opt_rows):
         "live_discount_rate": live_discount_rate,
         "image_url": img_url,
         "specs": prow["specs"] or "",
+        "detail_content": str(prow["detail_content"] or "") if "detail_content" in keys and prow["detail_content"] is not None else "",
+        "detail_images": detail_images,
+        "shipping_info": str(prow["shipping_info"] or "") if "shipping_info" in keys and prow["shipping_info"] is not None else "",
+        "exchange_return_info": str(prow["exchange_return_info"] or "") if "exchange_return_info" in keys and prow["exchange_return_info"] is not None else "",
+        "non_returnable_info": str(prow["non_returnable_info"] or "") if "non_returnable_info" in keys and prow["non_returnable_info"] is not None else "",
+        "as_info": str(prow["as_info"] or "") if "as_info" in keys and prow["as_info"] is not None else "",
         "is_featured": bool(prow["is_featured"]),
         "total_stock": total_stock,
         "is_sold_out": total_stock <= 0,
@@ -308,22 +361,60 @@ def upsert_product_from_obs(prod_data):
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT id FROM mall_products WHERE num = ?", (num,))
+            cur.execute("""
+                SELECT id, detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info
+                FROM mall_products WHERE num = ?
+            """, (num,))
             existing = cur.fetchone()
             if existing:
                 mall_pid = existing["id"]
+                ext_keys = set(existing.keys())
+                resolved_text = {
+                    col: (
+                        str(prod_data[col] or "").strip()
+                        if col in prod_data
+                        else str(existing[col] or "" if col in ext_keys else "")
+                    )
+                    for col in MALL_DETAIL_TEXT_FIELDS
+                }
+                resolved_detail_imgs = (
+                    _serialize_detail_images(prod_data["detail_images"])
+                    if "detail_images" in prod_data
+                    else (existing["detail_images"] if "detail_images" in ext_keys and existing["detail_images"] else "[]")
+                )
                 cur.execute("""
                     UPDATE mall_products
                     SET obs_product_id = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
-                        image_url = ?, specs = ?, updated_at = ?
+                        image_url = ?, specs = ?,
+                        detail_content = ?, detail_images = ?,
+                        shipping_info = ?, exchange_return_info = ?, non_returnable_info = ?, as_info = ?,
+                        updated_at = ?
                     WHERE id = ?
-                """, (obs_id, name, category, price, live_price, consumer_price, image_url, specs, now_str, mall_pid))
+                """, (
+                    obs_id, name, category, price, live_price, consumer_price,
+                    image_url, specs,
+                    resolved_text["detail_content"], resolved_detail_imgs,
+                    resolved_text["shipping_info"], resolved_text["exchange_return_info"],
+                    resolved_text["non_returnable_info"], resolved_text["as_info"],
+                    now_str, mall_pid
+                ))
             else:
                 cur.execute("""
                     INSERT INTO mall_products
-                    (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs, is_featured, updated_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                """, (obs_id, num, name, category, price, live_price, consumer_price, image_url, specs, now_str, created_at))
+                    (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs,
+                     detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info,
+                     is_featured, updated_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (
+                    obs_id, num, name, category, price, live_price, consumer_price, image_url, specs,
+                    str(prod_data.get("detail_content") or "").strip(),
+                    _serialize_detail_images(prod_data.get("detail_images")),
+                    str(prod_data.get("shipping_info") or "").strip(),
+                    str(prod_data.get("exchange_return_info") or "").strip(),
+                    str(prod_data.get("non_returnable_info") or "").strip(),
+                    str(prod_data.get("as_info") or "").strip(),
+                    now_str, created_at
+                ))
                 mall_pid = cur.lastrowid
 
             if "options" in prod_data and isinstance(prod_data["options"], list):
@@ -651,6 +742,13 @@ def get_full_live_state():
     if selected_product is None and all_products:
         selected_product = all_products[0]
 
+    sel_reviews = get_mall_reviews(selected_product["num"]) if selected_product else []
+    sel_review_summary = (
+        get_mall_review_summary(selected_product["num"])
+        if selected_product
+        else {"count": 0, "avg_rating": 0.0}
+    )
+
     return {
         "state_version": int(raw.get("state_version") or 1),
         "catalog_version": int(raw.get("catalog_version") or 1),
@@ -660,6 +758,8 @@ def get_full_live_state():
         "pinned_product_num": pinned_num,
         "is_pinned_by_obs": is_pinned_by_obs,
         "selected_product": selected_product,
+        "selected_product_reviews": sel_reviews,
+        "selected_product_review_summary": sel_review_summary,
         "all_products": all_products,
         "timer": raw.get("timer") or {"active": False},
         "youtube_video_id": str(raw.get("youtube_video_id") or ""),
@@ -1105,29 +1205,47 @@ def update_mall_order_status(order_id, payment_status=None, order_status=None):
             conn.close()
 
 
-def get_mall_reviews(product_num):
+def get_mall_reviews(product_num, limit=50):
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM mall_reviews WHERE product_num = ? ORDER BY id DESC LIMIT 30", (int(product_num),))
+            cur.execute("SELECT * FROM mall_reviews WHERE product_num = ? ORDER BY id DESC LIMIT ?", (int(product_num), int(limit)))
             return [dict(r) for r in cur.fetchall()]
         finally:
             conn.close()
 
 
-def add_mall_review(product_num, author, rating, content):
+def get_mall_review_summary(product_num):
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT COUNT(*) AS cnt, COALESCE(AVG(rating), 0) AS avg_rating FROM mall_reviews WHERE product_num = ?",
+                (int(product_num),)
+            )
+            row = cur.fetchone()
+            cnt = int(row["cnt"] or 0) if row else 0
+            avg = round(float(row["avg_rating"] or 0.0), 1) if cnt > 0 else 0.0
+            return {"count": cnt, "avg_rating": avg}
+        finally:
+            conn.close()
+
+
+def add_mall_review(product_num, author, rating, content, user_id=None):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
             cur.execute("""
-                INSERT INTO mall_reviews (product_num, author, rating, content, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO mall_reviews (product_num, user_id, author, rating, content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 int(product_num),
-                str(author or "구매고객").strip(),
+                int(user_id) if user_id is not None else None,
+                str(author or "구매회원").strip(),
                 max(1, min(5, int(rating or 5))),
                 str(content or "").strip(),
                 now_str

@@ -29,6 +29,15 @@
 
             <h1 style="font-size:1.65rem; font-weight:800; color:var(--ax-text-primary); letter-spacing:-0.02em; line-height:1.3;">{{ product.name }}</h1>
 
+            {% set rev_count = review_summary.count if review_summary else (reviews|length if reviews else 0) %}
+            {% set rev_avg = review_summary.avg_rating if review_summary else 0 %}
+            <a href="#section-reviews" id="pdTopRatingLink" class="ax-pd-rating-link{% if rev_count <= 0 %} ax-is-hidden{% endif %}">
+                <span class="ax-review-stars">★</span>
+                <span id="pdTopAvgScore" class="ax-num">{{ "%.1f"|format(rev_avg) }}</span>
+                <span style="color:var(--ax-text-muted);">·</span>
+                <span id="pdTopReviewCount" class="ax-num" style="color:var(--ax-text-secondary);">상품 리뷰 {{ rev_count }}건</span>
+            </a>
+
             {% set active_price = product.price %}
             {% set active_disc = product.discount_rate %}
             <div class="ax-detail-price-box">
@@ -75,6 +84,216 @@
     </div>
 </div>
 
+{% set has_policies = product.shipping_info or product.exchange_return_info or product.non_returnable_info or product.as_info %}
+
+<!-- 섹션 앵커 네비게이션 -->
+<div class="ax-detail-anchor-bar">
+    <nav class="ax-segmented-bar" aria-label="상품 상세 정보 탐색">
+        <a href="#section-detail" class="ax-tab-btn active" onclick="setPdAnchorTab(this)">상세정보</a>
+        {% if has_policies %}
+        <a href="#section-policies" class="ax-tab-btn" onclick="setPdAnchorTab(this)">배송 / 교환·반품 / A/S 안내</a>
+        {% endif %}
+        <a href="#section-reviews" class="ax-tab-btn" onclick="setPdAnchorTab(this)">
+            <span>상품 리뷰</span>
+            <span class="ax-num">(<span id="pdAnchorReviewCount">{{ rev_count }}</span>)</span>
+        </a>
+    </nav>
+</div>
+
+<!-- 1. 상품 상세페이지 섹션 (본문 + 다중 상세 이미지) -->
+<section id="section-detail" class="ax-card ax-card-pad ax-detail-section-card">
+    <div class="ax-section-head">
+        <div>
+            <span class="ax-badge-eyebrow">PRODUCT DETAIL</span>
+            <h2 class="ax-section-title">상품 상세정보</h2>
+        </div>
+        {% if product.detail_images and product.detail_images|length > 0 %}
+        <span class="ax-badge ax-badge-indigo ax-num">상세 이미지 {{ product.detail_images|length }}장</span>
+        {% endif %}
+    </div>
+
+    {% if product.detail_content %}
+    <div class="ax-detail-content-body">{{ product.detail_content }}</div>
+    {% endif %}
+
+    {% if product.detail_images and product.detail_images|length > 0 %}
+    <div class="ax-detail-image-stack">
+        {% for img_url in product.detail_images %}
+        <img src="{{ img_url }}"
+             alt="{{ product.name }} 상세 이미지 {{ loop.index }}"
+             class="ax-detail-image-item"
+             loading="lazy"
+             data-img-src="{{ img_url }}"
+             data-img-index="{{ loop.index }}"
+             onclick="openPdImageLightbox(this.dataset.imgSrc, this.dataset.imgIndex)">
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not product.detail_content and (not product.detail_images or product.detail_images|length == 0) %}
+    <div class="ax-detail-empty-box">
+        {% if product.specs %}
+        <div style="color:var(--ax-text-primary); font-weight:600; white-space:pre-line; text-align:left; line-height:1.7;">{{ product.specs }}</div>
+        {% else %}
+        등록된 상세페이지 이미지 및 설명이 없습니다. 상단 상품 사양 및 옵션을 확인해 주세요.
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+
+<!-- 2. 배송 / 교환·반품 / 불가 사항 / A/S 안내 섹션 -->
+{% if has_policies %}
+<section id="section-policies" class="ax-card ax-card-pad ax-detail-section-card">
+    <div class="ax-section-head">
+        <div>
+            <span class="ax-badge-eyebrow">DELIVERY &amp; SERVICE POLICY</span>
+            <h2 class="ax-section-title">배송 · 교환/반품 · 불가 사항 · A/S 안내</h2>
+        </div>
+        <span class="ax-badge ax-badge-neutral">상품별 구매 안내</span>
+    </div>
+
+    <div class="ax-policy-grid">
+        {% if product.shipping_info %}
+        <article class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+                </span>
+                <span>배송 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ product.shipping_info }}</div>
+        </article>
+        {% endif %}
+
+        {% if product.exchange_return_info %}
+        <article class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </span>
+                <span>교환 / 반품 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ product.exchange_return_info }}</div>
+        </article>
+        {% endif %}
+
+        {% if product.non_returnable_info %}
+        <article class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip is-warn">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                </span>
+                <span>교환 / 반품 불가 사항 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ product.non_returnable_info }}</div>
+        </article>
+        {% endif %}
+
+        {% if product.as_info %}
+        <article class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>
+                </span>
+                <span>A/S 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ product.as_info }}</div>
+        </article>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
+<!-- 3. 회원 상품 리뷰 섹션 -->
+<section id="section-reviews" class="ax-card ax-card-pad ax-detail-section-card">
+    <div class="ax-section-head">
+        <div>
+            <span class="ax-badge-eyebrow">VERIFIED MEMBER REVIEWS</span>
+            <h2 class="ax-section-title">상품 리뷰 (<span id="pdSectionReviewCount" class="ax-num">{{ rev_count }}</span>)</h2>
+        </div>
+        <span class="ax-badge ax-badge-indigo">회원 리뷰 작성 가능</span>
+    </div>
+
+    <div class="ax-review-summary">
+        <div class="ax-review-score-row">
+            <span class="ax-review-avg-num ax-num" id="pdReviewSummaryAvg">{{ "%.1f"|format(rev_avg) }}</span>
+            <div>
+                <div class="ax-review-stars" id="pdReviewSummaryStars">
+                    {% if rev_count > 0 %}{{ '★' * (rev_avg|round(0, 'common')|int) }}{{ '☆' * (5 - (rev_avg|round(0, 'common')|int)) }}{% else %}☆☆☆☆☆{% endif %}
+                </div>
+                <div style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">
+                    총 <strong id="pdReviewSummaryCount" class="ax-num">{{ rev_count }}</strong>건의 구매 후기가 등록되었습니다.
+                </div>
+            </div>
+        </div>
+        <span class="ax-badge ax-badge-neutral">5점 만점 기준</span>
+    </div>
+
+    {% if current_mall_user %}
+    <form id="pdReviewForm" class="ax-review-compose" onsubmit="submitPdReview(event)">
+        <div class="ax-review-compose-top">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span class="ax-badge ax-badge-indigo">작성자: {{ current_mall_user.name }}님</span>
+                <span style="font-size:0.8rem; color:var(--ax-text-secondary);">별점을 선택하고 솔직한 상품 후기를 남겨주세요.</span>
+            </div>
+            <div class="ax-star-picker" role="group" aria-label="별점 선택">
+                <button type="button" class="ax-star-btn active" data-rating="5" onclick="selectPdReviewRating(Number(this.dataset.rating))">★★★★★ 5점</button>
+                <button type="button" class="ax-star-btn" data-rating="4" onclick="selectPdReviewRating(Number(this.dataset.rating))">★★★★ 4점</button>
+                <button type="button" class="ax-star-btn" data-rating="3" onclick="selectPdReviewRating(Number(this.dataset.rating))">★★★ 3점</button>
+                <button type="button" class="ax-star-btn" data-rating="2" onclick="selectPdReviewRating(Number(this.dataset.rating))">★★ 2점</button>
+                <button type="button" class="ax-star-btn" data-rating="1" onclick="selectPdReviewRating(Number(this.dataset.rating))">★ 1점</button>
+            </div>
+        </div>
+        <textarea id="pdReviewContent" class="ax-input ax-review-textarea" minlength="2" maxlength="1000" placeholder="상품의 소재, 착용감, 배송 만족도 등에 대한 후기를 2자 이상 작성해 주세요." required></textarea>
+        <div class="ax-review-compose-foot">
+            <span style="font-size:0.78rem; color:var(--ax-text-muted);">* 작성하신 리뷰는 상품 상세페이지에 즉시 반영됩니다.</span>
+            <button type="submit" id="pdReviewSubmitBtn" class="ax-btn ax-btn-primary">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                <span>리뷰 등록하기</span>
+            </button>
+        </div>
+    </form>
+    {% else %}
+    <div class="ax-review-login-gate">
+        <div>
+            <div style="font-size:0.92rem; font-weight:800; color:var(--ax-text-primary);">로그인한 회원만 리뷰를 작성할 수 있습니다</div>
+            <div style="font-size:0.8125rem; color:var(--ax-text-secondary); margin-top:3px;">로그인하시면 현재 보고 계신 상품 페이지로 돌아와 바로 후기를 등록하실 수 있습니다.</div>
+        </div>
+        <a href="/auth/login?next=/product/{{ product.num }}" class="ax-btn ax-btn-primary ax-btn-sm">로그인하고 리뷰 작성하기</a>
+    </div>
+    {% endif %}
+
+    <div id="pdReviewList" class="ax-review-list">
+        {% if reviews and reviews|length > 0 %}
+            {% for r in reviews %}
+            <article class="ax-review-card">
+                <div class="ax-review-card-head">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span class="ax-review-stars">{{ '★' * (r.rating|int) }}{{ '☆' * (5 - (r.rating|int)) }}</span>
+                        <strong style="font-size:0.875rem; color:var(--ax-text-primary);">{{ r.author }}</strong>
+                    </div>
+                    <span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">{{ r.created_at }}</span>
+                </div>
+                <div class="ax-review-body">{{ r.content }}</div>
+            </article>
+            {% endfor %}
+        {% else %}
+        <div class="ax-detail-empty-box">아직 등록된 상품 리뷰가 없습니다. 첫 번째 리뷰를 남겨보세요.</div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- 상세 이미지 확대 보기 모달 -->
+<div class="ax-dialog-backdrop" id="pdImageLightbox" role="dialog" aria-modal="true" aria-labelledby="pdLightboxTitle" onclick="if(event.target===this) closePdImageLightbox()">
+    <div class="ax-lightbox-card">
+        <div class="ax-lightbox-head">
+            <span id="pdLightboxTitle">상세 이미지 크게 보기</span>
+            <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm" onclick="closePdImageLightbox()">닫기</button>
+        </div>
+        <img id="pdLightboxImg" src="" alt="상세 이미지 확대" class="ax-lightbox-img">
+    </div>
+</div>
+
 <!-- 모바일 전용 하단 고정 구매 바 -->
 <div class="ax-mobile-sticky-bar" id="pdMobileStickyBar">
     <div style="min-width:0; margin-right:auto;">
@@ -92,6 +311,8 @@
 <script>
     const __pdBootEl = document.getElementById('mallProductDetailBootstrap');
     const pdProduct = __pdBootEl ? JSON.parse(__pdBootEl.dataset.product || '{}') : {};
+    let pdSelectedRating = 5;
+
     function getPdSelection() {
         const opts = (pdProduct.options && pdProduct.options.length > 0)
             ? pdProduct.options
@@ -113,19 +334,152 @@
             options: opts
         };
     }
+
     function updatePdMobilePrice() {
         const sel = getPdSelection();
         const el = document.getElementById('pdMobileStickyPrice');
         if (el) el.innerText = `${(sel.price * sel.quantity).toLocaleString()}원`;
     }
+
     function pdAddToCart() {
         addItemToMallCart(getPdSelection());
     }
+
     function pdInstantBuy() {
         openInstantBuyModal(getPdSelection(), 'PRODUCT_DETAIL');
     }
 
+    function setPdAnchorTab(btnEl) {
+        document.querySelectorAll('.ax-detail-anchor-bar .ax-tab-btn').forEach(el => {
+            el.classList.toggle('active', el === btnEl);
+        });
+    }
+
+    function openPdImageLightbox(src, idxLabel) {
+        const lb = document.getElementById('pdImageLightbox');
+        const img = document.getElementById('pdLightboxImg');
+        const title = document.getElementById('pdLightboxTitle');
+        if (!lb || !img || !src) return;
+        img.src = src;
+        if (title) title.innerText = `${pdProduct.name || '상품'} — 상세 이미지 ${idxLabel || ''}`.trim();
+        lb.classList.add('is-open');
+    }
+
+    function closePdImageLightbox() {
+        const lb = document.getElementById('pdImageLightbox');
+        const img = document.getElementById('pdLightboxImg');
+        if (lb) lb.classList.remove('is-open');
+        if (img) img.src = '';
+    }
+
+    function selectPdReviewRating(score) {
+        pdSelectedRating = Math.max(1, Math.min(5, Number(score) || 5));
+        document.querySelectorAll('.ax-star-picker .ax-star-btn').forEach(btn => {
+            btn.classList.toggle('active', Number(btn.dataset.rating) === pdSelectedRating);
+        });
+    }
+
+    function renderPdReviewState(reviews, summary) {
+        const listEl = document.getElementById('pdReviewList');
+        const safeReviews = Array.isArray(reviews) ? reviews : [];
+        const cnt = Number(summary && summary.count !== undefined ? summary.count : safeReviews.length);
+        const avg = Number(summary && summary.avg_rating !== undefined ? summary.avg_rating : 0);
+        const avgText = avg.toFixed(1);
+        const filled = cnt > 0 ? Math.max(1, Math.min(5, Math.round(avg))) : 0;
+        const starStr = `${'★'.repeat(filled)}${'☆'.repeat(5 - filled)}`;
+
+        const topLink = document.getElementById('pdTopRatingLink');
+        if (topLink) topLink.classList.toggle('ax-is-hidden', cnt <= 0);
+        const topAvg = document.getElementById('pdTopAvgScore');
+        if (topAvg) topAvg.innerText = avgText;
+        const topCnt = document.getElementById('pdTopReviewCount');
+        if (topCnt) topCnt.innerText = `상품 리뷰 ${cnt}건`;
+
+        ['pdAnchorReviewCount', 'pdSectionReviewCount', 'pdReviewSummaryCount'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = String(cnt);
+        });
+        const sumAvg = document.getElementById('pdReviewSummaryAvg');
+        if (sumAvg) sumAvg.innerText = avgText;
+        const sumStars = document.getElementById('pdReviewSummaryStars');
+        if (sumStars) sumStars.innerText = starStr;
+
+        if (!listEl) return;
+        if (safeReviews.length === 0) {
+            listEl.innerHTML = '<div class="ax-detail-empty-box">아직 등록된 상품 리뷰가 없습니다. 첫 번째 리뷰를 남겨보세요.</div>';
+            return;
+        }
+        listEl.innerHTML = safeReviews.map(r => {
+            const score = Math.max(1, Math.min(5, Number(r.rating || 5)));
+            const rStars = `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`;
+            return `
+                <article class="ax-review-card">
+                    <div class="ax-review-card-head">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span class="ax-review-stars">${rStars}</span>
+                            <strong style="font-size:0.875rem; color:var(--ax-text-primary);">${window.mallEscapeHtml(r.author)}</strong>
+                        </div>
+                        <span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">${window.mallEscapeHtml(r.created_at || '')}</span>
+                    </div>
+                    <div class="ax-review-body">${window.mallEscapeHtml(r.content)}</div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function submitPdReview(e) {
+        e.preventDefault();
+        const contentEl = document.getElementById('pdReviewContent');
+        const submitBtn = document.getElementById('pdReviewSubmitBtn');
+        const content = contentEl ? contentEl.value.trim() : '';
+        if (content.length < 2) {
+            alert('리뷰 내용을 2자 이상 입력해 주세요.');
+            if (contentEl) contentEl.focus();
+            return;
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+            const res = await fetch('/api/reviews/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_num: pdProduct.num,
+                    rating: pdSelectedRating,
+                    content: content
+                })
+            });
+            const data = await res.json();
+            if (res.status === 401) {
+                alert(data.message || '로그인한 회원만 리뷰를 작성할 수 있습니다.');
+                window.location.href = `/auth/login?next=/product/${pdProduct.num}`;
+                return;
+            }
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '리뷰 등록에 실패했습니다.');
+                return;
+            }
+            if (contentEl) contentEl.value = '';
+            selectPdReviewRating(5);
+            renderPdReviewState(data.reviews || [], data.summary || null);
+            showMallToast('상품 리뷰가 등록되었습니다.');
+        } catch (err) {
+            alert('리뷰 등록 중 네트워크 오류가 발생했습니다: ' + err.message);
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    }
+
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') {
+            closePdImageLightbox();
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
+        const lb = document.getElementById('pdImageLightbox');
+        if (lb && lb.parentElement !== document.body) {
+            document.body.appendChild(lb);
+        }
         if (document.getElementById('pdMobileStickyBar')) {
             document.body.classList.add('has-mobile-sticky-bar');
         }

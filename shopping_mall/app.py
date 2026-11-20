@@ -236,6 +236,23 @@ def _copy_or_download_product_image(image_url, image_b64=None):
     return f"/static/uploads/products/{filename}"
 
 
+def _sync_product_detail_images(prod_dict, images_b64=None):
+    """상품의 detail_images 배열에 포함된 로컬/원격 이미지를 쇼핑몰 저장소로 동기화합니다."""
+    if not isinstance(prod_dict, dict) or "detail_images" not in prod_dict:
+        return prod_dict
+    raw_imgs = mall_database._parse_detail_images(prod_dict.get("detail_images"))
+    b64_map = images_b64 if isinstance(images_b64, dict) else {}
+    resolved = []
+    for img_u in raw_imgs:
+        fname = os.path.basename(str(img_u).split("?")[0])
+        b64_data = b64_map.get(fname) if fname else None
+        copied = _copy_or_download_product_image(img_u, image_b64=b64_data)
+        if copied:
+            resolved.append(copied)
+    prod_dict["detail_images"] = resolved
+    return prod_dict
+
+
 def pull_sync_from_obs_server(force=False):
     """
     OBS 서버(OBS_SERVER_URL)의 최신 상품 목록 및 라이브 상태(현재 선택된 상품 번호, 방송중 여부, 타이머, 안내 자막)를
@@ -271,6 +288,7 @@ def pull_sync_from_obs_server(force=False):
 
                 if isinstance(pinned_prod, dict):
                     pinned_prod["image_url"] = _copy_or_download_product_image(pinned_prod.get("image_url"))
+                    _sync_product_detail_images(pinned_prod)
                     mall_database.upsert_product_from_obs(pinned_prod)
 
                 live_urls_data = ov_data.get("live_urls") or {}
@@ -303,6 +321,7 @@ def pull_sync_from_obs_server(force=False):
                 for p in prods:
                     if isinstance(p, dict):
                         p["image_url"] = _copy_or_download_product_image(p.get("image_url"))
+                        _sync_product_detail_images(p)
                 mall_database.bulk_sync_products_from_obs(prods, delete_missing=True)
                 synced_any = True
         except Exception:
@@ -380,12 +399,14 @@ def mall_product_detail(num):
     if not product:
         return redirect(url_for("mall_home"))
     reviews = mall_database.get_mall_reviews(num)
+    review_summary = mall_database.get_mall_review_summary(num)
     related = [p for p in mall_database.get_all_mall_products() if p["num"] != num][:4]
     live_state = mall_database.get_full_live_state()
     return render_template(
         "product_detail.html",
         product=product,
         reviews=reviews,
+        review_summary=review_summary,
         related_products=related,
         live_state=live_state,
         active_nav="shop"
@@ -652,7 +673,9 @@ def api_mall_live_state_lite():
         return Response(status=304, headers={"ETag": etag})
 
     if request.args.get("reviews") == "1" and state.get("selected_product"):
-        state["selected_product_reviews"] = mall_database.get_mall_reviews(state["selected_product"]["num"])
+        sel_num = state["selected_product"]["num"]
+        state["selected_product_reviews"] = mall_database.get_mall_reviews(sel_num)
+        state["selected_product_review_summary"] = mall_database.get_mall_review_summary(sel_num)
     state["status"] = "ok"
     resp = jsonify(state)
     resp.headers["ETag"] = etag
@@ -674,7 +697,9 @@ def api_mall_live_sse_stream():
             cur_ver = state.get("state_version", 1)
             if cur_ver != last_sent_ver:
                 if state.get("selected_product"):
-                    state["selected_product_reviews"] = mall_database.get_mall_reviews(state["selected_product"]["num"])
+                    sel_num = state["selected_product"]["num"]
+                    state["selected_product_reviews"] = mall_database.get_mall_reviews(sel_num)
+                    state["selected_product_review_summary"] = mall_database.get_mall_review_summary(sel_num)
                 state["status"] = "ok"
                 payload = json.dumps(state, ensure_ascii=False)
                 yield f"id: {cur_ver}\nevent: live_state\ndata: {payload}\n\n"
@@ -706,6 +731,9 @@ def api_mall_live_state():
     sel = state.get("selected_product")
     reviews = mall_database.get_mall_reviews(sel["num"]) if sel else []
     state["selected_product_reviews"] = reviews
+    state["selected_product_review_summary"] = (
+        mall_database.get_mall_review_summary(sel["num"]) if sel else {"count": 0, "avg_rating": 0.0}
+    )
     state["status"] = "ok"
     return jsonify(state), 200
 
@@ -725,10 +753,14 @@ def api_sync_from_obs():
     if action == "upsert_product":
         prod = data.get("product") or {}
         if prod:
+            images_b64 = data.get("images_b64") or {}
+            img_u = prod.get("image_url") or ""
+            fname = os.path.basename(str(img_u).split("?")[0]) if img_u else ""
             prod["image_url"] = _copy_or_download_product_image(
-                prod.get("image_url"),
-                image_b64=data.get("image_b64")
+                img_u,
+                image_b64=data.get("image_b64") or (images_b64.get(fname) if fname else None)
             )
+            _sync_product_detail_images(prod, images_b64=images_b64)
             saved = mall_database.upsert_product_from_obs(prod)
             return jsonify({"status": "ok", "action": "upsert_product", "product": saved}), 200
 
@@ -740,6 +772,7 @@ def api_sync_from_obs():
                 img_u = p.get("image_url") or ""
                 b64_data = images_b64.get(os.path.basename(str(img_u).split("?")[0])) if img_u else None
                 p["image_url"] = _copy_or_download_product_image(img_u, image_b64=b64_data)
+                _sync_product_detail_images(p, images_b64=images_b64)
         cnt = mall_database.bulk_sync_products_from_obs(
             products,
             delete_missing=bool(data.get("delete_missing", True))
@@ -777,7 +810,14 @@ def api_sync_from_obs():
                 live_bundle[k] = data[k]
         if "product" in data and isinstance(data["product"], dict):
             p = data["product"]
-            p["image_url"] = _copy_or_download_product_image(p.get("image_url"), image_b64=data.get("image_b64"))
+            images_b64 = data.get("images_b64") or {}
+            img_u = p.get("image_url") or ""
+            fname = os.path.basename(str(img_u).split("?")[0]) if img_u else ""
+            p["image_url"] = _copy_or_download_product_image(
+                img_u,
+                image_b64=data.get("image_b64") or (images_b64.get(fname) if fname else None)
+            )
+            _sync_product_detail_images(p, images_b64=images_b64)
             mall_database.upsert_product_from_obs(p)
         if live_bundle:
             mall_database.update_live_state_bundle(live_bundle)
@@ -844,7 +884,8 @@ def api_mall_product_detail(num):
     if not prod:
         return jsonify({"status": "error", "message": "상품을 찾을 수 없습니다."}), 404
     reviews = mall_database.get_mall_reviews(num)
-    return jsonify({"status": "ok", "product": prod, "reviews": reviews}), 200
+    review_summary = mall_database.get_mall_review_summary(num)
+    return jsonify({"status": "ok", "product": prod, "reviews": reviews, "review_summary": review_summary}), 200
 
 
 @app.route("/api/orders/create", methods=["POST"])
@@ -1021,16 +1062,44 @@ def api_mall_admin_apply_discount():
 
 @app.route("/api/reviews/add", methods=["POST"])
 def api_mall_add_review():
+    user = get_current_mall_user()
+    if not user:
+        return jsonify({
+            "status": "error",
+            "code": "AUTH_REQUIRED",
+            "message": "리뷰 작성은 로그인한 회원만 이용하실 수 있습니다."
+        }), 401
+    if not mall_security.verify_csrf_token(session, request):
+        return jsonify({
+            "status": "error",
+            "code": "CSRF_INVALID",
+            "message": "보안 토큰(CSRF) 검증에 실패했습니다. 페이지를 새로고침해 주세요."
+        }), 403
+
     data = request.get_json(silent=True) or {}
-    num = data.get("product_num")
-    author = data.get("author", "구매고객")
-    rating = data.get("rating", 5)
+    try:
+        num = int(data.get("product_num") or 0)
+    except Exception:
+        num = 0
+    if num <= 0 or not mall_database.get_mall_product_by_num(num):
+        return jsonify({"status": "error", "message": "리뷰를 등록할 상품을 찾을 수 없습니다."}), 404
+
     content = str(data.get("content") or "").strip()
-    if not num or not content:
-        return jsonify({"status": "error", "message": "리뷰 내용을 입력해 주세요."}), 400
-    mall_database.add_mall_review(num, author, rating, content)
+    if len(content) < 2:
+        return jsonify({"status": "error", "message": "리뷰 내용을 2자 이상 입력해 주세요."}), 400
+    if len(content) > 1000:
+        return jsonify({"status": "error", "message": "리뷰 내용은 1,000자 이내로 입력해 주세요."}), 400
+
+    try:
+        rating = max(1, min(5, int(data.get("rating") or 5)))
+    except Exception:
+        rating = 5
+
+    author = str(user.get("name") or "구매회원").strip() or "구매회원"
+    mall_database.add_mall_review(num, author, rating, content, user_id=user.get("id"))
     reviews = mall_database.get_mall_reviews(num)
-    return jsonify({"status": "ok", "reviews": reviews}), 200
+    summary = mall_database.get_mall_review_summary(num)
+    return jsonify({"status": "ok", "reviews": reviews, "summary": summary}), 200
 
 
 if __name__ == "__main__":

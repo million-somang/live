@@ -8,6 +8,7 @@
 import os
 import sys
 import io
+import json
 import sqlite3
 from datetime import datetime
 from threading import RLock
@@ -63,6 +64,12 @@ def init_db(reset=False):
                     cost_price INTEGER NOT NULL DEFAULT 0,
                     image_url TEXT DEFAULT '',
                     specs TEXT DEFAULT '',
+                    detail_content TEXT DEFAULT '',
+                    detail_images TEXT DEFAULT '[]',
+                    shipping_info TEXT DEFAULT '',
+                    exchange_return_info TEXT DEFAULT '',
+                    non_returnable_info TEXT DEFAULT '',
+                    as_info TEXT DEFAULT '',
                     created_at TEXT NOT NULL
                 )
             """)
@@ -109,6 +116,12 @@ def init_db(reset=False):
                 ("products", "live_price", "INTEGER DEFAULT 0"),
                 ("products", "consumer_price", "INTEGER DEFAULT 0"),
                 ("products", "cost_price", "INTEGER DEFAULT 0"),
+                ("products", "detail_content", "TEXT DEFAULT ''"),
+                ("products", "detail_images", "TEXT DEFAULT '[]'"),
+                ("products", "shipping_info", "TEXT DEFAULT ''"),
+                ("products", "exchange_return_info", "TEXT DEFAULT ''"),
+                ("products", "non_returnable_info", "TEXT DEFAULT ''"),
+                ("products", "as_info", "TEXT DEFAULT ''"),
                 ("orders", "confirmed_at", "TEXT DEFAULT ''"),
                 ("orders", "unit_cost", "INTEGER DEFAULT 0"),
                 ("orders", "profit", "INTEGER DEFAULT 0"),
@@ -292,6 +305,137 @@ def init_db(reset=False):
 # 📦 상품 및 재고(Options) 관리 API
 # ==========================================
 
+POLICY_FIELD_KEYS = (
+    "shipping_info",
+    "exchange_return_info",
+    "non_returnable_info",
+    "as_info",
+)
+
+DEFAULT_PRODUCT_POLICIES = {
+    "shipping_info": (
+        "• 배송방법: 택배 발송 (결제 확인 후 영업일 기준 1~3일 이내 출고)\n"
+        "• 배송비: 기본 4,000원 (도서·산간 지역은 추가 배송비가 발생할 수 있습니다.)\n"
+        "• 출고 안내: 오후 2시 이전 주문 건은 재고 보유 시 당일 출고됩니다."
+    ),
+    "exchange_return_info": (
+        "• 신청 기간: 상품 수령일로부터 7일 이내 고객센터 또는 주문조회를 통해 신청 가능합니다.\n"
+        "• 단순 변심: 왕복 택배비(7,000원) 고객 부담 시 교환·반품 처리됩니다.\n"
+        "• 오배송/불량: 수령 즉시 사진과 함께 문의 주시면 무료 교환·환불 도와드립니다."
+    ),
+    "non_returnable_info": (
+        "• 상품 수령 후 7일이 경과한 경우\n"
+        "• 착용, 세탁, 수선, 라벨/택(Tag) 제거 또는 포장이 훼손되어 재판매가 어려운 경우\n"
+        "• 고객 부주의로 인한 오염·손상(화장품, 향수, 음식물 등)이 발생한 경우"
+    ),
+    "as_info": (
+        "• 보증 기준: 제품 수령 후 6개월 이내 봉제 불량 등 제조상 결함에 대한 A/S 지원\n"
+        "• 처리 안내: 사용 중 부주의로 인한 손상은 유상 수선으로 진행될 수 있습니다.\n"
+        "• 접수 방법: 주문번호와 제품 사진 확인 후 순차적으로 안내해 드립니다."
+    ),
+}
+
+
+def _parse_detail_images(raw):
+    """상세 이미지 목록을 정제된 URL 문자열 리스트(최대 30개)로 정규화합니다."""
+    items = []
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str):
+        s = raw.strip()
+        if s:
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    items = parsed
+            except Exception:
+                items = [line.strip() for line in s.splitlines() if line.strip()]
+    cleaned = []
+    for u in items:
+        su = str(u or "").strip()
+        if su and len(cleaned) < 30:
+            cleaned.append(su)
+    return cleaned
+
+
+def _serialize_detail_images(raw):
+    """상세 이미지 리스트를 JSON 문자열로 직렬화합니다."""
+    return json.dumps(_parse_detail_images(raw), ensure_ascii=False)
+
+
+def _row_text(row, keys, col, default=""):
+    """SQLite Row에서 신규 컬럼을 하위 호환 방식으로 안전하게 읽습니다."""
+    if col not in keys or row[col] is None:
+        return default
+    return str(row[col])
+
+
+def _build_product_dict(prow, opt_rows):
+    """products 행과 product_options 행을 표준 상품 딕셔너리로 변환합니다."""
+    keys = set(prow.keys())
+    options = [
+        {"color": opt["color"], "size": opt["size"], "stock": opt["stock"]}
+        for opt in opt_rows
+    ]
+    total_stock = sum(o["stock"] for o in options)
+
+    sell_p = prow["price"]
+    live_p = prow["live_price"] if "live_price" in keys and prow["live_price"] is not None and int(prow["live_price"]) > 0 else sell_p
+    cons_p = prow["consumer_price"] if "consumer_price" in keys and prow["consumer_price"] is not None else sell_p
+    cost_p = prow["cost_price"] if "cost_price" in keys and prow["cost_price"] is not None else 0
+    if cons_p <= 0:
+        cons_p = sell_p
+
+    margin_unit = max(0, sell_p - cost_p) if cost_p > 0 else sell_p
+    margin_rate = round((margin_unit / sell_p * 100), 1) if sell_p > 0 else 0
+    live_margin_unit = max(0, live_p - cost_p) if cost_p > 0 else live_p
+    live_margin_rate = round((live_margin_unit / live_p * 100), 1) if live_p > 0 else 0
+    potential_profit = margin_unit * total_stock
+
+    return {
+        "id": f"item-{prow['id']}",
+        "db_id": prow["id"],
+        "num": prow["num"],
+        "name": prow["name"],
+        "price": sell_p,
+        "live_price": live_p,
+        "consumer_price": cons_p,
+        "cost_price": cost_p,
+        "margin_unit": margin_unit,
+        "margin_rate": margin_rate,
+        "live_margin_unit": live_margin_unit,
+        "live_margin_rate": live_margin_rate,
+        "potential_profit": potential_profit,
+        "image_url": prow["image_url"] or "",
+        "specs": prow["specs"] or "",
+        "detail_content": _row_text(prow, keys, "detail_content", ""),
+        "detail_images": _parse_detail_images(prow["detail_images"] if "detail_images" in keys else []),
+        "shipping_info": _row_text(prow, keys, "shipping_info", ""),
+        "exchange_return_info": _row_text(prow, keys, "exchange_return_info", ""),
+        "non_returnable_info": _row_text(prow, keys, "non_returnable_info", ""),
+        "as_info": _row_text(prow, keys, "as_info", ""),
+        "created_at": prow["created_at"],
+        "total_stock": total_stock,
+        "options": options
+    }
+
+
+def get_product_policy_defaults():
+    """재고 관리에서 새 상품 등록 시 자동 채워지는 공통 기본 안내 4종을 반환합니다."""
+    saved = get_overlay_state("product_policy_defaults", None)
+    if isinstance(saved, dict):
+        return {k: str(saved.get(k) or "").strip() for k in POLICY_FIELD_KEYS}
+    return dict(DEFAULT_PRODUCT_POLICIES)
+
+
+def set_product_policy_defaults(policy_data):
+    """공통 기본 안내 4종(배송·교환/반품·불가사항·AS)을 DB에 영구 저장합니다."""
+    raw = policy_data if isinstance(policy_data, dict) else {}
+    normalized = {k: str(raw.get(k) or "").strip() for k in POLICY_FIELD_KEYS}
+    set_overlay_state("product_policy_defaults", normalized)
+    return normalized
+
+
 def add_product(product_data):
     """신규 상품 및 옵션 매트릭스를 DB에 일괄 저장합니다."""
     with db_lock:
@@ -319,8 +463,13 @@ def add_product(product_data):
                 live_price = sell_price
 
             cursor.execute("""
-                INSERT INTO products (num, name, price, live_price, consumer_price, cost_price, image_url, specs, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO products (
+                    num, name, price, live_price, consumer_price, cost_price,
+                    image_url, specs, detail_content, detail_images,
+                    shipping_info, exchange_return_info, non_returnable_info, as_info,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 num,
                 product_data.get("name", "신규 상품"),
@@ -328,8 +477,14 @@ def add_product(product_data):
                 live_price,
                 cons_price,
                 cost_price,
-                product_data.get("image_url", ""),
-                product_data.get("specs", ""),
+                str(product_data.get("image_url") or "").strip(),
+                str(product_data.get("specs") or "").strip(),
+                str(product_data.get("detail_content") or "").strip(),
+                _serialize_detail_images(product_data.get("detail_images")),
+                str(product_data.get("shipping_info") or "").strip(),
+                str(product_data.get("exchange_return_info") or "").strip(),
+                str(product_data.get("non_returnable_info") or "").strip(),
+                str(product_data.get("as_info") or "").strip(),
                 now_str
             ))
             product_id = cursor.lastrowid
@@ -372,51 +527,7 @@ def get_all_products():
                 pid = prow["id"]
                 cursor.execute("SELECT color, size, stock FROM product_options WHERE product_id = ? ORDER BY id ASC", (pid,))
                 opt_rows = cursor.fetchall()
-
-                options = []
-                total_stock = 0
-                for opt in opt_rows:
-                    stk = opt["stock"]
-                    total_stock += stk
-                    options.append({
-                        "color": opt["color"],
-                        "size": opt["size"],
-                        "stock": stk
-                    })
-
-                sell_p = prow["price"]
-                live_p = prow["live_price"] if "live_price" in prow.keys() and prow["live_price"] is not None and int(prow["live_price"]) > 0 else sell_p
-                cons_p = prow["consumer_price"] if "consumer_price" in prow.keys() and prow["consumer_price"] is not None else sell_p
-                cost_p = prow["cost_price"] if "cost_price" in prow.keys() and prow["cost_price"] is not None else 0
-                if cons_p <= 0:
-                    cons_p = sell_p
-
-                margin_unit = max(0, sell_p - cost_p) if cost_p > 0 else sell_p
-                margin_rate = round((margin_unit / sell_p * 100), 1) if sell_p > 0 else 0
-                live_margin_unit = max(0, live_p - cost_p) if cost_p > 0 else live_p
-                live_margin_rate = round((live_margin_unit / live_p * 100), 1) if live_p > 0 else 0
-                potential_profit = margin_unit * total_stock
-
-                products.append({
-                    "id": f"item-{pid}",
-                    "db_id": pid,
-                    "num": prow["num"],
-                    "name": prow["name"],
-                    "price": sell_p,
-                    "live_price": live_p,
-                    "consumer_price": cons_p,
-                    "cost_price": cost_p,
-                    "margin_unit": margin_unit,
-                    "margin_rate": margin_rate,
-                    "live_margin_unit": live_margin_unit,
-                    "live_margin_rate": live_margin_rate,
-                    "potential_profit": potential_profit,
-                    "image_url": prow["image_url"],
-                    "specs": prow["specs"],
-                    "created_at": prow["created_at"],
-                    "total_stock": total_stock,
-                    "options": options
-                })
+                products.append(_build_product_dict(prow, opt_rows))
             return products
         finally:
             conn.close()
@@ -436,48 +547,13 @@ def get_product_by_id(product_id):
 
             cursor.execute("SELECT color, size, stock FROM product_options WHERE product_id = ? ORDER BY id ASC", (real_id,))
             opt_rows = cursor.fetchall()
-            options = [{"color": r["color"], "size": r["size"], "stock": r["stock"]} for r in opt_rows]
-            total_stock = sum(o["stock"] for o in options)
-
-            sell_p = prow["price"]
-            live_p = prow["live_price"] if "live_price" in prow.keys() and prow["live_price"] is not None and int(prow["live_price"]) > 0 else sell_p
-            cons_p = prow["consumer_price"] if "consumer_price" in prow.keys() and prow["consumer_price"] is not None else sell_p
-            cost_p = prow["cost_price"] if "cost_price" in prow.keys() and prow["cost_price"] is not None else 0
-            if cons_p <= 0:
-                cons_p = sell_p
-
-            margin_unit = max(0, sell_p - cost_p) if cost_p > 0 else sell_p
-            margin_rate = round((margin_unit / sell_p * 100), 1) if sell_p > 0 else 0
-            live_margin_unit = max(0, live_p - cost_p) if cost_p > 0 else live_p
-            live_margin_rate = round((live_margin_unit / live_p * 100), 1) if live_p > 0 else 0
-            potential_profit = margin_unit * total_stock
-
-            return {
-                "id": f"item-{prow['id']}",
-                "db_id": prow["id"],
-                "num": prow["num"],
-                "name": prow["name"],
-                "price": sell_p,
-                "live_price": live_p,
-                "consumer_price": cons_p,
-                "cost_price": cost_p,
-                "margin_unit": margin_unit,
-                "margin_rate": margin_rate,
-                "live_margin_unit": live_margin_unit,
-                "live_margin_rate": live_margin_rate,
-                "potential_profit": potential_profit,
-                "image_url": prow["image_url"],
-                "specs": prow["specs"],
-                "created_at": prow["created_at"],
-                "total_stock": total_stock,
-                "options": options
-            }
+            return _build_product_dict(prow, opt_rows)
         finally:
             conn.close()
 
 
 def update_product(product_id, update_data):
-    """상품 기본 정보(소비자가, 원가 포함) 및 옵션 수정"""
+    """상품 기본 정보(소비자가, 원가, 상세페이지, 4대 안내 포함) 및 옵션 수정"""
     with db_lock:
         conn = get_connection()
         try:
@@ -501,12 +577,13 @@ def update_product(product_id, update_data):
             if "cost_price" in update_data:
                 fields.append("cost_price = ?")
                 vals.append(int(update_data["cost_price"]))
-            if "image_url" in update_data:
-                fields.append("image_url = ?")
-                vals.append(update_data["image_url"])
-            if "specs" in update_data:
-                fields.append("specs = ?")
-                vals.append(update_data["specs"])
+            for txt_col in ("image_url", "specs", "detail_content", *POLICY_FIELD_KEYS):
+                if txt_col in update_data:
+                    fields.append(f"{txt_col} = ?")
+                    vals.append(str(update_data[txt_col] or "").strip())
+            if "detail_images" in update_data:
+                fields.append("detail_images = ?")
+                vals.append(_serialize_detail_images(update_data["detail_images"]))
 
             if fields:
                 vals.append(real_id)
@@ -2634,16 +2711,19 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
                     shutil.copy2(src_p, dst_p)
                 return f"/static/uploads/products/{fname}"
 
+            def _copy_local_product_bundle(prod_dict):
+                cp = dict(prod_dict)
+                cp["image_url"] = _copy_local_img(cp.get("image_url"))
+                if "detail_images" in cp:
+                    cp["detail_images"] = [
+                        _copy_local_img(u) for u in _parse_detail_images(cp.get("detail_images"))
+                    ]
+                return cp
+
             if action == "upsert_product" and isinstance(payload.get("product"), dict):
-                p = dict(payload["product"])
-                p["image_url"] = _copy_local_img(p.get("image_url"))
-                mdb.upsert_product_from_obs(p)
+                mdb.upsert_product_from_obs(_copy_local_product_bundle(payload["product"]))
             elif action == "bulk_sync" and isinstance(payload.get("products"), list):
-                prods = []
-                for p in payload["products"]:
-                    cp = dict(p)
-                    cp["image_url"] = _copy_local_img(cp.get("image_url"))
-                    prods.append(cp)
+                prods = [_copy_local_product_bundle(p) for p in payload["products"] if isinstance(p, dict)]
                 mdb.bulk_sync_products_from_obs(prods, delete_missing=True)
                 if isinstance(payload.get("live_state"), dict):
                     mdb.update_live_state_bundle(payload["live_state"])
@@ -2677,19 +2757,31 @@ def sync_to_shopping_mall(action, payload=None, blocking=False):
 
     # 2. 쇼핑몰 HTTP 서버(원격 클라우드 또는 로컬 Port 3000)로 Outbound 웹훅 전송
     if mall_url:
-        # 원격 클라우드 서버인 경우 변경된 로컬 상품 이미지를 Base64로 함께 첨부
+        # 원격 클라우드 서버인 경우 변경된 로컬 상품 이미지(대표 + 상세 이미지 전체)를 Base64로 함께 첨부
         if is_remote or not os.path.isdir(mall_dir):
+            def _collect_prod_b64(prod_dict, images_map):
+                if not isinstance(prod_dict, dict):
+                    return
+                urls = [prod_dict.get("image_url")] + _parse_detail_images(prod_dict.get("detail_images"))
+                for img_u in urls:
+                    fname, b64 = _read_local_product_image_b64_if_changed(base_dir, img_u)
+                    if fname and b64:
+                        images_map[fname] = b64
+
+            images_b64 = dict(payload.get("images_b64") or {})
             if action == "upsert_product" and isinstance(payload.get("product"), dict):
-                _, b64 = _read_local_product_image_b64_if_changed(base_dir, payload["product"].get("image_url"))
-                if b64:
-                    payload["image_b64"] = b64
+                _, main_b64 = _read_local_product_image_b64_if_changed(base_dir, payload["product"].get("image_url"))
+                if main_b64:
+                    payload["image_b64"] = main_b64
+                for d_u in _parse_detail_images(payload["product"].get("detail_images")):
+                    fname, b64 = _read_local_product_image_b64_if_changed(base_dir, d_u)
+                    if fname and b64:
+                        images_b64[fname] = b64
+                if images_b64:
+                    payload["images_b64"] = images_b64
             elif action == "bulk_sync" and isinstance(payload.get("products"), list):
-                images_b64 = dict(payload.get("images_b64") or {})
                 for p in payload["products"]:
-                    if isinstance(p, dict):
-                        fname, b64 = _read_local_product_image_b64_if_changed(base_dir, p.get("image_url"))
-                        if fname and b64:
-                            images_b64[fname] = b64
+                    _collect_prod_b64(p, images_b64)
                 if images_b64:
                     payload["images_b64"] = images_b64
 
