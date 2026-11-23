@@ -394,6 +394,10 @@ def mall_live_commerce():
     """
     pull_sync_from_obs_server(force=True)
     live_state = mall_database.get_full_live_state()
+    user = get_current_mall_user()
+    is_admin = bool(user and user.get("role") == "ADMIN")
+    if not live_state.get("is_live") and not is_admin:
+        return redirect(url_for("mall_home"))
     return render_template(
         "live_commerce.html",
         live_state=live_state,

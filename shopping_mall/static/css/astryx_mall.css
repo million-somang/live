@@ -249,6 +249,21 @@ img {
     box-shadow: 0 4px 12px rgba(79, 70, 229, 0.24);
 }
 
+.ax-nav-link.ax-nav-disabled {
+    color: var(--ax-text-muted);
+    background: var(--ax-surface-tertiary);
+    border-color: var(--ax-border-subtle);
+    opacity: 0.62;
+    cursor: not-allowed;
+    user-select: none;
+}
+
+.ax-nav-link.ax-nav-disabled:hover {
+    color: var(--ax-text-muted);
+    background: var(--ax-surface-tertiary);
+    border-color: var(--ax-border-subtle);
+}
+
 .ax-live-dot {
     width: 7px;
     height: 7px;
