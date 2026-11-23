@@ -46,6 +46,28 @@
             <input type="text" id="regAddressDetail" name="address_detail" value="{{ prefill.address_detail if prefill else '' }}" placeholder="상세 주소 (동/호수)" class="ax-input">
         </div>
 
+        <div class="ax-agree-box">
+            <label class="ax-agree-row ax-agree-all" for="regAgreeAll">
+                <input type="checkbox" id="regAgreeAll">
+                <span>약관 전체 동의 (필수 약관 및 개인정보 수집·이용)</span>
+            </label>
+            <div class="ax-agree-divider"></div>
+            <div class="ax-agree-row">
+                <label class="ax-agree-check-label" for="regAgreeTerms">
+                    <input type="checkbox" id="regAgreeTerms" name="agree_terms" value="on" required>
+                    <span><strong>[필수]</strong> 전자상거래 이용약관 동의</span>
+                </label>
+                <a href="/policy/terms" target="_blank" rel="noopener" class="ax-agree-view-link">전문 보기</a>
+            </div>
+            <div class="ax-agree-row">
+                <label class="ax-agree-check-label" for="regAgreePrivacy">
+                    <input type="checkbox" id="regAgreePrivacy" name="agree_privacy" value="on" required>
+                    <span><strong>[필수]</strong> 개인정보 수집 및 이용 동의</span>
+                </label>
+                <a href="/policy/privacy" target="_blank" rel="noopener" class="ax-agree-view-link">전문 보기</a>
+            </div>
+        </div>
+
         <button type="submit" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block" style="margin-top:6px;">
             회원가입 완료하기
         </button>
@@ -56,4 +78,30 @@
         <a href="/auth/login?next={{ next_url or '/' }}" style="color:var(--ax-accent-primary); font-weight:700; margin-left:6px;">로그인하기</a>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        const agreeAll = document.getElementById('regAgreeAll');
+        const reqChecks = [
+            document.getElementById('regAgreeTerms'),
+            document.getElementById('regAgreePrivacy')
+        ].filter(Boolean);
+        if (!agreeAll || reqChecks.length === 0) return;
+
+        agreeAll.addEventListener('change', () => {
+            const checked = Boolean(agreeAll.checked);
+            reqChecks.forEach(cb => {
+                cb.checked = checked;
+            });
+        });
+
+        reqChecks.forEach(cb => {
+            cb.addEventListener('change', () => {
+                agreeAll.checked = reqChecks.every(item => item.checked);
+            });
+        });
+    })();
+</script>
 {% endblock %}

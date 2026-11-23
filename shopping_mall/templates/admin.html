@@ -59,6 +59,9 @@
             <span>환불/교환 관리</span>
             <span class="ax-num">(<span id="adminTabClaimsCount">{{ orders|selectattr('order_status', 'in', ['환불요청', '환불완료', '교환요청', '교환완료'])|list|length }}</span>)</span>
         </button>
+        <button type="button" id="adminTabStore" class="ax-tab-btn" data-tab="store" onclick="switchAdminTab(this.dataset.tab)">
+            <span>스토어 설정</span>
+        </button>
     </nav>
 </div>
 
@@ -257,6 +260,119 @@
     <div id="adminClaimsList" style="display:flex; flex-direction:column; gap:12px;"></div>
 </section>
 
+<!-- 5. 스토어 · 사업자 정보 및 법정 약관 설정 패널 -->
+<section id="adminPanelStore" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">스토어 · 사업자 및 법정 필수 고지 설정</h2>
+                <span class="ax-badge ax-badge-indigo">푸터 · 약관 · 결제 연동</span>
+            </div>
+            <p style="font-size:0.8125rem; color:var(--ax-text-secondary); margin-top:2px;">쇼핑몰 하단 푸터, 전자상거래 약관 3종(이용약관 · 개인정보처리방침 · 이용안내), 결제 계좌 안내에 표시되는 사업자·고객센터·입금계좌 정보를 관리합니다.</p>
+        </div>
+        <div class="ax-toolbar-actions">
+            <a href="/policy/terms" target="_blank" rel="noopener" class="ax-btn ax-btn-secondary ax-btn-sm">이용약관 보기</a>
+            <a href="/policy/privacy" target="_blank" rel="noopener" class="ax-btn ax-btn-secondary ax-btn-sm">개인정보처리방침 보기</a>
+            <a href="/policy/guide" target="_blank" rel="noopener" class="ax-btn ax-btn-secondary ax-btn-sm">교환·반품·배송 안내</a>
+        </div>
+    </div>
+
+    <form id="adminStoreInfoForm" onsubmit="saveAdminStoreInfo(event)">
+        <div class="ax-admin-modal-section">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">1. 사업자 기본 및 전자상거래 법정 표시 정보</span>
+            </div>
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="asBrandName">쇼핑몰 브랜드명 *</label>
+                    <input type="text" id="asBrandName" class="ax-input" value="{{ store_info.brand_name }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asCompanyName">상호 (법인/사업자명) *</label>
+                    <input type="text" id="asCompanyName" class="ax-input" value="{{ store_info.company_name }}" required>
+                </div>
+            </div>
+            <div class="ax-form-row-3">
+                <div class="ax-field">
+                    <label class="ax-label" for="asCeoName">대표자 성명 *</label>
+                    <input type="text" id="asCeoName" class="ax-input" value="{{ store_info.ceo_name }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asBizRegNo">사업자등록번호 * (10자리 입력 시 공정위 링크 자동 생성)</label>
+                    <input type="text" id="asBizRegNo" class="ax-input ax-num" value="{{ store_info.biz_reg_no }}" placeholder="123-45-67890" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asTelecomRegNo">통신판매업 신고번호 *</label>
+                    <input type="text" id="asTelecomRegNo" class="ax-input ax-num" value="{{ store_info.telecom_reg_no }}" placeholder="제2026-서울강남-00000호" required>
+                </div>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="asBizAddress">사업장 소재지 주소 *</label>
+                <input type="text" id="asBizAddress" class="ax-input" value="{{ store_info.biz_address }}" required>
+            </div>
+            <div class="ax-form-row-3">
+                <div class="ax-field">
+                    <label class="ax-label" for="asPrivacyOfficer">개인정보보호책임자 *</label>
+                    <input type="text" id="asPrivacyOfficer" class="ax-input" value="{{ store_info.privacy_officer }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asContactEmail">대표 문의 이메일 *</label>
+                    <input type="email" id="asContactEmail" class="ax-input" value="{{ store_info.contact_email }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asHostingProvider">호스팅 서비스 제공자 *</label>
+                    <input type="text" id="asHostingProvider" class="ax-input" value="{{ store_info.hosting_provider }}" required>
+                </div>
+            </div>
+        </div>
+
+        <div class="ax-admin-modal-section">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">2. 고객센터 · 입금계좌 · 구매안전 &amp; 약관 시행일</span>
+            </div>
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="asCsPhone">고객센터 대표전화 *</label>
+                    <input type="text" id="asCsPhone" class="ax-input ax-num" value="{{ store_info.cs_phone }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asCsHours">고객센터 운영시간 *</label>
+                    <input type="text" id="asCsHours" class="ax-input" value="{{ store_info.cs_hours }}" required>
+                </div>
+            </div>
+            <div class="ax-form-row-3">
+                <div class="ax-field">
+                    <label class="ax-label" for="asBankName">무통장 입금 은행 *</label>
+                    <input type="text" id="asBankName" class="ax-input" value="{{ store_info.bank_name }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asBankAccount">무통장 입금 계좌번호 *</label>
+                    <input type="text" id="asBankAccount" class="ax-input ax-num" value="{{ store_info.bank_account }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asBankHolder">예금주 *</label>
+                    <input type="text" id="asBankHolder" class="ax-input" value="{{ store_info.bank_holder }}" required>
+                </div>
+            </div>
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="asEffectiveDate">약관 · 개인정보처리방침 시행일 *</label>
+                    <input type="text" id="asEffectiveDate" class="ax-input ax-num" value="{{ store_info.effective_date }}" placeholder="2026-01-01" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asEscrowNotice">구매안전 / 에스크로 고지 문구 *</label>
+                    <input type="text" id="asEscrowNotice" class="ax-input" value="{{ store_info.escrow_notice }}" required>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <span id="adminStoreSaveHint" style="font-size:0.8rem; color:var(--ax-text-secondary);">저장 후 스토어 하단 푸터와 `/policy/*` 문서에 즉시 반영됩니다.</span>
+            <button type="submit" id="btnSaveAdminStoreInfo" class="ax-btn ax-btn-primary">스토어 정보 저장</button>
+        </div>
+    </form>
+</section>
+
 <!-- 상품 등록 / 수정 Astryx Dialog 모달 -->
 <div class="ax-dialog-backdrop" id="adminProductModal" role="dialog" aria-modal="true" aria-labelledby="adminProductModalTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closeAdminProductModal)">
     <div class="ax-dialog-card ax-dialog-wide">
@@ -452,9 +568,9 @@
     const ALL_PAYMENT_STATUS_OPTIONS = ['입금대기', '입금완료', '환불대기', '환불완료'];
 
     function switchAdminTab(tabName) {
-        const tabs = ['products', 'categories', 'orders', 'claims'];
-        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders', claims: 'adminTabClaims' };
-        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders', claims: 'adminPanelClaims' };
+        const tabs = ['products', 'categories', 'orders', 'claims', 'store'];
+        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders', claims: 'adminTabClaims', store: 'adminTabStore' };
+        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders', claims: 'adminPanelClaims', store: 'adminPanelStore' };
         tabs.forEach(t => {
             const btn = document.getElementById(tMap[t]);
             const panel = document.getElementById(pMap[t]);
@@ -1466,6 +1582,51 @@
             }
         } catch (e) {
             alert('할인율 적용 오류: ' + e.message);
+        }
+    }
+
+    async function saveAdminStoreInfo(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnSaveAdminStoreInfo');
+        const payload = {
+            brand_name: document.getElementById('asBrandName')?.value.trim() || '',
+            company_name: document.getElementById('asCompanyName')?.value.trim() || '',
+            ceo_name: document.getElementById('asCeoName')?.value.trim() || '',
+            biz_reg_no: document.getElementById('asBizRegNo')?.value.trim() || '',
+            telecom_reg_no: document.getElementById('asTelecomRegNo')?.value.trim() || '',
+            biz_address: document.getElementById('asBizAddress')?.value.trim() || '',
+            privacy_officer: document.getElementById('asPrivacyOfficer')?.value.trim() || '',
+            contact_email: document.getElementById('asContactEmail')?.value.trim() || '',
+            hosting_provider: document.getElementById('asHostingProvider')?.value.trim() || '',
+            cs_phone: document.getElementById('asCsPhone')?.value.trim() || '',
+            cs_hours: document.getElementById('asCsHours')?.value.trim() || '',
+            bank_name: document.getElementById('asBankName')?.value.trim() || '',
+            bank_account: document.getElementById('asBankAccount')?.value.trim() || '',
+            bank_holder: document.getElementById('asBankHolder')?.value.trim() || '',
+            effective_date: document.getElementById('asEffectiveDate')?.value.trim() || '',
+            escrow_notice: document.getElementById('asEscrowNotice')?.value.trim() || ''
+        };
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/store-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                const hint = document.getElementById('adminStoreSaveHint');
+                if (hint) {
+                    hint.textContent = `저장 완료 (${new Date().toLocaleTimeString('ko-KR')}) — 푸터 및 약관 페이지에 반영되었습니다.`;
+                }
+                showMallToast('스토어 · 사업자 정보가 저장되었습니다.');
+            } else {
+                alert((data && data.message) || '스토어 정보 저장 실패');
+            }
+        } catch (err) {
+            alert('스토어 정보 저장 오류: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
 

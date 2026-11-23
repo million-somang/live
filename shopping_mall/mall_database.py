@@ -40,6 +40,44 @@ DEFAULT_MALL_POLICIES = {
     "as_info": "• 수령 후 7일 이내 초기 불량 확인 시 신속히 교환/환불 처리해 드립니다.\n• A/S 및 기타 문의는 고객센터 또는 주문 내역을 통해 접수해 주세요.",
 }
 
+DEFAULT_STORE_INFO = {
+    "brand_name": "골라방 LIVE",
+    "company_name": "골라방 LIVE",
+    "ceo_name": "박창현",
+    "biz_reg_no": "000-00-00000",
+    "telecom_reg_no": "제2026-서울강남-00000호",
+    "biz_address": "서울특별시 (관리자 '스토어 설정'에서 사업장 주소를 입력해 주세요)",
+    "privacy_officer": "박창현",
+    "contact_email": "support@golabang.kr",
+    "cs_phone": "010-0000-0000",
+    "cs_hours": "평일 10:00 ~ 18:00 (점심 12:00 ~ 13:00 / 주말·공휴일 휴무)",
+    "bank_name": "카카오뱅크",
+    "bank_account": "3333 233 094904",
+    "bank_holder": "박창현",
+    "hosting_provider": "자체 운영 서버 (골라방 LIVE)",
+    "escrow_notice": "고객님은 안전거래를 위해 현금 등으로 결제 시 쇼핑몰에서 안내하는 구매안전서비스(주문조회·교환/환불 보장)를 이용하실 수 있습니다.",
+    "effective_date": "2026-01-01",
+}
+
+_STORE_INFO_MAX_LEN = {
+    "brand_name": 80,
+    "company_name": 100,
+    "ceo_name": 60,
+    "biz_reg_no": 40,
+    "telecom_reg_no": 80,
+    "biz_address": 200,
+    "privacy_officer": 60,
+    "contact_email": 120,
+    "cs_phone": 60,
+    "cs_hours": 140,
+    "bank_name": 60,
+    "bank_account": 80,
+    "bank_holder": 60,
+    "hosting_provider": 100,
+    "escrow_notice": 400,
+    "effective_date": 40,
+}
+
 
 def bump_state_version(bump_catalog=False):
     """실시간 상태 버전(state_version) 및 선택적 카탈로그 버전(catalog_version)을 단조 증가시키고 SSE 대기 스레드를 깨웁니다."""
@@ -738,6 +776,44 @@ def set_mall_policy_defaults(policy_data: Any) -> dict:
         "as_info": str(raw.get("as_info") or "").strip(),
     }
     set_live_state_key("product_policy_defaults", normalized)
+    return normalized
+
+
+def _normalize_store_info(raw: Any) -> dict:
+    src = raw if isinstance(raw, dict) else {}
+    info = {}
+    for key, default_val in DEFAULT_STORE_INFO.items():
+        max_len = _STORE_INFO_MAX_LEN.get(key, 200)
+        val = str(src.get(key) or "").strip()
+        if not val:
+            val = default_val
+        info[key] = val[:max_len]
+    digits = re.sub(r"\D", "", info["biz_reg_no"])
+    info["biz_reg_digits"] = digits
+    if len(digits) == 10 and digits != "0000000000":
+        info["ftc_biz_url"] = f"https://www.ftc.go.kr/bizCommPop.do?wrkr_no={digits}"
+    else:
+        info["ftc_biz_url"] = ""
+    return info
+
+
+def get_mall_store_info() -> dict:
+    """쇼핑몰 하단 푸터와 법정 약관에 표시되는 사업자·고객센터·입금계좌 정보를 반환합니다."""
+    saved = get_live_state_key("store_info", None)
+    return _normalize_store_info(saved)
+
+
+def set_mall_store_info(info_data: Any) -> dict:
+    """쇼핑몰 사업자·고객센터·입금계좌 정보를 DB에 영구 저장합니다."""
+    raw = info_data if isinstance(info_data, dict) else {}
+    current = get_mall_store_info()
+    merged = dict(current)
+    for key in DEFAULT_STORE_INFO:
+        if key in raw:
+            merged[key] = raw.get(key)
+    normalized = _normalize_store_info(merged)
+    persist_payload = {k: normalized[k] for k in DEFAULT_STORE_INFO}
+    set_live_state_key("store_info", persist_payload)
     return normalized
 
 

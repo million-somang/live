@@ -340,6 +340,7 @@ def _inject_mall_globals():
         "mall_categories": mall_database.get_mall_categories(active_only=True),
         "category_labels": mall_database.get_mall_category_label_map(),
         "user_wishlist_nums": mall_database.get_user_wishlist_nums(int(u["id"])) if u else [],
+        "store_info": mall_database.get_mall_store_info(),
     }
 
 
@@ -815,6 +816,10 @@ def mall_auth_register():
 
     if request.is_json:
         form_data = request.get_json(silent=True) or {}
+        if ("agree_terms" in form_data and not form_data.get("agree_terms")) or (
+            "agree_privacy" in form_data and not form_data.get("agree_privacy")
+        ):
+            return jsonify({"status": "error", "message": "이용약관 및 개인정보 수집·이용에 모두 동의해 주세요."}), 400
     else:
         if not mall_security.verify_csrf_token(session, request):
             live_state = mall_database.get_full_live_state()
@@ -828,6 +833,17 @@ def mall_auth_register():
             "address": request.form.get("address", ""),
             "address_detail": request.form.get("address_detail", "")
         }
+        agree_terms = request.form.get("agree_terms") == "on"
+        agree_privacy = request.form.get("agree_privacy") == "on"
+        if not agree_terms or not agree_privacy:
+            live_state = mall_database.get_full_live_state()
+            return render_template(
+                "auth_register.html",
+                live_state=live_state,
+                next_url=next_url,
+                prefill=form_data,
+                error="이용약관 및 개인정보 수집·이용에 모두 동의해 주세요.",
+            ), 400
 
     res = mall_database.create_mall_user(
         email=form_data.get("email", ""),
@@ -946,6 +962,23 @@ def mall_orders_view():
         buyer_phone=buyer_phone,
         live_state=live_state,
         active_nav="orders"
+    )
+
+
+@app.route("/policy/<doc_type>", methods=["GET"])
+def mall_policy_page(doc_type):
+    """전자상거래 법정 필수 약관 및 이용 안내 페이지 (/policy/terms, /policy/privacy, /policy/guide)"""
+    doc_key = str(doc_type or "").strip().lower()
+    if doc_key not in ("terms", "privacy", "guide"):
+        return "요청하신 약관 페이지를 찾을 수 없습니다.", 404
+    live_state = mall_database.get_full_live_state()
+    policy_defaults = mall_database.get_mall_policy_defaults()
+    return render_template(
+        "policy.html",
+        doc_type=doc_key,
+        policy_defaults=policy_defaults,
+        live_state=live_state,
+        active_nav="",
     )
 
 
@@ -1799,6 +1832,15 @@ def api_mall_admin_policy_defaults():
     data = request.get_json(silent=True) or {}
     saved = mall_database.set_mall_policy_defaults(data)
     return jsonify({"status": "ok", "defaults": saved}), 200
+
+
+@app.route("/api/admin/store-info", methods=["GET", "POST"])
+def api_mall_admin_store_info():
+    if request.method == "GET":
+        return jsonify({"status": "ok", "store_info": mall_database.get_mall_store_info()}), 200
+    data = request.get_json(silent=True) or {}
+    saved = mall_database.set_mall_store_info(data)
+    return jsonify({"status": "ok", "store_info": saved}), 200
 
 
 @app.route("/api/reviews/add", methods=["POST"])

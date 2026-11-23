@@ -6,7 +6,7 @@
     <title>{% block title %}골라방 LIVE — 공식 온라인 스토어{% endblock %}</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261123f">
+    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261124a">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -143,12 +143,12 @@
                 <div class="ax-field">
                     <label class="ax-label" for="ibPaymentMethod">결제 수단 (계좌입금 전용)</label>
                     <select id="ibPaymentMethod" class="ax-select" style="font-weight:700;">
-                        <option value="BANK" selected>계좌입금 (카카오뱅크 3333 233 094904 박창현)</option>
+                        <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{ store_info.bank_holder }})</option>
                     </select>
                     <div class="ax-bank-box" style="margin-top:8px;">
                         <div>
                             <div style="font-size:0.74rem; font-weight:700; color:var(--ax-warning);">입금 계좌 안내 (택배비 4,000원 포함 금액 입금)</div>
-                            <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;" class="ax-num">카카오뱅크 <span style="color:var(--ax-warning);">3333 233 094904</span> (예금주: 박창현)</div>
+                            <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;" class="ax-num">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{ store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
                         </div>
                         <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
                     </div>
@@ -164,17 +164,72 @@
     <div id="mallToastContainer" aria-live="polite"></div>
 
     <footer class="ax-footer">
-        <div class="ax-container ax-footer-inner">
-            <div>
-                <div style="font-weight:800; color:var(--ax-text-primary); font-size:0.95rem; margin-bottom:3px;">골라방 LIVE</div>
-                <div style="color:var(--ax-text-secondary);">골라방 LIVE 공식 온라인 스토어</div>
+        <div class="ax-container">
+            <div class="ax-footer-top">
+                <nav class="ax-footer-policy-links" aria-label="법정 약관 및 정책">
+                    <a href="/policy/terms">이용약관</a>
+                    <a href="/policy/privacy" class="ax-footer-policy-strong">개인정보처리방침</a>
+                    <a href="/policy/guide">교환·반품·배송 안내</a>
+                </nav>
+                <div class="ax-footer-links" aria-label="스토어 바로가기">
+                    <a href="/">스토어 홈</a>
+                    <a href="/orders">주문/배송 조회</a>
+                    <a href="/wishlist">찜목록</a>
+                    <a href="/cart">장바구니</a>
+                    <a href="/admin">스토어 어드민</a>
+                </div>
             </div>
-            <div class="ax-footer-links">
-                <a href="/" style="font-weight:600;">스토어 홈</a>
-                <a href="/orders" style="font-weight:600;">주문/배송 조회</a>
-                <a href="/wishlist" style="font-weight:600;">찜목록</a>
-                <a href="/cart" style="font-weight:600;">장바구니</a>
-                <a href="/admin" style="font-weight:600;">스토어 어드민</a>
+
+            <div class="ax-footer-grid">
+                <div class="ax-footer-col">
+                    <div class="ax-footer-brand-row">
+                        <span class="ax-logo-mark" style="width:24px; height:24px; font-size:0.75rem;">G</span>
+                        <strong>{{ store_info.brand_name }}</strong>
+                        <span class="ax-footer-brand-sub">{{ store_info.brand_name }} 공식 온라인 스토어</span>
+                    </div>
+                    <div class="ax-footer-biz-list">
+                        <span class="ax-footer-biz-item"><strong>상호명</strong> {{ store_info.company_name }}</span>
+                        <span class="ax-footer-biz-item"><strong>대표자</strong> {{ store_info.ceo_name }}</span>
+                        <span class="ax-footer-biz-item">
+                            <strong>사업자등록번호</strong> <span class="ax-num">{{ store_info.biz_reg_no }}</span>
+                            {% if store_info.ftc_biz_url %}
+                            <a href="{{ store_info.ftc_biz_url }}" target="_blank" rel="noopener noreferrer" class="ax-footer-ftc-link">[사업자정보확인]</a>
+                            {% endif %}
+                        </span>
+                        <span class="ax-footer-biz-item"><strong>통신판매업신고</strong> <span class="ax-num">{{ store_info.telecom_reg_no }}</span></span>
+                        <span class="ax-footer-biz-item"><strong>사업장 주소</strong> {{ store_info.biz_address }}</span>
+                        <span class="ax-footer-biz-item"><strong>개인정보보호책임자</strong> {{ store_info.privacy_officer }}</span>
+                        <span class="ax-footer-biz-item"><strong>이메일</strong> <a href="mailto:{{ store_info.contact_email }}" class="ax-footer-inline-link">{{ store_info.contact_email }}</a></span>
+                        <span class="ax-footer-biz-item"><strong>호스팅 제공</strong> {{ store_info.hosting_provider }}</span>
+                    </div>
+                </div>
+
+                <div class="ax-footer-col">
+                    <div class="ax-footer-col-title">고객센터 (CS CENTER)</div>
+                    <div class="ax-footer-cs-phone ax-num">{{ store_info.cs_phone }}</div>
+                    <div class="ax-footer-cs-hours">{{ store_info.cs_hours }}</div>
+                    <div class="ax-footer-cs-actions">
+                        <a href="/orders" class="ax-btn ax-btn-secondary ax-btn-sm">주문/배송 · 교환·반품 조회</a>
+                        <a href="/policy/guide" class="ax-btn ax-btn-secondary ax-btn-sm">이용·배송 안내</a>
+                    </div>
+                </div>
+
+                <div class="ax-footer-col">
+                    <div class="ax-footer-col-title">무통장 입금계좌 &amp; 구매안전 안내</div>
+                    <div class="ax-footer-bank-box">
+                        <div style="min-width:0;">
+                            <div class="ax-footer-bank-line ax-num">{{ store_info.bank_name }} <strong>{{ store_info.bank_account }}</strong></div>
+                            <div class="ax-footer-bank-holder">예금주: {{ store_info.bank_holder }}</div>
+                        </div>
+                        <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
+                    </div>
+                    <p class="ax-footer-escrow">{{ store_info.escrow_notice }}</p>
+                </div>
+            </div>
+
+            <div class="ax-footer-bottom">
+                <span>© 2026 {{ store_info.company_name }}. All rights reserved.</span>
+                <span>상품 주문·결제 및 청약철회, 소비자분쟁해결 기준은 전자상거래 등에서의 소비자보호에 관한 법률을 준수합니다.</span>
             </div>
         </div>
     </footer>
@@ -183,7 +238,10 @@
          data-logged-in="{{ (True if current_mall_user else False) | tojson | forceescape }}"
          data-live-order-token="{{ (live_order_token or '') | tojson | forceescape }}"
          data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"
-         data-wishlist-nums="{{ (user_wishlist_nums or []) | tojson | forceescape }}"></div>
+         data-wishlist-nums="{{ (user_wishlist_nums or []) | tojson | forceescape }}"
+         data-bank-name="{{ (store_info.bank_name or '카카오뱅크') | tojson | forceescape }}"
+         data-bank-account="{{ (store_info.bank_account or '3333 233 094904') | tojson | forceescape }}"
+         data-bank-holder="{{ (store_info.bank_holder or '박창현') | tojson | forceescape }}"></div>
 
     <script>
         const MALL_CART_KEY = 'gollabang_mall_cart_v1';
@@ -192,6 +250,11 @@
         window.__MALL_USER_LOGGED_IN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.loggedIn || 'false') : false;
         window.__LIVE_ORDER_TOKEN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.liveOrderToken || '""') : '';
         let __mallWishlistNums = __baseBootEl ? JSON.parse(__baseBootEl.dataset.wishlistNums || '[]') : [];
+        const __mallBankInfo = {
+            name: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankName || '"카카오뱅크"') : '카카오뱅크',
+            account: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankAccount || '"3333 233 094904"') : '3333 233 094904',
+            holder: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankHolder || '"박창현"') : '박창현'
+        };
         let pendingInstantBuyItem = null;
 
         function _normalizeWishNums(arr) {
@@ -578,13 +641,17 @@
         }
 
         function copyMallBankAccount() {
-            const acc = '3333 233 094904';
+            const acc = __mallBankInfo.account || '';
+            const fullDesc = `${__mallBankInfo.name} ${acc} ${__mallBankInfo.holder}`.trim();
+            if (!acc) return;
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(acc).then(() => {
-                    showMallToast('입금 계좌번호(카카오뱅크 3333 233 094904 박창현)가 복사되었습니다.');
-                }).catch(() => {});
+                    showMallToast(`입금 계좌번호(${fullDesc})가 복사되었습니다.`);
+                }).catch(() => {
+                    showMallToast(`입금 계좌: ${fullDesc}`);
+                });
             } else {
-                showMallToast('입금 계좌: 카카오뱅크 3333 233 094904 (박창현)');
+                showMallToast(`입금 계좌: ${fullDesc}`);
             }
         }
 

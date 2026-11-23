@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}
+{% if doc_type == 'privacy' %}개인정보처리방침{% elif doc_type == 'guide' %}교환·반품·배송 안내{% else %}이용약관{% endif %} — {{ store_info.brand_name }}
+{% endblock %}
+
+{% block content %}
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">LEGAL &amp; STORE POLICY</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">
+                {% if doc_type == 'privacy' %}개인정보처리방침{% elif doc_type == 'guide' %}교환·반품·배송 안내{% else %}전자상거래 이용약관{% endif %}
+            </h1>
+        </div>
+        <p class="ax-page-sub">{{ store_info.company_name }}({{ store_info.brand_name }}) 공식 온라인 스토어의 약관 및 소비자 보호 기준 안내입니다. · 시행일: <span class="ax-num">{{ store_info.effective_date }}</span></p>
+    </div>
+    <div class="ax-toolbar-actions">
+        <a href="/" class="ax-btn ax-btn-secondary">스토어 홈으로</a>
+        <a href="/orders" class="ax-btn ax-btn-primary">주문/배송 조회</a>
+    </div>
+</div>
+
+<nav class="ax-segmented-bar" style="margin-bottom:18px;" aria-label="스토어 약관 문서 전환">
+    <a href="/policy/terms" class="ax-tab-btn {% if doc_type == 'terms' %}active{% endif %}">이용약관</a>
+    <a href="/policy/privacy" class="ax-tab-btn {% if doc_type == 'privacy' %}active{% endif %}">개인정보처리방침</a>
+    <a href="/policy/guide" class="ax-tab-btn {% if doc_type == 'guide' %}active{% endif %}">교환·반품·배송 안내</a>
+</nav>
+
+{% if doc_type == 'terms' %}
+<article class="ax-card ax-card-pad ax-policy-doc-card">
+    <div class="ax-policy-doc-meta">
+        <span>운영 사업자: <strong>{{ store_info.company_name }}</strong> (대표: {{ store_info.ceo_name }})</span>
+        <span>시행일: <strong class="ax-num">{{ store_info.effective_date }}</strong></span>
+    </div>
+
+    <section class="ax-policy-article">
+        <h2>제1조 (목적)</h2>
+        <p>이 약관은 {{ store_info.company_name }}(이하 "몰")이 운영하는 {{ store_info.brand_name }} 온라인 스토어에서 제공하는 인터넷 관련 서비스 및 상품 매매(이하 "서비스")를 이용함에 있어 몰과 이용자의 권리·의무 및 책임사항을 규정함을 목적으로 합니다.</p>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제2조 (정의)</h2>
+        <ul>
+            <li>"몰"이란 {{ store_info.company_name }}이 재화 또는 용역(이하 "재화 등")을 이용자에게 제공하기 위하여 컴퓨터 등 정보통신설비를 이용하여 재화 등을 거래할 수 있도록 설정한 가상의 영업장을 말합니다.</li>
+            <li>"이용자"란 "몰"에 접속하여 이 약관에 따라 "몰"이 제공하는 서비스를 받는 회원 및 비회원을 말합니다.</li>
+            <li>"회원"이라 함은 "몰"에 회원등록을 한 자로서, 계속적으로 "몰"이 제공하는 서비스를 이용할 수 있는 자를 말합니다.</li>
+            <li>"비회원"이라 함은 회원에 가입하지 않고 "몰"이 제공하는 서비스를 이용하는 자를 말합니다.</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제3조 (약관 등의 명시와 설명 및 개정)</h2>
+        <ul>
+            <li>"몰"은 이 약관의 내용과 상호 및 대표자 성명, 영업소 소재지 주소, 전화번호, 전자우편주소, 사업자등록번호, 통신판매업 신고번호, 개인정보보호책임자 등을 이용자가 쉽게 알 수 있도록 초기화면 하단에 게시합니다.</li>
+            <li>"몰"은 「전자상거래 등에서의 소비자보호에 관한 법률」, 「약관의 규제에 관한 법률」 등 관련 법령을 위배하지 않는 범위에서 이 약관을 개정할 수 있습니다.</li>
+            <li>약관을 개정할 경우 적용일자 및 개정사유를 명시하여 적용일자 7일 이전부터 공지합니다(소비자에게 불리한 변경은 30일 전 공지).</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제4조 (회원가입 및 탈퇴)</h2>
+        <ul>
+            <li>이용자는 "몰"이 정한 가입 양식에 따라 회원정보를 기입한 후 본 약관과 개인정보 수집·이용에 동의한다는 의사표시를 함으로서 회원가입을 신청합니다.</li>
+            <li>회원은 등록사항에 변경이 있는 경우 지체 없이 회원정보 수정 또는 고객센터(<span class="ax-num">{{ store_info.cs_phone }}</span>, {{ store_info.contact_email }})를 통해 변경사항을 알려야 합니다.</li>
+            <li>회원은 언제든지 탈퇴를 요청할 수 있으며, 관계 법령에 따른 보존 의무를 제외하고 즉시 회원정보를 파기합니다.</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제5조 (구매신청 및 계약의 성립)</h2>
+        <ul>
+            <li>이용자는 상품 선택, 성명·연락처·배송지 주소(비회원은 주문조회용 비밀번호 포함) 입력, 결제수단 선택 및 약관 확인 절차를 거쳐 구매를 신청합니다.</li>
+            <li>무통장 입금 결제 시 안내된 입금 계좌(<span class="ax-num">{{ store_info.bank_name }} {{ store_info.bank_account }}</span>, 예금주: {{ store_info.bank_holder }})로 입금 확인이 완료된 시점에 배송 준비가 진행됩니다.</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제6조 (배송)</h2>
+        <p>"몰"은 이용자와 재화 등의 공급시기에 관하여 별도의 약정이 없는 이상, 이용자가 청약을 한 날(또는 입금 확인일)로부터 7일 이내에 재화 등을 배송할 수 있도록 주문제작, 포장 등 기타 필요한 조치를 취합니다. 배송 진행 상태는 [주문/배송 조회] 메뉴에서 확인할 수 있습니다.</p>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제7조 (환급 및 청약철회 등)</h2>
+        <ul>
+            <li>"몰"은 이용자가 구매 신청한 재화 등이 품절 등의 사유로 인도 또는 제공을 할 수 없을 때에는 지체 없이 그 사유를 이용자에게 통지하고, 사전에 대금을 받은 경우에는 3영업일 이내에 환급하거나 환급에 필요한 조치를 취합니다.</li>
+            <li>재화 등의 구매에 관한 계약을 체결한 이용자는 「전자상거래 등에서의 소비자보호에 관한 법률」에 따라 상품 수령일로부터 7일 이내에는 청약의 철회를 할 수 있습니다.</li>
+            <li>단, 이용자에게 책임 있는 사유로 재화 등이 멸실 또는 훼손된 경우, 사용 또는 일부 소비에 의하여 가치가 현저히 감소한 경우(착용, 세탁, 상품 택·라벨 훼손 등)에는 청약철회가 제한될 수 있습니다.</li>
+            <li>재화 등의 내용이 표시·광고 내용과 다르거나 계약내용과 다르게 이행된 경우에는 수령일로부터 3개월 이내, 그 사실을 안 날 또는 알 수 있었던 날부터 30일 이내에 청약철회를 할 수 있습니다.</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>제8조 (개인정보보호 및 분쟁해결)</h2>
+        <p>"몰"은 이용자의 개인정보 수집 시 서비스 제공을 위하여 필요한 범위에서 최소한의 개인정보를 수집하며, 자세한 사항은 별도 게시된 [개인정보처리방침]을 따릅니다. 몰과 이용자 간에 발생한 전자상거래 분쟁과 관련하여 이용자의 피해구제신청이 있는 경우에는 공정거래위원회 또는 시·도지사가 의뢰하는 분쟁조정기관의 조정에 따를 수 있습니다.</p>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>부칙 (운영 사업자 정보)</h2>
+        <p>상호: {{ store_info.company_name }} · 대표자: {{ store_info.ceo_name }} · 사업자등록번호: <span class="ax-num">{{ store_info.biz_reg_no }}</span> · 통신판매업신고: <span class="ax-num">{{ store_info.telecom_reg_no }}</span> · 주소: {{ store_info.biz_address }} · 고객센터: <span class="ax-num">{{ store_info.cs_phone }}</span> ({{ store_info.contact_email }})</p>
+    </section>
+</article>
+
+{% elif doc_type == 'privacy' %}
+<article class="ax-card ax-card-pad ax-policy-doc-card">
+    <div class="ax-policy-doc-meta">
+        <span>개인정보처리자: <strong>{{ store_info.company_name }}</strong></span>
+        <span>시행일: <strong class="ax-num">{{ store_info.effective_date }}</strong></span>
+    </div>
+
+    <section class="ax-policy-article">
+        <h2>1. 개인정보의 처리 목적</h2>
+        <p>{{ store_info.company_name }}(이하 "회사")는 다음의 목적을 위하여 개인정보를 처리합니다. 처리하고 있는 개인정보는 다음의 목적 이외의 용도로는 이용되지 않으며, 이용 목적이 변경되는 경우에는 관련 법령에 따라 별도의 동의를 받는 등 필요한 조치를 이행합니다.</p>
+        <ul>
+            <li><strong>회원 가입 및 관리</strong>: 회원제 서비스 이용에 따른 본인확인, 개인식별, 부정 이용 방지, 고지·통지</li>
+            <li><strong>재화 또는 서비스 제공</strong>: 물품 배송, 대금 결제 및 입금 확인, 주문·배송 조회(비회원 3중 검증 포함), 환불·교환 처리 및 소비자 문의 응대</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>2. 수집하는 개인정보 항목 및 수집 방법</h2>
+        <ul>
+            <li><strong>회원가입 시</strong>: [필수] 이메일(로그인 ID), 비밀번호(단방향 암호화 저장), 성함, 휴대폰 번호 / [선택] 기본 배송지 주소, 상세 주소</li>
+            <li><strong>상품 주문(회원·비회원) 시</strong>: 수령인 성함, 연락처(휴대폰 번호), 배송지 주소 및 상세 주소, 배송 요청사항, 비회원 주문조회 비밀번호(단방향 해시 저장)</li>
+            <li><strong>서비스 이용 과정에서 자동 생성·수집되는 정보</strong>: 접속 IP, 세션 쿠키, 찜목록/장바구니 기록, 서비스 이용 기록</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>3. 개인정보의 처리 및 보유 기간</h2>
+        <p>회사는 법령에 따른 개인정보 보유·이용기간 또는 정보주체로부터 개인정보를 수집 시에 동의 받은 보유·이용기간 내에서 개인정보를 처리·보유합니다. 특히 「전자상거래 등에서의 소비자보호에 관한 법률」 등 관계 법령에 의해 보존이 필요한 경우 아래와 같이 보관합니다.</p>
+        <div class="ax-table-wrap" style="margin-top:10px;">
+            <table class="ax-table ax-policy-table">
+                <thead>
+                    <tr>
+                        <th>보존 항목</th>
+                        <th>보존 근거 법령</th>
+                        <th>보존 기간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>계약 또는 청약철회 등에 관한 기록</td>
+                        <td>전자상거래 등에서의 소비자보호에 관한 법률</td>
+                        <td class="ax-num">5년</td>
+                    </tr>
+                    <tr>
+                        <td>대금결제 및 재화 등의 공급에 관한 기록</td>
+                        <td>전자상거래 등에서의 소비자보호에 관한 법률</td>
+                        <td class="ax-num">5년</td>
+                    </tr>
+                    <tr>
+                        <td>소비자의 불만 또는 분쟁처리에 관한 기록</td>
+                        <td>전자상거래 등에서의 소비자보호에 관한 법률</td>
+                        <td class="ax-num">3년</td>
+                    </tr>
+                    <tr>
+                        <td>표시·광고에 관한 기록</td>
+                        <td>전자상거래 등에서의 소비자보호에 관한 법률</td>
+                        <td class="ax-num">6개월</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>4. 개인정보의 제3자 제공 및 처리 위탁</h2>
+        <p>회사는 원칙적으로 이용자의 개인정보를 외부에 제공하지 않습니다. 다만 상품 배송을 위한 택배사 위탁 및 법령의 규정에 의거하거나 수사 목적으로 법령에 정해진 절차와 방법에 따라 수사기관의 요구가 있는 경우 등 예외 사유에 한하여 최소 범위로 제공합니다.</p>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>5. 정보주체의 권리·의무 및 행사방법</h2>
+        <p>이용자는 언제든지 등록되어 있는 자신의 개인정보를 조회·수정하거나 회원탈퇴 및 삭제를 요청할 수 있습니다. 권리 행사는 서면, 전자우편({{ store_info.contact_email }}) 또는 고객센터(<span class="ax-num">{{ store_info.cs_phone }}</span>)를 통하여 하실 수 있으며 회사는 이에 대해 지체 없이 조치하겠습니다.</p>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>6. 개인정보의 파기 및 안전성 확보 조치</h2>
+        <ul>
+            <li>보유기간 경과 또는 처리목적 달성 시 전자적 파일은 복구·재생이 불가능한 기술적 방법으로 삭제하며, 출력물은 분쇄하거나 소각하여 파기합니다.</li>
+            <li>회사는 비밀번호 단방향 암호화(해시), CSRF 방어, 세션 쿠키 보호, 관리자 접근 통제 등 기술적·관리적 보안 조치를 적용하고 있습니다.</li>
+        </ul>
+    </section>
+
+    <section class="ax-policy-article">
+        <h2>7. 개인정보보호책임자 및 권익침해 구제방법</h2>
+        <ul>
+            <li><strong>개인정보보호책임자</strong>: {{ store_info.privacy_officer }} · 이메일: {{ store_info.contact_email }} · 전화: <span class="ax-num">{{ store_info.cs_phone }}</span></li>
+            <li>개인정보침해 신고/상담: 개인정보침해신고센터 (privacy.kisa.or.kr / 국번없이 <span class="ax-num">118</span>), 개인정보분쟁조정위원회 (kopico.go.kr / <span class="ax-num">1833-6972</span>), 경찰청 사이버수사국 (<span class="ax-num">182</span>)</li>
+        </ul>
+    </section>
+</article>
+
+{% else %}
+<article class="ax-card ax-card-pad ax-policy-doc-card">
+    <div class="ax-policy-doc-meta">
+        <span>운영 스토어: <strong>{{ store_info.brand_name }}</strong> ({{ store_info.company_name }})</span>
+        <span>고객센터: <strong class="ax-num">{{ store_info.cs_phone }}</strong></span>
+    </div>
+
+    <div class="ax-policy-grid" style="margin-bottom:18px;">
+        <section class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+                </span>
+                <span>배송 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ policy_defaults.shipping_info }}</div>
+        </section>
+
+        <section class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </span>
+                <span>교환 / 반품 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ policy_defaults.exchange_return_info }}</div>
+        </section>
+
+        <section class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip is-warn">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                </span>
+                <span>교환 / 반품 불가 사항</span>
+            </div>
+            <div class="ax-policy-card-body">{{ policy_defaults.non_returnable_info }}</div>
+        </section>
+
+        <section class="ax-policy-card">
+            <div class="ax-policy-card-head">
+                <span class="ax-policy-icon-chip">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>
+                </span>
+                <span>A/S 안내</span>
+            </div>
+            <div class="ax-policy-card-body">{{ policy_defaults.as_info }}</div>
+        </section>
+    </div>
+
+    <section class="ax-policy-article">
+        <h2>청약철회 및 환불·교환 접수 안내</h2>
+        <ul>
+            <li>단순 변심에 의한 교환·반품은 상품 수령일로부터 <strong class="ax-num">7일 이내</strong> 접수 가능하며, 왕복 배송비는 구매자 부담입니다.</li>
+            <li>상품 불량·오배송 등 판매자 귀책 사유인 경우 수령일로부터 <strong class="ax-num">3개월 이내</strong>(사실을 안 날로부터 <strong class="ax-num">30일 이내</strong>) 무료로 교환/환불 처리해 드립니다.</li>
+            <li><strong>무통장 입금 계좌</strong>: <span class="ax-num">{{ store_info.bank_name }} {{ store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</li>
+            <li><strong>반송 및 고객센터 문의</strong>: {{ store_info.biz_address }} · 전화 <span class="ax-num">{{ store_info.cs_phone }}</span> · {{ store_info.cs_hours }}</li>
+        </ul>
+    </section>
+</article>
+{% endif %}
+{% endblock %}
