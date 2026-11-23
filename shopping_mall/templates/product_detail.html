@@ -295,7 +295,7 @@
 </section>
 
 <!-- 상세 이미지 확대 보기 모달 -->
-<div class="ax-dialog-backdrop" id="pdImageLightbox" role="dialog" aria-modal="true" aria-labelledby="pdLightboxTitle" onclick="if(event.target===this) closePdImageLightbox()">
+<div class="ax-dialog-backdrop" id="pdImageLightbox" role="dialog" aria-modal="true" aria-labelledby="pdLightboxTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closePdImageLightbox)">
     <div class="ax-lightbox-card">
         <div class="ax-lightbox-head">
             <span id="pdLightboxTitle">상세 이미지 크게 보기</span>

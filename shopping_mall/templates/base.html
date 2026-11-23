@@ -81,7 +81,7 @@
     </main>
 
     <!-- 페이지 이동 없는 즉시 구매 모달 (Astryx Dialog) -->
-    <div class="ax-dialog-backdrop" id="instantBuyModal" role="dialog" aria-modal="true" aria-labelledby="instantBuyDialogTitle" onclick="if(event.target===this) closeInstantBuyModal()">
+    <div class="ax-dialog-backdrop" id="instantBuyModal" role="dialog" aria-modal="true" aria-labelledby="instantBuyDialogTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closeInstantBuyModal)">
         <div class="ax-dialog-card">
             <div class="ax-dialog-header">
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -554,6 +554,27 @@
             const prodRow = document.getElementById('ibProductSelectorRow');
             if (prodRow) prodRow.style.display = 'none';
             pendingInstantBuyItem = null;
+        }
+
+        function handleDialogBackdropPointerDown(ev, backdropEl) {
+            if (!backdropEl) return;
+            backdropEl.dataset.backdropPointerDown = (ev.target === backdropEl) ? '1' : '0';
+        }
+
+        function handleDialogBackdropPointerUp(ev, backdropEl) {
+            if (!backdropEl) return;
+            if (ev.target !== backdropEl) {
+                backdropEl.dataset.backdropPointerDown = '0';
+            }
+        }
+
+        function handleDialogBackdropClick(ev, backdropEl, closeFn) {
+            if (!backdropEl) return;
+            const startedOnBackdrop = backdropEl.dataset.backdropPointerDown === '1';
+            backdropEl.dataset.backdropPointerDown = '0';
+            if (startedOnBackdrop && ev.target === backdropEl && typeof closeFn === 'function') {
+                closeFn();
+            }
         }
 
         function copyMallBankAccount() {
