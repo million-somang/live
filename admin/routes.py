@@ -6,9 +6,11 @@
   방송자 회원가입 승인/반려/정지, 초대 코드 관리, 비밀번호 변경, 보안 감사 로그를 제공합니다.
 """
 
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, current_app, make_response
 import os
 import sys
+import secrets
+from urllib.parse import urlencode
 import database
 import security_core
 
@@ -182,8 +184,76 @@ def admin_logout():
     """관리자 로그아웃 (/admin/logout)"""
     session.clear()
     if request.is_json:
-        return jsonify({"status": "ok"}), 200
-    return redirect(url_for("admin_bp.admin_login"))
+        resp = make_response(jsonify({"status": "ok"}), 200)
+    else:
+        resp = make_response(redirect(url_for("admin_bp.admin_login")))
+    resp.delete_cookie("mall_sid", path="/")
+    return resp
+
+
+def _get_mall_sso_secret() -> str:
+    env_sec = (os.getenv("MALL_SYNC_SECRET") or "").strip()
+    if env_sec:
+        return env_sec
+    try:
+        cfg = database.get_cloud_mall_config() or {}
+        cfg_sec = str(cfg.get("sync_secret") or "").strip()
+        if cfg_sec:
+            return cfg_sec
+    except Exception:
+        pass
+    return str(current_app.secret_key or "").strip()
+
+
+def _resolve_mall_public_url_for_sso() -> str:
+    mall_port = int(os.getenv("MALL_PORT", 6001))
+    raw_env_pub = (os.getenv("MALL_PUBLIC_URL") or "").strip().rstrip("/")
+    if raw_env_pub and not any(h in raw_env_pub for h in ("localhost", "127.0.0.1")):
+        return database._normalize_mall_port_url(raw_env_pub, mall_port)
+    try:
+        cfg = database.get_cloud_mall_config() or {}
+        if cfg.get("is_remote") and cfg.get("mall_url"):
+            return database._normalize_mall_port_url(str(cfg["mall_url"]), mall_port)
+    except Exception:
+        pass
+    try:
+        fwd_host = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
+        raw_host = fwd_host or (request.host or "localhost")
+        if raw_host.startswith("[") and "]" in raw_host:
+            hostname = raw_host[:raw_host.index("]") + 1]
+        else:
+            hostname = raw_host.split(":")[0].strip() or "localhost"
+        scheme = (request.headers.get("X-Forwarded-Proto") or request.scheme or "http").split(",")[0].strip()
+        return f"{scheme}://{hostname}:{mall_port}"
+    except Exception:
+        return f"http://localhost:{mall_port}"
+
+
+@admin_bp.route("/mall-sso", methods=["GET"])
+def admin_mall_sso():
+    """최고 관리자(Studio ADMIN)를 독립 쇼핑몰 관리자(:6001/admin)로 무로그인 SSO 연결"""
+    admin_user = _get_current_admin_user()
+    if not admin_user:
+        return redirect(url_for("admin_bp.admin_login"))
+
+    next_path = (request.args.get("next") or "/admin").strip()
+    if not security_core.is_safe_redirect_url(next_path):
+        next_path = "/admin"
+
+    sso_secret = _get_mall_sso_secret()
+    token = security_core.create_signed_token(
+        sso_secret,
+        "mall_admin_sso",
+        {
+            "studio_user_id": int(admin_user["id"]),
+            "username": str(admin_user.get("username") or ""),
+            "display_name": str(admin_user.get("display_name") or admin_user.get("username") or "최고 관리자"),
+            "jti": secrets.token_hex(12),
+        },
+        ttl_sec=60,
+    )
+    mall_base = _resolve_mall_public_url_for_sso().rstrip("/")
+    return redirect(f"{mall_base}/auth/sso?{urlencode({'token': token, 'next': next_path})}")
 
 
 @admin_bp.route("/api/users/status", methods=["POST"])

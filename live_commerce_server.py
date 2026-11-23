@@ -1895,8 +1895,11 @@ def studio_auth_logout():
     """OBS 스튜디오 로그아웃"""
     session.clear()
     if request.is_json:
-        return jsonify({"status": "ok"}), 200
-    return redirect(url_for("index"))
+        resp = app.make_response((jsonify({"status": "ok"}), 200))
+    else:
+        resp = app.make_response(redirect(url_for("index")))
+    resp.delete_cookie("mall_sid", path="/")
+    return resp
 
 
 @app.route('/studio/admin/users', methods=['GET'])

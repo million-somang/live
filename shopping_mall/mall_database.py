@@ -1874,6 +1874,43 @@ def get_mall_user_by_id(user_id: int):
             conn.close()
 
 
+def get_primary_mall_admin_user():
+    """쇼핑몰 활성 관리자(ADMIN) 대표 계정을 조회합니다 (없으면 초기 관리자 자동 생성 후 반환)."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, created_at
+                FROM mall_users
+                WHERE role = 'ADMIN' AND is_active = 1
+                ORDER BY id ASC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+        finally:
+            conn.close()
+
+    ensure_default_mall_admin()
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, created_at
+                FROM mall_users
+                WHERE role = 'ADMIN' AND is_active = 1
+                ORDER BY id ASC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
 try:
     init_mall_db()
 except Exception:

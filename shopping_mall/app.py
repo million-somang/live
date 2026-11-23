@@ -13,12 +13,17 @@ import io
 import json
 import time
 import base64
+import hashlib
 import shutil
+import sqlite3
 import threading
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
+from typing import Optional
 from flask import Flask, Response, request, jsonify, render_template, send_from_directory, redirect, url_for, session
+from flask.sessions import session_json_serializer
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from flask_cors import CORS
 
 import mall_database
@@ -126,11 +131,199 @@ CORS(app)
 mall_database.init_mall_db()
 
 
-def get_current_mall_user():
-    uid = session.get("mall_user_id")
-    if not uid:
+_SSO_JTI_LOCK = threading.Lock()
+_USED_SSO_JTIS: dict[str, float] = {}
+
+
+def _consume_sso_jti(jti: str, ttl_sec: int = 120) -> bool:
+    """1회용 SSO 토큰 jti를 기록하여 재사용(Replay) 공격을 차단합니다."""
+    clean_jti = str(jti or "").strip()
+    if not clean_jti:
+        return False
+    now = time.time()
+    with _SSO_JTI_LOCK:
+        expired = [k for k, exp_ts in _USED_SSO_JTIS.items() if exp_ts <= now]
+        for k in expired:
+            _USED_SSO_JTIS.pop(k, None)
+        if clean_jti in _USED_SSO_JTIS:
+            return False
+        _USED_SSO_JTIS[clean_jti] = now + float(ttl_sec)
+        return True
+
+
+def _get_studio_secret_key() -> str:
+    env_val = (os.getenv("STUDIO_SECRET_KEY") or "").strip()
+    if len(env_val) >= 24:
+        return env_val
+    key_file = os.path.abspath(os.path.join(BASE_DIR, "..", ".studio_secret_key"))
+    try:
+        if os.path.exists(key_file):
+            with open(key_file, "r", encoding="utf-8") as f:
+                saved = f.read().strip()
+                if len(saved) >= 24:
+                    return saved
+    except Exception:
+        pass
+    return ""
+
+
+def _get_obs_cloud_sync_secret() -> str:
+    if os.getenv("MALL_MODE", "").strip().lower() == "cloud":
+        return ""
+    obs_db_path = _get_obs_db_path()
+    if not obs_db_path or not os.path.exists(obs_db_path):
+        return ""
+    conn = None
+    try:
+        conn = sqlite3.connect(obs_db_path, timeout=3.0)
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM overlay_state WHERE key = 'cloud_mall_config'")
+        row = cur.fetchone()
+        if row and row[0]:
+            cfg = json.loads(row[0])
+            if isinstance(cfg, dict):
+                return str(cfg.get("sync_secret") or "").strip()
+    except Exception:
+        return ""
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return ""
+
+
+def _get_sso_signing_secret() -> str:
+    sync_sec = _get_sync_secret()
+    if sync_sec:
+        return sync_sec
+    if os.getenv("MALL_MODE", "").strip().lower() == "cloud":
+        return ""
+    obs_sec = _get_obs_cloud_sync_secret()
+    if obs_sec:
+        return obs_sec
+    return _get_studio_secret_key()
+
+
+def _query_approved_studio_admin(studio_uid: int) -> Optional[dict]:
+    obs_db_path = _get_obs_db_path()
+    if not obs_db_path or not os.path.exists(obs_db_path):
         return None
-    return mall_database.get_mall_user_by_id(uid)
+    conn = None
+    try:
+        conn = sqlite3.connect(obs_db_path, timeout=3.0)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, display_name, role, status FROM studio_users WHERE id = ?",
+            (int(studio_uid),),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        if row["role"] != "ADMIN" or row["status"] != "APPROVED":
+            return None
+        username = str(row["username"] or "")
+        display_name = str(row["display_name"] or username or "최고 관리자")
+        return {
+            "id": int(row["id"]),
+            "username": username,
+            "display_name": display_name,
+        }
+    except Exception:
+        return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _resolve_studio_admin_from_cookie() -> Optional[dict]:
+    if os.getenv("MALL_MODE", "").strip().lower() == "cloud":
+        return None
+    raw_cookie = (request.cookies.get("studio_sid") or "").strip()
+    if not raw_cookie:
+        return None
+    studio_secret = _get_studio_secret_key()
+    if not studio_secret:
+        return None
+    try:
+        serializer = URLSafeTimedSerializer(
+            secret_key=studio_secret,
+            salt="cookie-session",
+            serializer=session_json_serializer,
+            signer_kwargs={"key_derivation": "hmac", "digest_method": hashlib.sha1},
+        )
+        data = serializer.loads(raw_cookie, max_age=43200)
+    except (BadSignature, SignatureExpired, Exception):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw_uid = data.get("studio_user_id")
+    if not raw_uid:
+        return None
+    try:
+        studio_uid = int(raw_uid)
+    except (TypeError, ValueError):
+        return None
+    return _query_approved_studio_admin(studio_uid)
+
+
+def _establish_mall_sso_session(studio_admin: dict, auth_source: str, preserve_csrf: bool = False) -> Optional[dict]:
+    admin_user = mall_database.get_primary_mall_admin_user()
+    if not admin_user:
+        return None
+    display_name = str(studio_admin.get("display_name") or studio_admin.get("username") or "최고 관리자")
+    mall_security.rotate_session(session, preserve_keys=["_csrf_token"] if preserve_csrf else None)
+    session.permanent = True
+    session["mall_user_id"] = int(admin_user["id"])
+    session["mall_role"] = "ADMIN"
+    session["mall_auth_source"] = auth_source
+    session["studio_sso_user_id"] = int(studio_admin["id"])
+    session["studio_sso_display_name"] = display_name
+    user_view = dict(admin_user)
+    user_view["name"] = display_name
+    return user_view
+
+
+def get_current_mall_user():
+    auth_source = session.get("mall_auth_source")
+    if auth_source == "studio_cookie":
+        studio_admin = _resolve_studio_admin_from_cookie()
+        if not studio_admin or int(studio_admin["id"]) != int(session.get("studio_sso_user_id") or 0):
+            session.clear()
+            return None
+    elif auth_source == "studio_sso" and os.getenv("MALL_MODE", "").strip().lower() != "cloud":
+        if request.cookies.get("studio_sid"):
+            studio_admin = _resolve_studio_admin_from_cookie()
+            if not studio_admin or int(studio_admin["id"]) != int(session.get("studio_sso_user_id") or 0):
+                session.clear()
+                return None
+        elif os.path.exists(_get_obs_db_path()) and session.get("studio_sso_user_id"):
+            if not _query_approved_studio_admin(int(session["studio_sso_user_id"])):
+                session.clear()
+                return None
+
+    uid = session.get("mall_user_id")
+    if uid:
+        u = mall_database.get_mall_user_by_id(int(uid))
+        if u and auth_source in ("studio_sso", "studio_cookie") and session.get("studio_sso_display_name"):
+            u = dict(u)
+            u["name"] = str(session["studio_sso_display_name"])
+        return u
+
+    if not session.get("sso_opt_out"):
+        studio_admin = _resolve_studio_admin_from_cookie()
+        if studio_admin:
+            return _establish_mall_sso_session(
+                studio_admin,
+                auth_source="studio_cookie",
+                preserve_csrf=(request.method in ("POST", "PUT", "DELETE", "PATCH")),
+            )
+    return None
 
 
 def create_live_order_token() -> str:
@@ -160,6 +353,14 @@ def _mall_security_gateway():
     # 어드민 페이지 및 어드민 API 보호 (/admin, /api/admin/*)
     if path == "/admin" or path.startswith("/api/admin/"):
         u = get_current_mall_user()
+        if u and u.get("role") != "ADMIN" and not session.get("sso_opt_out"):
+            studio_admin = _resolve_studio_admin_from_cookie()
+            if studio_admin:
+                u = _establish_mall_sso_session(
+                    studio_admin,
+                    auth_source="studio_cookie",
+                    preserve_csrf=(request.method in ("POST", "PUT", "DELETE", "PATCH")),
+                )
         if not u:
             if path.startswith("/api/"):
                 return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "쇼핑몰 관리자 로그인이 필요합니다."}), 401
@@ -568,9 +769,36 @@ def mall_auth_register():
     return redirect(next_url)
 
 
+@app.route("/auth/sso", methods=["GET"])
+def mall_auth_sso():
+    """Studio 최고 관리자(/admin/mall-sso)에서 전달된 1회용 서명 SSO 토큰 검증 및 자동 로그인"""
+    token = (request.args.get("token") or "").strip()
+    next_url = (request.args.get("next") or "/admin").strip()
+    if not mall_security.is_safe_redirect_url(next_url):
+        next_url = "/admin"
+
+    sso_secret = _get_sso_signing_secret()
+    payload = mall_security.verify_signed_token(sso_secret, "mall_admin_sso", token) if (sso_secret and token) else None
+    if (
+        isinstance(payload, dict)
+        and payload.get("studio_user_id")
+        and _consume_sso_jti(str(payload.get("jti") or ""))
+    ):
+        studio_admin = {
+            "id": int(payload["studio_user_id"]),
+            "username": str(payload.get("username") or ""),
+            "display_name": str(payload.get("display_name") or payload.get("username") or "최고 관리자"),
+        }
+        if _establish_mall_sso_session(studio_admin, auth_source="studio_sso", preserve_csrf=False):
+            return redirect(next_url)
+
+    return redirect(url_for("mall_auth_login", next=next_url))
+
+
 @app.route("/auth/logout", methods=["GET", "POST"])
 def mall_auth_logout():
     session.clear()
+    session["sso_opt_out"] = True
     if request.is_json:
         return jsonify({"status": "ok"}), 200
     return redirect(url_for("mall_home"))
