@@ -145,7 +145,9 @@ def _inject_mall_globals():
         "csrf_token": mall_security.get_csrf_token(session),
         "studio_public_url": resolve_studio_public_url(),
         "mall_public_url": resolve_mall_public_url(),
-        "live_order_token": create_live_order_token()
+        "live_order_token": create_live_order_token(),
+        "mall_categories": mall_database.get_mall_categories(active_only=True),
+        "category_labels": mall_database.get_mall_category_label_map()
     }
 
 
@@ -372,12 +374,15 @@ def mall_home():
     category = request.args.get("category", "ALL").upper()
     search = request.args.get("q", "").strip()
     sort = request.args.get("sort", "num_asc")
+    all_prods = mall_database.get_all_mall_products()
+    has_etc = any((p.get("category") or "").upper() == "ETC" for p in all_prods)
     products = mall_database.get_all_mall_products(category=category, search=search, sort=sort)
     live_state = mall_database.get_full_live_state()
     return render_template(
         "index.html",
         products=products,
         live_state=live_state,
+        has_etc_products=has_etc,
         current_category=category,
         search_query=search,
         current_sort=sort,
@@ -632,16 +637,20 @@ def mall_orders_view():
 
 @app.route("/admin", methods=["GET"])
 def mall_admin_view():
-    """쇼핑몰 관리자 페이지 (주문 관리 & OBS 상품 동기화 현황)"""
+    """쇼핑몰 관리자 페이지 (상품 관리 · 카테고리 관리 · 주문 관리)"""
     pull_sync_from_obs_server(force=False)
     products = mall_database.get_all_mall_products()
     orders = mall_database.get_mall_orders(limit=100)
     live_state = mall_database.get_full_live_state()
+    all_categories = mall_database.get_mall_categories(active_only=False)
+    policy_defaults = mall_database.get_mall_policy_defaults()
     return render_template(
         "admin.html",
         products=products,
         orders=orders,
         live_state=live_state,
+        all_categories=all_categories,
+        policy_defaults=policy_defaults,
         active_nav="admin"
     )
 
@@ -1102,6 +1111,307 @@ def api_mall_admin_apply_discount():
         "updated": res["updated"],
         "obs_updated": obs_updated
     }), 200
+
+
+def _get_obs_db_path() -> str:
+    env_p = (os.getenv("OBS_DB_PATH") or "").strip()
+    if env_p:
+        return env_p
+    return os.path.abspath(os.path.join(BASE_DIR, "..", "live_commerce.db"))
+
+
+def _copy_mall_image_to_obs(img_url: str):
+    if not img_url or not str(img_url).startswith("/static/uploads/products/"):
+        return
+    fname = os.path.basename(str(img_url).split("?")[0])
+    if not fname:
+        return
+    src_p = os.path.join(UPLOAD_PRODUCTS_DIR, fname)
+    parent_static = os.path.abspath(os.path.join(BASE_DIR, "..", "static"))
+    if not (os.path.isdir(parent_static) and os.path.exists(src_p)):
+        return
+    dst_dir = os.path.join(parent_static, "uploads", "products")
+    os.makedirs(dst_dir, exist_ok=True)
+    dst_p = os.path.join(dst_dir, fname)
+    try:
+        if not os.path.exists(dst_p) or os.path.getsize(dst_p) == 0:
+            shutil.copy2(src_p, dst_p)
+    except Exception:
+        pass
+
+
+def _sync_mall_product_to_obs_db(
+    action: str,
+    product=None,
+    deleted_num=None,
+    deleted_obs_id=None,
+    deleted_category=None
+) -> bool:
+    """동일 호스트에 live_commerce.db가 존재할 경우 쇼핑몰 관리자 변경을 OBS 재고 DB에 양방향 동기화합니다."""
+    obs_db_path = _get_obs_db_path()
+    if not os.path.exists(obs_db_path):
+        return False
+
+    import sqlite3
+    try:
+        conn = sqlite3.connect(obs_db_path, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='products'")
+        if not cur.fetchone():
+            conn.close()
+            return False
+
+        for col_name, col_def in (
+            ("category", "TEXT DEFAULT ''"),
+            ("live_price", "INTEGER DEFAULT 0"),
+            ("consumer_price", "INTEGER DEFAULT 0"),
+            ("cost_price", "INTEGER DEFAULT 0"),
+            ("detail_content", "TEXT DEFAULT ''"),
+            ("detail_images", "TEXT DEFAULT '[]'"),
+            ("shipping_info", "TEXT DEFAULT ''"),
+            ("exchange_return_info", "TEXT DEFAULT ''"),
+            ("non_returnable_info", "TEXT DEFAULT ''"),
+            ("as_info", "TEXT DEFAULT ''"),
+        ):
+            try:
+                cur.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_def}")
+            except Exception:
+                pass
+
+        if action == "upsert" and isinstance(product, dict):
+            _copy_mall_image_to_obs(str(product.get("image_url") or ""))
+            for d_u in (product.get("detail_images") or []):
+                _copy_mall_image_to_obs(str(d_u or ""))
+
+            num = int(product["num"])
+            obs_id = int(product.get("obs_product_id") or 0)
+            row = None
+            if obs_id > 0:
+                cur.execute("SELECT id, cost_price FROM products WHERE id = ?", (obs_id,))
+                row = cur.fetchone()
+            if not row:
+                cur.execute("SELECT id, cost_price FROM products WHERE num = ?", (num,))
+                row = cur.fetchone()
+
+            detail_imgs_json = json.dumps(mall_database.parse_detail_images(product.get("detail_images")), ensure_ascii=False)
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if row:
+                target_obs_id = int(row["id"])
+                cur.execute("""
+                    UPDATE products
+                    SET num = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
+                        image_url = ?, specs = ?, detail_content = ?, detail_images = ?,
+                        shipping_info = ?, exchange_return_info = ?, non_returnable_info = ?, as_info = ?
+                    WHERE id = ?
+                """, (
+                    num,
+                    str(product.get("name") or ""),
+                    str(product.get("category") or "").strip().upper(),
+                    int(product.get("price") or 0),
+                    int(product.get("live_price") or product.get("price") or 0),
+                    int(product.get("consumer_price") or product.get("price") or 0),
+                    str(product.get("image_url") or ""),
+                    str(product.get("specs") or ""),
+                    str(product.get("detail_content") or ""),
+                    detail_imgs_json,
+                    str(product.get("shipping_info") or ""),
+                    str(product.get("exchange_return_info") or ""),
+                    str(product.get("non_returnable_info") or ""),
+                    str(product.get("as_info") or ""),
+                    target_obs_id
+                ))
+            else:
+                cur.execute("""
+                    INSERT INTO products
+                    (num, name, category, price, live_price, consumer_price, cost_price,
+                     image_url, specs, detail_content, detail_images,
+                     shipping_info, exchange_return_info, non_returnable_info, as_info, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    num,
+                    str(product.get("name") or ""),
+                    str(product.get("category") or "").strip().upper(),
+                    int(product.get("price") or 0),
+                    int(product.get("live_price") or product.get("price") or 0),
+                    int(product.get("consumer_price") or product.get("price") or 0),
+                    str(product.get("image_url") or ""),
+                    str(product.get("specs") or ""),
+                    str(product.get("detail_content") or ""),
+                    detail_imgs_json,
+                    str(product.get("shipping_info") or ""),
+                    str(product.get("exchange_return_info") or ""),
+                    str(product.get("non_returnable_info") or ""),
+                    str(product.get("as_info") or ""),
+                    now_str
+                ))
+                target_obs_id = int(cur.lastrowid or 0)
+
+            cur.execute("DELETE FROM product_options WHERE product_id = ?", (target_obs_id,))
+            for opt in (product.get("options") or [{"color": "기본", "size": "FREE", "stock": 10}]):
+                cur.execute("""
+                    INSERT OR REPLACE INTO product_options (product_id, color, size, stock)
+                    VALUES (?, ?, ?, ?)
+                """, (
+                    target_obs_id,
+                    str(opt.get("color") or "-").strip() or "-",
+                    str(opt.get("size") or "-").strip() or "-",
+                    max(0, int(opt.get("stock") or 0))
+                ))
+            conn.commit()
+            conn.close()
+            if product.get("id") and int(product.get("obs_product_id") or 0) != target_obs_id:
+                mall_database.set_mall_product_obs_id(int(product["id"]), target_obs_id)
+            return True
+
+        elif action == "delete":
+            if deleted_obs_id and int(deleted_obs_id) > 0:
+                cur.execute("DELETE FROM products WHERE id = ?", (int(deleted_obs_id),))
+            elif deleted_num is not None:
+                cur.execute("DELETE FROM products WHERE num = ?", (int(deleted_num),))
+            conn.commit()
+            conn.close()
+            return True
+
+        elif action == "category_delete" and deleted_category:
+            cur.execute(
+                "UPDATE products SET category = 'ETC' WHERE UPPER(COALESCE(category, '')) = ?",
+                (str(deleted_category).strip().upper(),)
+            )
+            conn.commit()
+            conn.close()
+            return True
+
+        conn.close()
+    except Exception as sync_err:
+        print(f"[ShoppingMall] OBS DB 양방향 동기화 경고: {sync_err}")
+    return False
+
+
+@app.route("/api/admin/categories", methods=["GET"])
+def api_mall_admin_categories_list():
+    cats = mall_database.get_mall_categories(active_only=False)
+    return jsonify({"status": "ok", "categories": cats}), 200
+
+
+@app.route("/api/admin/categories/save", methods=["POST"])
+def api_mall_admin_categories_save():
+    data = request.get_json(silent=True) or {}
+    cat_id = data.get("id")
+    if cat_id not in (None, ""):
+        res = mall_database.update_mall_category(
+            cat_id=int(cat_id),
+            name=data.get("name"),
+            sort_order=data.get("sort_order"),
+            is_active=data.get("is_active")
+        )
+    else:
+        res = mall_database.create_mall_category(
+            name=str(data.get("name") or ""),
+            code=str(data.get("code") or ""),
+            sort_order=data.get("sort_order"),
+            is_active=bool(data.get("is_active", True))
+        )
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "카테고리 저장 실패")}), 400
+    cats = mall_database.get_mall_categories(active_only=False)
+    return jsonify({"status": "ok", "categories": cats, "result": res}), 200
+
+
+@app.route("/api/admin/categories/delete", methods=["POST"])
+def api_mall_admin_categories_delete():
+    data = request.get_json(silent=True) or {}
+    cat_id = data.get("id")
+    if not cat_id:
+        return jsonify({"status": "error", "message": "삭제할 카테고리 ID가 필요합니다."}), 400
+    res = mall_database.delete_mall_category(int(cat_id))
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "카테고리 삭제 실패")}), 400
+    _sync_mall_product_to_obs_db("category_delete", deleted_category=res.get("deleted_code"))
+    cats = mall_database.get_mall_categories(active_only=False)
+    return jsonify({
+        "status": "ok",
+        "deleted_code": res.get("deleted_code"),
+        "moved_products": res.get("moved_products", 0),
+        "categories": cats
+    }), 200
+
+
+@app.route("/api/admin/upload/image", methods=["POST"])
+def api_mall_admin_upload_image():
+    if "image" not in request.files:
+        return jsonify({"status": "error", "message": "이미지 파일이 전달되지 않았습니다."}), 400
+    file = request.files["image"]
+    filename = str(file.filename or "").strip()
+    if not filename:
+        return jsonify({"status": "error", "message": "선택된 파일이 없습니다."}), 400
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ("jpg", "jpeg", "jfif", "png", "webp", "gif"):
+        return jsonify({"status": "error", "message": "지원하지 않는 이미지 형식입니다. (jpg, jfif, png, webp 가능)"}), 400
+    import uuid
+    unique_name = f"prod_{int(time.time())}_{uuid.uuid4().hex[:8]}.{ext}"
+    save_path = os.path.join(UPLOAD_PRODUCTS_DIR, unique_name)
+    file.save(save_path)
+    img_url = f"/static/uploads/products/{unique_name}"
+    _copy_mall_image_to_obs(img_url)
+    return jsonify({"status": "ok", "url": img_url}), 200
+
+
+@app.route("/api/admin/products/add", methods=["POST"])
+def api_mall_admin_products_add():
+    data = request.get_json(silent=True) or {}
+    res = mall_database.create_mall_product(data)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "상품 등록 실패")}), 400
+    prod = res.get("product")
+    _sync_mall_product_to_obs_db("upsert", product=prod)
+    refreshed = mall_database.get_mall_product_by_num(prod["num"]) if prod else None
+    cats = mall_database.get_mall_categories(active_only=False)
+    return jsonify({"status": "ok", "product": refreshed or prod, "categories": cats}), 200
+
+
+@app.route("/api/admin/products/update", methods=["POST"])
+def api_mall_admin_products_update():
+    data = request.get_json(silent=True) or {}
+    pid = data.get("id")
+    if not pid:
+        return jsonify({"status": "error", "message": "수정할 상품 ID가 필요합니다."}), 400
+    res = mall_database.update_mall_product(int(pid), data)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "상품 수정 실패")}), 400
+    prod = res.get("product")
+    _sync_mall_product_to_obs_db("upsert", product=prod)
+    refreshed = mall_database.get_mall_product_by_num(prod["num"]) if prod else None
+    cats = mall_database.get_mall_categories(active_only=False)
+    return jsonify({"status": "ok", "product": refreshed or prod, "categories": cats}), 200
+
+
+@app.route("/api/admin/products/delete", methods=["POST"])
+def api_mall_admin_products_delete():
+    data = request.get_json(silent=True) or {}
+    pid = data.get("id")
+    if not pid:
+        return jsonify({"status": "error", "message": "삭제할 상품 ID가 필요합니다."}), 400
+    res = mall_database.delete_mall_product(int(pid))
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "상품 삭제 실패")}), 400
+    _sync_mall_product_to_obs_db(
+        "delete",
+        deleted_num=res.get("deleted_num"),
+        deleted_obs_id=res.get("deleted_obs_id")
+    )
+    cats = mall_database.get_mall_categories(active_only=False)
+    return jsonify({"status": "ok", "categories": cats}), 200
+
+
+@app.route("/api/admin/policy-defaults", methods=["GET", "POST"])
+def api_mall_admin_policy_defaults():
+    if request.method == "GET":
+        return jsonify({"status": "ok", "defaults": mall_database.get_mall_policy_defaults()}), 200
+    data = request.get_json(silent=True) or {}
+    saved = mall_database.set_mall_policy_defaults(data)
+    return jsonify({"status": "ok", "defaults": saved}), 200
 
 
 @app.route("/api/reviews/add", methods=["POST"])

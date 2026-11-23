@@ -7,6 +7,7 @@
 """
 
 import os
+import re
 import time
 import json
 import uuid
@@ -22,6 +23,21 @@ MALL_DB_PATH = os.getenv("MALL_DB_PATH", os.path.join(BASE_DIR, "shopping_mall.d
 HEARTBEAT_TIMEOUT_SEC = float(os.getenv("MALL_HEARTBEAT_TIMEOUT_SEC", "35"))
 mall_db_lock = RLock()
 mall_state_cond = Condition()
+
+DEFAULT_MALL_CATEGORIES = [
+    ("TOP", "상의/탑", 10),
+    ("OUTER", "아우터", 20),
+    ("BOTTOM", "팬츠/스커트", 30),
+    ("DRESS", "원피스/세트", 40),
+    ("ACC", "잡화/악세서리", 50),
+]
+
+DEFAULT_MALL_POLICIES = {
+    "shipping_info": "• 배송방법: 택배 발송 (오후 2시 이전 주문 당일 출고)\n• 배송비: 기본 4,000원 (도서/산간 지역 추가 비용 발생 가능)",
+    "exchange_return_info": "• 상품 수령일로부터 7일 이내 교환/반품 신청이 가능합니다.\n• 단순 변심 시 왕복 배송비는 고객 부담이며, 오배송/상품 불량 시 판매자가 부담합니다.",
+    "non_returnable_info": "• 착용, 세탁, 수선 또는 상품 택(Tag)/라벨이 훼손된 경우\n• 고객 부주의로 인한 오염(화장품/향수 등) 및 구성품 누락 시 교환/반품이 불가합니다.",
+    "as_info": "• 수령 후 7일 이내 초기 불량 확인 시 신속히 교환/환불 처리해 드립니다.\n• A/S 및 기타 문의는 고객센터 또는 주문 내역을 통해 접수해 주세요.",
+}
 
 
 def bump_state_version(bump_catalog=False):
@@ -219,6 +235,26 @@ def init_mall_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_orders_user ON mall_orders (user_id, id DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_reviews_num ON mall_reviews (product_num, id DESC)")
 
+            # 8. 쇼핑몰 동적 카테고리 테이블 (mall_categories)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cur.execute("SELECT COUNT(*) FROM mall_categories")
+            if int(cur.fetchone()[0] or 0) == 0:
+                seed_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                for c_code, c_name, c_order in DEFAULT_MALL_CATEGORIES:
+                    cur.execute("""
+                        INSERT INTO mall_categories (code, name, sort_order, is_active, created_at)
+                        VALUES (?, ?, ?, 1, ?)
+                    """, (c_code, c_name, c_order, seed_ts))
+
             conn.commit()
         finally:
             conn.close()
@@ -359,7 +395,7 @@ def upsert_product_from_obs(prod_data):
     consumer_price = max(price, int(prod_data.get("consumer_price") or price))
     image_url = str(prod_data.get("image_url") or "").strip()
     specs = str(prod_data.get("specs") or "").strip()
-    category = str(prod_data.get("category") or _infer_category(name, specs)).strip().upper()
+    incoming_cat = str(prod_data.get("category") or "").strip().upper()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     created_at = str(prod_data.get("created_at") or now_str)
 
@@ -370,13 +406,15 @@ def upsert_product_from_obs(prod_data):
             try:
                 cur = conn.cursor()
                 cur.execute("""
-                    SELECT id, detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info
+                    SELECT id, category, detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info
                     FROM mall_products WHERE num = ?
                 """, (num,))
                 existing = cur.fetchone()
                 if existing:
                     mall_pid = existing["id"]
                     ext_keys = set(existing.keys())
+                    existing_cat = str(existing["category"] or "").strip().upper() if "category" in ext_keys else ""
+                    category = incoming_cat or existing_cat or _infer_category(name, specs)
                     resolved_text = {
                         col: (
                             str(prod_data[col] or "").strip()
@@ -407,6 +445,7 @@ def upsert_product_from_obs(prod_data):
                         now_str, mall_pid
                     ))
                 else:
+                    category = incoming_cat or _infer_category(name, specs)
                     cur.execute("""
                         INSERT INTO mall_products
                         (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs,
@@ -502,6 +541,388 @@ def delete_product_by_num_or_obs_id(num=None, obs_product_id=None):
             if deleted:
                 bump_state_version(bump_catalog=True)
             return deleted
+        finally:
+            conn.close()
+
+
+# ==============================================================================
+# 🗂️ 동적 카테고리 관리 & 쇼핑몰 관리자 직접 상품/안내 CRUD
+# ==============================================================================
+
+def get_mall_categories(active_only=False):
+    """등록된 쇼핑몰 카테고리 목록과 각 카테고리별 소속 상품 수를 반환합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            where_sql = "WHERE c.is_active = 1" if active_only else ""
+            cur.execute(f"""
+                SELECT c.id, c.code, c.name, c.sort_order, c.is_active, c.created_at,
+                       COUNT(p.id) AS product_count
+                FROM mall_categories c
+                LEFT JOIN mall_products p ON UPPER(COALESCE(p.category, '')) = UPPER(c.code)
+                {where_sql}
+                GROUP BY c.id
+                ORDER BY c.sort_order ASC, c.id ASC
+            """)
+            return [
+                {
+                    "id": int(r["id"]),
+                    "code": str(r["code"]),
+                    "name": str(r["name"]),
+                    "sort_order": int(r["sort_order"] or 0),
+                    "is_active": bool(r["is_active"]),
+                    "product_count": int(r["product_count"] or 0),
+                    "created_at": str(r["created_at"] or ""),
+                }
+                for r in cur.fetchall()
+            ]
+        finally:
+            conn.close()
+
+
+def get_mall_category_label_map():
+    """카테고리 코드 -> 한글 표시명 매핑 딕셔너리를 반환합니다."""
+    cats = get_mall_categories(active_only=False)
+    labels = {str(c["code"]).upper(): str(c["name"]) for c in cats}
+    labels.setdefault("ETC", "기타")
+    return labels
+
+
+def create_mall_category(name: str, code: str = "", sort_order=None, is_active: bool = True) -> dict:
+    """새 쇼핑몰 카테고리를 등록합니다."""
+    nm = str(name or "").strip()
+    if not nm or len(nm) > 40:
+        return {"ok": False, "message": "카테고리명은 1~40자 이내로 입력해 주세요."}
+
+    raw_code = str(code or "").strip().upper()
+    if raw_code:
+        sanitized = re.sub(r"[^A-Z0-9_]", "_", raw_code).strip("_")[:24]
+        if not sanitized:
+            return {"ok": False, "message": "카테고리 코드는 영문 대문자, 숫자, 밑줄(_)만 사용할 수 있습니다."}
+    else:
+        ascii_slug = re.sub(r"[^A-Z0-9]+", "_", nm.upper()).strip("_")[:16]
+        sanitized = ascii_slug or f"CAT_{_secrets.token_hex(3).upper()}"
+
+    if sanitized in ("ALL", "ETC"):
+        return {"ok": False, "message": "ALL 및 ETC는 시스템 예약 코드입니다. 다른 코드를 사용해 주세요."}
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM mall_categories WHERE UPPER(code) = ? OR name = ?", (sanitized, nm))
+            if cur.fetchone():
+                return {"ok": False, "message": "이미 동일한 이름 또는 코드의 카테고리가 존재합니다."}
+
+            if sort_order is None or str(sort_order).strip() == "":
+                cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 10 FROM mall_categories")
+                order_val = int(cur.fetchone()[0] or 10)
+            else:
+                order_val = max(0, int(sort_order))
+
+            cur.execute("""
+                INSERT INTO mall_categories (code, name, sort_order, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (sanitized, nm, order_val, 1 if is_active else 0, now_str))
+            new_id = int(cur.lastrowid or 0)
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+            return {"ok": True, "id": new_id, "code": sanitized}
+        finally:
+            conn.close()
+
+
+def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None) -> dict:
+    """기존 쇼핑몰 카테고리의 이름, 정렬 순서, 스토어 노출 여부를 수정합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM mall_categories WHERE id = ?", (int(cat_id),))
+            existing = cur.fetchone()
+            if not existing:
+                return {"ok": False, "message": "수정할 카테고리를 찾을 수 없습니다."}
+
+            new_name = str(name).strip() if name is not None else str(existing["name"])
+            if not new_name or len(new_name) > 40:
+                return {"ok": False, "message": "카테고리명은 1~40자 이내로 입력해 주세요."}
+
+            cur.execute("SELECT id FROM mall_categories WHERE name = ? AND id != ?", (new_name, int(cat_id)))
+            if cur.fetchone():
+                return {"ok": False, "message": "이미 동일한 이름의 카테고리가 존재합니다."}
+
+            new_order = int(existing["sort_order"] or 0) if sort_order is None or str(sort_order).strip() == "" else max(0, int(sort_order))
+            new_active = int(existing["is_active"]) if is_active is None else (1 if is_active else 0)
+
+            cur.execute("""
+                UPDATE mall_categories
+                SET name = ?, sort_order = ?, is_active = ?
+                WHERE id = ?
+            """, (new_name, new_order, new_active, int(cat_id)))
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+            return {"ok": True}
+        finally:
+            conn.close()
+
+
+def delete_mall_category(cat_id: int) -> dict:
+    """카테고리를 삭제하고 해당 카테고리에 속해 있던 상품은 기타(ETC)로 이동합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, code, name FROM mall_categories WHERE id = ?", (int(cat_id),))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "message": "삭제할 카테고리를 찾을 수 없습니다."}
+
+            old_code = str(row["code"] or "").strip().upper()
+            cur.execute("UPDATE mall_products SET category = 'ETC' WHERE UPPER(COALESCE(category, '')) = ?", (old_code,))
+            moved_cnt = int(cur.rowcount or 0)
+            cur.execute("DELETE FROM mall_categories WHERE id = ?", (int(cat_id),))
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+            return {
+                "ok": True,
+                "deleted_code": old_code,
+                "deleted_name": str(row["name"]),
+                "moved_products": moved_cnt,
+            }
+        finally:
+            conn.close()
+
+
+def get_mall_policy_defaults() -> dict:
+    """쇼핑몰 상품 등록 시 공통으로 불러올 4대 기본 안내를 반환합니다."""
+    saved = get_live_state_key("product_policy_defaults", None)
+    if isinstance(saved, dict):
+        return {
+            "shipping_info": str(saved.get("shipping_info") or "").strip(),
+            "exchange_return_info": str(saved.get("exchange_return_info") or "").strip(),
+            "non_returnable_info": str(saved.get("non_returnable_info") or "").strip(),
+            "as_info": str(saved.get("as_info") or "").strip(),
+        }
+    return dict(DEFAULT_MALL_POLICIES)
+
+
+def set_mall_policy_defaults(policy_data: dict) -> dict:
+    """쇼핑몰 공통 4대 기본 안내를 DB에 영구 저장합니다."""
+    raw = policy_data if isinstance(policy_data, dict) else {}
+    normalized = {
+        "shipping_info": str(raw.get("shipping_info") or "").strip(),
+        "exchange_return_info": str(raw.get("exchange_return_info") or "").strip(),
+        "non_returnable_info": str(raw.get("non_returnable_info") or "").strip(),
+        "as_info": str(raw.get("as_info") or "").strip(),
+    }
+    set_live_state_key("product_policy_defaults", normalized)
+    return normalized
+
+
+def create_mall_product(prod_data: dict) -> dict:
+    """쇼핑몰 관리자에서 신규 상품을 직접 등록합니다."""
+    if not isinstance(prod_data, dict):
+        return {"ok": False, "message": "잘못된 상품 데이터입니다."}
+
+    name = str(prod_data.get("name") or "").strip()
+    if not name:
+        return {"ok": False, "message": "상품명을 입력해 주세요."}
+
+    try:
+        sell_price = max(0, int(prod_data.get("price") or 0))
+        live_price = max(0, int(prod_data.get("live_price") or sell_price))
+        if live_price <= 0:
+            live_price = sell_price
+        consumer_price = max(sell_price, int(prod_data.get("consumer_price") or sell_price))
+    except Exception:
+        return {"ok": False, "message": "가격은 올바른 숫자로 입력해 주세요."}
+
+    raw_opts = prod_data.get("options")
+    clean_opts = []
+    if isinstance(raw_opts, list):
+        for o in raw_opts:
+            if not isinstance(o, dict):
+                continue
+            c = str(o.get("color") or "-").strip() or "-"
+            s = str(o.get("size") or "-").strip() or "-"
+            stk = max(0, int(o.get("stock") or 0))
+            clean_opts.append({"color": c, "size": s, "stock": stk})
+    if not clean_opts:
+        clean_opts = [{"color": "기본", "size": "FREE", "stock": 10}]
+
+    image_url = str(prod_data.get("image_url") or "").strip()
+    specs = str(prod_data.get("specs") or "").strip()
+    category = str(prod_data.get("category") or "").strip().upper() or _infer_category(name, specs)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            raw_num = prod_data.get("num")
+            if raw_num in (None, ""):
+                cur.execute("SELECT COALESCE(MAX(num), 0) + 1 FROM mall_products")
+                num = int(cur.fetchone()[0] or 1)
+            else:
+                num = int(raw_num)
+                if num <= 0:
+                    return {"ok": False, "message": "상품 번호는 1 이상의 숫자여야 합니다."}
+                cur.execute("SELECT id FROM mall_products WHERE num = ?", (num,))
+                if cur.fetchone():
+                    return {"ok": False, "message": f"이미 #{num}번 상품이 등록되어 있습니다."}
+
+            cur.execute("""
+                INSERT INTO mall_products
+                (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs,
+                 detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info,
+                 is_featured, updated_at, created_at)
+                VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            """, (
+                num, name, category, sell_price, live_price, consumer_price, image_url, specs,
+                str(prod_data.get("detail_content") or "").strip(),
+                _serialize_detail_images(prod_data.get("detail_images")),
+                str(prod_data.get("shipping_info") or "").strip(),
+                str(prod_data.get("exchange_return_info") or "").strip(),
+                str(prod_data.get("non_returnable_info") or "").strip(),
+                str(prod_data.get("as_info") or "").strip(),
+                now_str, now_str
+            ))
+            mall_pid = int(cur.lastrowid or 0)
+            for opt in clean_opts:
+                cur.execute("""
+                    INSERT OR REPLACE INTO mall_product_options (product_id, color, size, stock)
+                    VALUES (?, ?, ?, ?)
+                """, (mall_pid, opt["color"], opt["size"], opt["stock"]))
+
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+            return {"ok": True, "product": get_mall_product_by_num(num)}
+        finally:
+            conn.close()
+
+
+def update_mall_product(product_id: int, prod_data: dict) -> dict:
+    """쇼핑몰 관리자에서 기존 상품 정보, 카테고리, 상세페이지, 4대 안내 및 옵션을 수정합니다."""
+    if not isinstance(prod_data, dict):
+        return {"ok": False, "message": "잘못된 상품 데이터입니다."}
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM mall_products WHERE id = ?", (int(product_id),))
+            existing = cur.fetchone()
+            if not existing:
+                return {"ok": False, "message": "수정할 상품을 찾을 수 없습니다."}
+
+            raw_num = prod_data.get("num")
+            target_num = int(raw_num) if raw_num not in (None, "") else int(existing["num"])
+            if target_num <= 0:
+                return {"ok": False, "message": "상품 번호는 1 이상의 숫자여야 합니다."}
+            if target_num != int(existing["num"]):
+                cur.execute("SELECT id FROM mall_products WHERE num = ? AND id != ?", (target_num, int(product_id)))
+                if cur.fetchone():
+                    return {"ok": False, "message": f"이미 #{target_num}번 상품이 등록되어 있습니다."}
+
+            name = str(prod_data.get("name") if "name" in prod_data else existing["name"]).strip()
+            if not name:
+                return {"ok": False, "message": "상품명을 입력해 주세요."}
+
+            sell_price = max(0, int(prod_data["price"])) if "price" in prod_data else int(existing["price"] or 0)
+            live_price = max(0, int(prod_data.get("live_price") or sell_price)) if "live_price" in prod_data else int(existing["live_price"] or sell_price)
+            if live_price <= 0:
+                live_price = sell_price
+            consumer_price = max(sell_price, int(prod_data.get("consumer_price") or sell_price)) if "consumer_price" in prod_data else max(sell_price, int(existing["consumer_price"] or sell_price))
+            category = str(prod_data.get("category") if "category" in prod_data else existing["category"]).strip().upper() or "ETC"
+            image_url = str(prod_data.get("image_url") if "image_url" in prod_data else existing["image_url"] or "").strip()
+            specs = str(prod_data.get("specs") if "specs" in prod_data else existing["specs"] or "").strip()
+            detail_imgs = _serialize_detail_images(prod_data["detail_images"]) if "detail_images" in prod_data else (existing["detail_images"] or "[]")
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            ext_keys = set(existing.keys())
+            resolved_texts = {
+                col: (
+                    str(prod_data[col] or "").strip()
+                    if col in prod_data
+                    else str(existing[col] or "" if col in ext_keys else "")
+                )
+                for col in MALL_DETAIL_TEXT_FIELDS
+            }
+
+            cur.execute("""
+                UPDATE mall_products
+                SET num = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
+                    image_url = ?, specs = ?,
+                    detail_content = ?, detail_images = ?,
+                    shipping_info = ?, exchange_return_info = ?, non_returnable_info = ?, as_info = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                target_num, name, category, sell_price, live_price, consumer_price,
+                image_url, specs,
+                resolved_texts["detail_content"], detail_imgs,
+                resolved_texts["shipping_info"], resolved_texts["exchange_return_info"],
+                resolved_texts["non_returnable_info"], resolved_texts["as_info"],
+                now_str, int(product_id)
+            ))
+
+            if "options" in prod_data and isinstance(prod_data["options"], list):
+                clean_opts = []
+                for o in prod_data["options"]:
+                    if not isinstance(o, dict):
+                        continue
+                    c = str(o.get("color") or "-").strip() or "-"
+                    s = str(o.get("size") or "-").strip() or "-"
+                    stk = max(0, int(o.get("stock") or 0))
+                    clean_opts.append({"color": c, "size": s, "stock": stk})
+                if not clean_opts:
+                    return {"ok": False, "message": "최소 1개 이상의 옵션을 입력해 주세요."}
+                cur.execute("DELETE FROM mall_product_options WHERE product_id = ?", (int(product_id),))
+                for opt in clean_opts:
+                    cur.execute("""
+                        INSERT OR REPLACE INTO mall_product_options (product_id, color, size, stock)
+                        VALUES (?, ?, ?, ?)
+                    """, (int(product_id), opt["color"], opt["size"], opt["stock"]))
+
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+            return {"ok": True, "product": get_mall_product_by_num(target_num)}
+        finally:
+            conn.close()
+
+
+def delete_mall_product(product_id: int) -> dict:
+    """쇼핑몰 관리자에서 상품을 삭제합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, num, obs_product_id, name FROM mall_products WHERE id = ?", (int(product_id),))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "message": "삭제할 상품을 찾을 수 없습니다."}
+            cur.execute("DELETE FROM mall_products WHERE id = ?", (int(product_id),))
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+            return {
+                "ok": True,
+                "deleted_num": int(row["num"]),
+                "deleted_obs_id": int(row["obs_product_id"] or 0),
+                "deleted_name": str(row["name"]),
+            }
+        finally:
+            conn.close()
+
+
+def set_mall_product_obs_id(mall_pid: int, obs_id: int):
+    """쇼핑몰 상품의 obs_product_id를 연결해 OBS 양방향 동기화 일관성을 유지합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE mall_products SET obs_product_id = ? WHERE id = ?", (int(obs_id), int(mall_pid)))
+            conn.commit()
         finally:
             conn.close()
 

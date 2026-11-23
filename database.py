@@ -74,6 +74,7 @@ def init_db(reset=False):
                     exchange_return_info TEXT DEFAULT '',
                     non_returnable_info TEXT DEFAULT '',
                     as_info TEXT DEFAULT '',
+                    category TEXT DEFAULT '',
                     created_at TEXT NOT NULL
                 )
             """)
@@ -126,6 +127,7 @@ def init_db(reset=False):
                 ("products", "exchange_return_info", "TEXT DEFAULT ''"),
                 ("products", "non_returnable_info", "TEXT DEFAULT ''"),
                 ("products", "as_info", "TEXT DEFAULT ''"),
+                ("products", "category", "TEXT DEFAULT ''"),
                 ("orders", "confirmed_at", "TEXT DEFAULT ''"),
                 ("orders", "unit_cost", "INTEGER DEFAULT 0"),
                 ("orders", "profit", "INTEGER DEFAULT 0"),
@@ -411,6 +413,7 @@ def _build_product_dict(prow, opt_rows):
         "live_margin_rate": live_margin_rate,
         "potential_profit": potential_profit,
         "image_url": prow["image_url"] or "",
+        "category": _row_text(prow, keys, "category", ""),
         "specs": prow["specs"] or "",
         "detail_content": _row_text(prow, keys, "detail_content", ""),
         "detail_images": _parse_detail_images(prow["detail_images"] if "detail_images" in keys else []),
@@ -472,11 +475,11 @@ def add_product(product_data):
                     cursor.execute("""
                         INSERT INTO products (
                             num, name, price, live_price, consumer_price, cost_price,
-                            image_url, specs, detail_content, detail_images,
+                            category, image_url, specs, detail_content, detail_images,
                             shipping_info, exchange_return_info, non_returnable_info, as_info,
                             created_at
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         num,
                         product_data.get("name", "신규 상품"),
@@ -484,6 +487,7 @@ def add_product(product_data):
                         live_price,
                         cons_price,
                         cost_price,
+                        str(product_data.get("category") or "").strip().upper(),
                         str(product_data.get("image_url") or "").strip(),
                         str(product_data.get("specs") or "").strip(),
                         str(product_data.get("detail_content") or "").strip(),
@@ -599,6 +603,9 @@ def update_product(product_id, update_data):
                 if "cost_price" in update_data:
                     fields.append("cost_price = ?")
                     vals.append(int(update_data["cost_price"]))
+                if "category" in update_data:
+                    fields.append("category = ?")
+                    vals.append(str(update_data.get("category") or "").strip().upper())
                 for txt_col in ("image_url", "specs", "detail_content", *POLICY_FIELD_KEYS):
                     if txt_col in update_data:
                         fields.append(f"{txt_col} = ?")

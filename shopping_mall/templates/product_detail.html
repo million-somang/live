@@ -22,7 +22,7 @@
         <div>
             <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
                 <span class="ax-code-chip">#{{ product.num }}번 상품</span>
-                <span class="ax-badge ax-badge-neutral">{{ product.category }}</span>
+                <span class="ax-badge ax-badge-neutral">{{ category_labels.get(product.category, product.category) if category_labels is defined else product.category }}</span>
                 {% set stock_badge_cls = 'ax-badge-success' if product.total_stock > 0 else 'ax-badge-live' %}
                 <span class="ax-badge {{ stock_badge_cls }} ax-num">재고 {{ product.total_stock }}개</span>
             </div>

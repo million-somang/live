@@ -204,7 +204,7 @@
                             방송번호 #{{ selected_product.num }}번
                         </span>
                         <span id="detailCategoryBadge" class="ax-badge ax-badge-neutral">
-                            {{ selected_product.category }}
+                            {{ category_labels.get(selected_product.category, selected_product.category) if category_labels is defined else selected_product.category }}
                         </span>
                         <span id="detailStockBadge" class="ax-badge ax-badge-success ax-num">
                             잔여 재고 {{ selected_product.total_stock }}개
@@ -469,11 +469,13 @@
     data-all-products="{{ (all_products or []) | tojson | forceescape }}"
     data-catalog-version="{{ (live_state.catalog_version or 1) | tojson | forceescape }}"
     data-embed-url="{{ (live_state.youtube_embed_url or '') | tojson | forceescape }}"
+    data-category-labels="{{ (category_labels or {}) | tojson | forceescape }}"
     data-initial-reviews="{{ (live_state.selected_product_reviews or []) | tojson | forceescape }}"></div>
 <script>
     const __liveBootEl = document.getElementById('mallLiveBootstrap');
     let currentLiveState = __liveBootEl ? JSON.parse(__liveBootEl.dataset.liveState || '{}') : {};
     let currentDisplayedProduct = __liveBootEl ? JSON.parse(__liveBootEl.dataset.selectedProduct || 'null') : null;
+    const liveCategoryLabels = __liveBootEl ? JSON.parse(__liveBootEl.dataset.categoryLabels || '{}') : {};
     let selectedOptionIdx = 0;
     let autoFollowObsPin = true;
     let lastObsPinnedNum = currentLiveState ? currentLiveState.pinned_product_num : null;
@@ -504,7 +506,10 @@
         if (numBadge) numBadge.innerText = `방송번호 #${product.num}번`;
 
         const catBadge = document.getElementById('detailCategoryBadge');
-        if (catBadge) catBadge.innerText = product.category || 'LIVE';
+        if (catBadge) {
+            const cCode = product.category || '';
+            catBadge.innerText = (cCode && liveCategoryLabels[cCode]) ? liveCategoryLabels[cCode] : (cCode || 'LIVE');
+        }
 
         const stockBadge = document.getElementById('detailStockBadge');
         if (stockBadge) {

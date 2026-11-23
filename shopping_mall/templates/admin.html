@@ -2,23 +2,27 @@
 {% block title %}쇼핑몰 관리자 — 골라방 LIVE{% endblock %}
 
 {% block content %}
-<div class="ax-card ax-card-pad" style="margin-bottom:22px;">
+<div class="ax-card ax-card-pad" style="margin-bottom:18px;">
     <div class="ax-page-header" style="margin-bottom:0; align-items:center;">
         <div>
             <span class="ax-badge-eyebrow">MALL ADMIN · PORT 6001</span>
             <div class="ax-page-title-row">
                 <h1 class="ax-page-title">독립 쇼핑몰 관리자</h1>
             </div>
-            <p class="ax-page-sub">쇼핑몰 전용 DB(<code class="ax-code-chip" style="padding:1px 6px;">shopping_mall.db</code>)에 동기화된 상품 및 쇼핑몰 주문 내역을 관리합니다.</p>
+            <p class="ax-page-sub">쇼핑몰 상품·카테고리 및 주문 내역을 통합 관리합니다. 동일 호스트 OBS 재고 DB와 실시간 양방향 동기화됩니다.</p>
         </div>
 
         <div class="ax-admin-controls">
+            <button type="button" id="btnOpenNewProductModal" onclick="openAdminProductModal(null)" class="ax-btn ax-btn-primary">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <span>새 상품 등록</span>
+            </button>
             <div style="display:inline-flex; align-items:center; gap:6px; background:var(--ax-surface-secondary); border:1px solid var(--ax-border-strong); border-radius:10px; padding:4px 6px 4px 10px;">
                 <label for="adminDiscountPctInput" style="font-size:0.8rem; font-weight:700; color:var(--ax-text-secondary);">할인율(%)</label>
                 <input type="number" id="adminDiscountPctInput" value="30" min="0" max="95" class="ax-input ax-input-compact ax-num" style="width:60px; text-align:center; background:#fff; font-weight:700;">
                 <button type="button" onclick="applyAdminDiscountNow()" class="ax-btn ax-btn-charcoal ax-btn-sm">일괄 적용</button>
             </div>
-            <button type="button" onclick="syncProductsFromObsNow()" class="ax-btn ax-btn-primary">
+            <button type="button" onclick="syncProductsFromObsNow()" class="ax-btn ax-btn-secondary">
                 <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                 <span>OBS 상품/상태 즉시 동기화</span>
             </button>
@@ -36,151 +40,1074 @@
     </div>
 </div>
 
-<div class="ax-admin-grid">
-    <!-- 동기화된 상품 목록 -->
-    <section class="ax-card ax-card-pad">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
-            <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 DB 동기화 상품</h3>
-            <span class="ax-badge ax-badge-neutral ax-num">{{ products|length }}건</span>
+<!-- Astryx Segmented 탭 전환 -->
+<div class="ax-admin-tab-bar">
+    <nav class="ax-segmented-bar" aria-label="관리자 작업 영역">
+        <button type="button" id="adminTabProducts" class="ax-tab-btn active" data-tab="products" onclick="switchAdminTab(this.dataset.tab)">
+            <span>상품 관리</span>
+            <span class="ax-num">(<span id="adminTabProductsCount">{{ products|length }}</span>)</span>
+        </button>
+        <button type="button" id="adminTabCategories" class="ax-tab-btn" data-tab="categories" onclick="switchAdminTab(this.dataset.tab)">
+            <span>카테고리 관리</span>
+            <span class="ax-num">(<span id="adminTabCategoriesCount">{{ (all_categories or [])|length }}</span>)</span>
+        </button>
+        <button type="button" id="adminTabOrders" class="ax-tab-btn" data-tab="orders" onclick="switchAdminTab(this.dataset.tab)">
+            <span>주문 관리</span>
+            <span class="ax-num">({{ orders|length }})</span>
+        </button>
+    </nav>
+</div>
+
+<!-- 1. 상품 관리 패널 -->
+<section id="adminPanelProducts" class="ax-card ax-card-pad">
+    <div class="ax-admin-subbar">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 등록·동기화 상품</h2>
+            <span id="adminProdTotalBadge" class="ax-badge ax-badge-neutral ax-num">{{ products|length }}건</span>
         </div>
-        <div style="max-height:560px; overflow-y:auto;">
-            {% for p in products %}
-            <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--ax-border-subtle);">
+        <div class="ax-toolbar-search">
+            <select id="adminProdCatFilter" class="ax-select ax-select-compact" onchange="renderAdminProductsList()" aria-label="카테고리 필터" style="width:auto; min-width:130px; font-weight:600;"></select>
+            <div class="ax-search-wrap">
+                <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" id="adminProdSearchInput" class="ax-input ax-input-search ax-input-compact" placeholder="상품명 또는 번호 검색..." oninput="renderAdminProductsList()">
+            </div>
+            <button type="button" onclick="openAdminProductModal(null)" class="ax-btn ax-btn-primary ax-btn-sm">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <span>상품 추가</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="adminProductsListContainer">
+        {% for p in products %}
+        {% set cat_disp = category_labels.get(p.category, p.category) if category_labels is defined else p.category %}
+        <div class="ax-admin-prod-row">
+            <div class="ax-admin-prod-main">
                 {% if p.image_url %}
-                <img src="{{ p.image_url }}" alt="{{ p.name }}" style="width:52px; height:52px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">
+                <img src="{{ p.image_url }}" alt="{{ p.name }}" style="width:54px; height:54px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">
                 {% else %}
-                <div style="width:52px; height:52px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;">
+                <div style="width:54px; height:54px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;">
                     <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg>
                 </div>
                 {% endif %}
                 <div style="flex:1; min-width:0;">
                     <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:wrap;">
                         <span class="ax-code-chip" style="padding:1px 6px; font-size:0.6875rem;">#{{ p.num }}</span>
-                        <span class="ax-badge ax-badge-neutral" style="padding:1px 6px; font-size:0.6875rem;">{{ p.category }}</span>
+                        <span class="ax-badge ax-badge-neutral" style="padding:1px 6px; font-size:0.6875rem;">{{ cat_disp }}</span>
                     </div>
-                    <div style="font-size:0.92rem; font-weight:700; color:var(--ax-text-primary);">{{ p.name }}</div>
+                    <div style="font-size:0.93rem; font-weight:700; color:var(--ax-text-primary);">{{ p.name }}</div>
                     <div class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">
                         판매가 {{ "{:,}".format(p.price) }}원 · <strong style="color:var(--ax-accent-primary);">LIVE가 {{ "{:,}".format(p.live_price or p.price) }}원</strong> · 총 재고 {{ p.total_stock }}개
                     </div>
                 </div>
-                {% if live_state and live_state.selected_product and live_state.selected_product.num == p.num %}
-                <span class="ax-badge ax-badge-indigo">현재 선택됨</span>
-                {% endif %}
             </div>
-            {% endfor %}
+            <div class="ax-admin-prod-actions">
+                <a href="/product/{{ p.num }}" target="_blank" rel="noopener noreferrer" class="ax-btn ax-btn-secondary ax-btn-sm">보기</a>
+                <button type="button" data-product-id="{{ p.id }}" onclick="openAdminProductModal(Number(this.dataset.productId))" class="ax-btn ax-btn-charcoal ax-btn-sm">수정</button>
+                <button type="button" data-product-id="{{ p.id }}" onclick="deleteAdminProduct(Number(this.dataset.productId))" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
+            </div>
         </div>
-    </section>
+        {% else %}
+        <div class="ax-detail-empty-box">등록된 상품이 없습니다. 우측 상단 [새 상품 등록] 버튼을 눌러 첫 상품을 추가해 보세요.</div>
+        {% endfor %}
+    </div>
+</section>
 
-    <!-- 쇼핑몰 주문 관리 -->
-    <section class="ax-card ax-card-pad">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
-            <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 웹 주문 내역</h3>
-            <span class="ax-badge ax-badge-indigo ax-num">{{ orders|length }}건</span>
+<!-- 2. 카테고리 관리 패널 -->
+<section id="adminPanelCategories" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-admin-subbar">
+        <div>
+            <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 카테고리 관리</h2>
+            <p style="font-size:0.8125rem; color:var(--ax-text-secondary); margin-top:2px;">등록·수정한 카테고리는 스토어 홈 상단 필터에 즉시 반영되며, 삭제된 카테고리의 상품은 자동으로 기타(ETC)로 이동합니다.</p>
         </div>
-        <div style="max-height:640px; overflow-y:auto; display:flex; flex-direction:column; gap:12px;">
-            {% for ord in orders %}
-            {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
-            {% set safe_total = (ord.total_amount or 0)|int %}
-            {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
-            {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
-            {% set src_up = (ord.source_page or 'MALL')|upper %}
-            <div class="ax-admin-order-card">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        <span class="ax-code-chip">{{ ord.order_code }}</span>
-                        <span class="ax-num" style="font-weight:700; color:var(--ax-text-primary);">({{ ord.buyer_name }} / {{ ord.buyer_phone }})</span>
-                        {% if src_up == 'CART_CHECKOUT' %}
-                        <span class="ax-badge ax-badge-info">장바구니</span>
-                        {% elif src_up == 'LIVE' %}
-                        <span class="ax-badge ax-badge-live">라이브</span>
-                        {% else %}
-                        <span class="ax-badge ax-badge-neutral">스토어</span>
-                        {% endif %}
-                        {% if ord.is_guest %}
-                        <span class="ax-badge ax-badge-warning">비회원</span>
-                        {% else %}
-                        <span class="ax-badge ax-badge-success">회원</span>
-                        {% endif %}
-                    </div>
-                    <div style="text-align:right; margin-left:auto;" class="ax-num">
-                        <strong style="font-size:0.98rem; color:var(--ax-accent-primary);">{{ "{:,}".format(safe_total) }}원</strong>
-                        <div style="font-size:0.72rem; color:var(--ax-text-secondary);">상품 {{ "{:,}".format(safe_sub) }}원 + 택배 {{ "{:,}".format(safe_ship) }}원</div>
-                    </div>
-                </div>
+        <span id="adminCatCountBadge" class="ax-badge ax-badge-indigo ax-num">{{ (all_categories or [])|length }}개 카테고리</span>
+    </div>
 
-                <div style="color:var(--ax-text-secondary); margin-bottom:8px; font-size:0.81rem;">
-                    <strong style="color:var(--ax-text-primary);">배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
-                    {% if ord.delivery_memo %}
-                    <div style="margin-top:3px; color:var(--ax-accent-primary); font-weight:600;">배송메모: {{ ord.delivery_memo }}</div>
+    <form id="catCreateForm" class="ax-cat-create-form" onsubmit="createAdminCategory(event)">
+        <div>
+            <label class="ax-label" for="catNewName">카테고리명 *</label>
+            <input type="text" id="catNewName" class="ax-input ax-input-compact" placeholder="예: 슈즈/가방, 뷰티, 홈웨어" maxlength="40" required>
+        </div>
+        <div>
+            <label class="ax-label" for="catNewCode">코드 (영문, 선택)</label>
+            <input type="text" id="catNewCode" class="ax-input ax-input-compact" placeholder="미입력 시 자동 생성" maxlength="24">
+        </div>
+        <div>
+            <label class="ax-label" for="catNewOrder">정렬순서</label>
+            <input type="number" id="catNewOrder" class="ax-input ax-input-compact ax-num" value="60" min="0" max="9999">
+        </div>
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:700; color:var(--ax-text-primary); padding-bottom:8px; cursor:pointer;">
+            <input type="checkbox" id="catNewActive" checked style="accent-color:var(--ax-accent-primary);">
+            <span>스토어 노출</span>
+        </label>
+        <button type="submit" id="btnCreateCategory" class="ax-btn ax-btn-primary ax-btn-sm" style="height:36px;">카테고리 추가</button>
+    </form>
+
+    <div class="ax-table-wrap">
+        <table class="ax-table">
+            <thead>
+                <tr>
+                    <th style="width:90px;">정렬순서</th>
+                    <th style="width:130px;">코드</th>
+                    <th>카테고리명</th>
+                    <th style="width:96px;">소속 상품</th>
+                    <th style="width:100px;">스토어 노출</th>
+                    <th style="width:150px;">관리</th>
+                </tr>
+            </thead>
+            <tbody id="adminCategoriesTbody"></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 3. 주문 관리 패널 -->
+<section id="adminPanelOrders" class="ax-card ax-card-pad ax-is-hidden">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
+        <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 웹 주문 내역</h2>
+        <span class="ax-badge ax-badge-indigo ax-num">{{ orders|length }}건</span>
+    </div>
+    <div style="max-height:680px; overflow-y:auto; display:flex; flex-direction:column; gap:12px;">
+        {% for ord in orders %}
+        {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
+        {% set safe_total = (ord.total_amount or 0)|int %}
+        {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
+        {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
+        {% set src_up = (ord.source_page or 'MALL')|upper %}
+        <div class="ax-admin-order-card">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <span class="ax-code-chip">{{ ord.order_code }}</span>
+                    <span class="ax-num" style="font-weight:700; color:var(--ax-text-primary);">({{ ord.buyer_name }} / {{ ord.buyer_phone }})</span>
+                    {% if src_up == 'CART_CHECKOUT' %}
+                    <span class="ax-badge ax-badge-info">장바구니</span>
+                    {% elif src_up == 'LIVE' %}
+                    <span class="ax-badge ax-badge-live">라이브</span>
+                    {% else %}
+                    <span class="ax-badge ax-badge-neutral">스토어</span>
+                    {% endif %}
+                    {% if ord.is_guest %}
+                    <span class="ax-badge ax-badge-warning">비회원</span>
+                    {% else %}
+                    <span class="ax-badge ax-badge-success">회원</span>
                     {% endif %}
                 </div>
-
-                <!-- 구매한 상품 상세 목록 -->
-                <div class="ax-surface-muted" style="padding:10px 12px; margin-bottom:10px;">
-                    <div class="ax-num" style="font-size:0.75rem; font-weight:700; color:var(--ax-text-secondary); margin-bottom:6px;">
-                        구매 상품 내역 ({{ (item_list or [])|length }}건)
-                    </div>
-                    {% for it in (item_list or []) %}
-                    <div class="ax-admin-item-row">
-                        <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
-                            {% if it.image_url %}
-                            <img src="{{ it.image_url }}" alt="" style="width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">
-                            {% else %}
-                            <div style="width:40px; height:40px; border-radius:8px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;">
-                                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg>
-                            </div>
-                            {% endif %}
-                            <div style="min-width:0; flex:1;">
-                                <div style="font-weight:700; color:var(--ax-text-primary); font-size:0.84rem;">
-                                    <span style="color:var(--ax-accent-primary);" class="ax-num">#{{ it.product_num }}</span> {{ it.product_name }}
-                                </div>
-                                <div class="ax-num" style="font-size:0.78rem; color:var(--ax-text-secondary); margin-top:2px;">
-                                    옵션: <strong style="color:var(--ax-text-primary);">{{ it.color }} / {{ it.size }}</strong> · 수량: <strong style="color:var(--ax-accent-primary);">{{ it.quantity }}개</strong>
-                                    <span style="color:var(--ax-text-muted); margin-left:4px;">(단가 {{ "{:,}".format((it.unit_price or 0)|int) }}원)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <strong class="ax-num" style="font-size:0.86rem; color:var(--ax-text-primary); white-space:nowrap;">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
-                    </div>
-                    {% else %}
-                    <div style="font-size:0.8rem; color:var(--ax-text-muted); padding:4px 0;">등록된 상세 품목 정보가 없습니다.</div>
-                    {% endfor %}
-                </div>
-
-                <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                        <select data-order-id="{{ ord.id }}" onchange="updateOrderPaymentStatus(Number(this.dataset.orderId), this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="입금 상태">
-                            {% for pst in ['입금대기', '입금완료', '환불완료'] %}
-                            {% if ord.payment_status == pst %}
-                            <option value="{{ pst }}" selected>{{ pst }}</option>
-                            {% else %}
-                            <option value="{{ pst }}">{{ pst }}</option>
-                            {% endif %}
-                            {% endfor %}
-                        </select>
-                        <select data-order-id="{{ ord.id }}" onchange="updateOrderStatus(Number(this.dataset.orderId), this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="주문 배송 상태">
-                            {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
-                            {% if ord.order_status == st %}
-                            <option value="{{ st }}" selected>{{ st }}</option>
-                            {% else %}
-                            <option value="{{ st }}">{{ st }}</option>
-                            {% endif %}
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">{{ ord.created_at }}</span>
+                <div style="text-align:right; margin-left:auto;" class="ax-num">
+                    <strong style="font-size:0.98rem; color:var(--ax-accent-primary);">{{ "{:,}".format(safe_total) }}원</strong>
+                    <div style="font-size:0.72rem; color:var(--ax-text-secondary);">상품 {{ "{:,}".format(safe_sub) }}원 + 택배 {{ "{:,}".format(safe_ship) }}원</div>
                 </div>
             </div>
-            {% else %}
-            <div style="color:var(--ax-text-muted); padding:24px; text-align:center;">접수된 쇼핑몰 주문이 없습니다.</div>
-            {% endfor %}
+
+            <div style="color:var(--ax-text-secondary); margin-bottom:8px; font-size:0.81rem;">
+                <strong style="color:var(--ax-text-primary);">배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
+                {% if ord.delivery_memo %}
+                <div style="margin-top:3px; color:var(--ax-accent-primary); font-weight:600;">배송메모: {{ ord.delivery_memo }}</div>
+                {% endif %}
+            </div>
+
+            <!-- 구매한 상품 상세 목록 -->
+            <div class="ax-surface-muted" style="padding:10px 12px; margin-bottom:10px;">
+                <div class="ax-num" style="font-size:0.75rem; font-weight:700; color:var(--ax-text-secondary); margin-bottom:6px;">
+                    구매 상품 내역 ({{ (item_list or [])|length }}건)
+                </div>
+                {% for it in (item_list or []) %}
+                <div class="ax-admin-item-row">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+                        {% if it.image_url %}
+                        <img src="{{ it.image_url }}" alt="" style="width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">
+                        {% else %}
+                        <div style="width:40px; height:40px; border-radius:8px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;">
+                            <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg>
+                        </div>
+                        {% endif %}
+                        <div style="min-width:0; flex:1;">
+                            <div style="font-weight:700; color:var(--ax-text-primary); font-size:0.84rem;">
+                                <span style="color:var(--ax-accent-primary);" class="ax-num">#{{ it.product_num }}</span> {{ it.product_name }}
+                            </div>
+                            <div class="ax-num" style="font-size:0.78rem; color:var(--ax-text-secondary); margin-top:2px;">
+                                옵션: <strong style="color:var(--ax-text-primary);">{{ it.color }} / {{ it.size }}</strong> · 수량: <strong style="color:var(--ax-accent-primary);">{{ it.quantity }}개</strong>
+                                <span style="color:var(--ax-text-muted); margin-left:4px;">(단가 {{ "{:,}".format((it.unit_price or 0)|int) }}원)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <strong class="ax-num" style="font-size:0.86rem; color:var(--ax-text-primary); white-space:nowrap;">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
+                </div>
+                {% else %}
+                <div style="font-size:0.8rem; color:var(--ax-text-muted); padding:4px 0;">등록된 상세 품목 정보가 없습니다.</div>
+                {% endfor %}
+            </div>
+
+            <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <select data-order-id="{{ ord.id }}" onchange="updateOrderPaymentStatus(Number(this.dataset.orderId), this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="입금 상태">
+                        {% for pst in ['입금대기', '입금완료', '환불완료'] %}
+                        {% if ord.payment_status == pst %}
+                        <option value="{{ pst }}" selected>{{ pst }}</option>
+                        {% else %}
+                        <option value="{{ pst }}">{{ pst }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <select data-order-id="{{ ord.id }}" onchange="updateOrderStatus(Number(this.dataset.orderId), this.value)" class="ax-select ax-select-compact" style="width:auto; font-weight:700;" aria-label="주문 배송 상태">
+                        {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
+                        {% if ord.order_status == st %}
+                        <option value="{{ st }}" selected>{{ st }}</option>
+                        {% else %}
+                        <option value="{{ st }}">{{ st }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">{{ ord.created_at }}</span>
+            </div>
         </div>
-    </section>
+        {% else %}
+        <div style="color:var(--ax-text-muted); padding:24px; text-align:center;">접수된 쇼핑몰 주문이 없습니다.</div>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- 상품 등록 / 수정 Astryx Dialog 모달 -->
+<div class="ax-dialog-backdrop" id="adminProductModal" role="dialog" aria-modal="true" aria-labelledby="adminProductModalTitle" onclick="if(event.target===this) closeAdminProductModal()">
+    <div class="ax-dialog-card ax-dialog-wide">
+        <div class="ax-dialog-header">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <h3 id="adminProductModalTitle" style="font-size:1.08rem; font-weight:800; color:var(--ax-text-primary);">새 상품 등록</h3>
+                <span class="ax-badge ax-badge-indigo">OBS 재고 동시 연동</span>
+            </div>
+            <button type="button" class="ax-icon-btn" onclick="closeAdminProductModal()" aria-label="상품 모달 닫기">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+
+        <form id="adminProductForm" onsubmit="saveAdminProduct(event)">
+            <input type="hidden" id="apEditId" value="">
+
+            <!-- 1. 기본 정보 & 카테고리 & 가격 -->
+            <div class="ax-admin-modal-section">
+                <div class="ax-admin-modal-section-head">
+                    <span class="ax-admin-modal-section-title">1. 기본 정보 · 카테고리 · 가격</span>
+                </div>
+                <div class="ax-form-row-2">
+                    <div class="ax-field">
+                        <label class="ax-label" for="apNum">상품 번호 *</label>
+                        <input type="number" id="apNum" class="ax-input ax-num" min="1" required>
+                    </div>
+                    <div class="ax-field">
+                        <label class="ax-label" for="apCategory">카테고리 *</label>
+                        <select id="apCategory" class="ax-select" required></select>
+                    </div>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="apName">상품명 *</label>
+                    <input type="text" id="apName" class="ax-input" placeholder="예: 캐시미어 블렌드 코트" required>
+                </div>
+                <div class="ax-form-row-3">
+                    <div class="ax-field" style="margin-bottom:0;">
+                        <label class="ax-label" for="apConsumerPrice">정가(소비자가)</label>
+                        <input type="number" id="apConsumerPrice" class="ax-input ax-num" min="0" placeholder="예: 89000">
+                    </div>
+                    <div class="ax-field" style="margin-bottom:0;">
+                        <label class="ax-label" for="apPrice">일반 판매가 *</label>
+                        <input type="number" id="apPrice" class="ax-input ax-num" min="0" placeholder="예: 59000" required>
+                    </div>
+                    <div class="ax-field" style="margin-bottom:0;">
+                        <label class="ax-label" for="apLivePrice">라이브 특가</label>
+                        <input type="number" id="apLivePrice" class="ax-input ax-num" min="0" placeholder="미입력 시 판매가 동일">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. 대표 이미지 & 핵심 사양 -->
+            <div class="ax-admin-modal-section">
+                <div class="ax-admin-modal-section-head">
+                    <span class="ax-admin-modal-section-title">2. 대표 사진 &amp; 상품 핵심 사양</span>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="apImageUrl">상품 대표 이미지</label>
+                    <div class="ax-admin-img-preview-wrap">
+                        <div class="ax-admin-img-preview-box">
+                            <svg id="apImagePlaceholder" class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg>
+                            <img id="apImagePreview" class="ax-is-hidden" alt="대표 이미지 미리보기">
+                        </div>
+                        <div style="flex:1; min-width:200px; display:flex; flex-direction:column; gap:8px;">
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <input type="file" id="apMainImgFile" accept="image/*,.jfif" style="display:none;" onchange="onAdminMainImageSelected(event)">
+                                <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm" onclick="document.getElementById('apMainImgFile').click()">PC에서 사진 선택</button>
+                                <span id="apMainUploadStatus" style="font-size:0.78rem; color:var(--ax-text-secondary);"></span>
+                            </div>
+                            <input type="text" id="apImageUrl" class="ax-input ax-input-compact" placeholder="또는 이미지 URL 직접 입력" oninput="syncAdminMainImagePreview(this.value)">
+                        </div>
+                    </div>
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="apSpecs">핵심 사양 / 요약 설명</label>
+                    <textarea id="apSpecs" class="ax-input" rows="2" placeholder="소재, 핏, 국내 제작, 당일 출고 등 핵심 요약"></textarea>
+                </div>
+            </div>
+
+            <!-- 3. 옵션 & 재고 매트릭스 -->
+            <div class="ax-admin-modal-section">
+                <div class="ax-admin-modal-section-head">
+                    <span class="ax-admin-modal-section-title">3. 옵션(색상/사이즈) 및 재고 *</span>
+                    <button type="button" onclick="addAdminOptionRow('', '', 10)" class="ax-btn ax-btn-secondary ax-btn-sm">+ 옵션 행 추가</button>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:end; margin-bottom:10px;">
+                    <div style="flex:1; min-width:140px;">
+                        <label class="ax-label" for="apGenColors">색상 일괄 (쉼표 구분)</label>
+                        <input type="text" id="apGenColors" class="ax-input ax-input-compact" value="블랙, 화이트">
+                    </div>
+                    <div style="flex:1; min-width:120px;">
+                        <label class="ax-label" for="apGenSizes">사이즈 일괄 (쉼표 구분)</label>
+                        <input type="text" id="apGenSizes" class="ax-input ax-input-compact" value="FREE">
+                    </div>
+                    <button type="button" onclick="generateAdminOptionMatrix()" class="ax-btn ax-btn-charcoal ax-btn-sm">매트릭스 생성</button>
+                </div>
+                <div class="ax-table-wrap">
+                    <table class="ax-table">
+                        <thead>
+                            <tr>
+                                <th>색상 *</th>
+                                <th>사이즈 *</th>
+                                <th style="width:110px;">재고 수량 *</th>
+                                <th style="width:70px;">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody id="apOptionsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 4. 상세페이지 본문 & 다중 이미지 -->
+            <div class="ax-admin-modal-section">
+                <div class="ax-admin-modal-section-head">
+                    <span class="ax-admin-modal-section-title">4. 상품 상세페이지 (본문 · 다중 이미지)</span>
+                    <span id="apDetailImagesBadge" class="ax-badge ax-badge-indigo ax-num">이미지 0장</span>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="apDetailContent">상세페이지 본문 설명</label>
+                    <textarea id="apDetailContent" class="ax-input" rows="4" placeholder="소재 특징, 실측/사이즈 팁, 코디 추천 등 상세 설명을 입력하세요."></textarea>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+                    <input type="file" id="apDetailImagesFile" accept="image/*,.jfif" multiple style="display:none;" onchange="onAdminDetailImagesSelected(event)">
+                    <button type="button" id="btnApAddDetailFiles" class="ax-btn ax-btn-secondary ax-btn-sm" onclick="document.getElementById('apDetailImagesFile').click()">상세 이미지 여러 장 업로드</button>
+                    <input type="text" id="apDetailImgUrlInput" class="ax-input ax-input-compact" placeholder="상세 이미지 URL 입력" style="flex:1; min-width:160px;">
+                    <button type="button" onclick="addAdminDetailImgUrl()" class="ax-btn ax-btn-charcoal ax-btn-sm">+ URL 추가</button>
+                    <span id="apDetailUploadStatus" style="font-size:0.78rem; color:var(--ax-text-secondary);"></span>
+                </div>
+                <div id="apDetailImagesList" style="display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+
+            <!-- 5. 배송 / 교환·반품 / 불가 사항 / A/S 안내 -->
+            <div class="ax-admin-modal-section">
+                <div class="ax-admin-modal-section-head">
+                    <span class="ax-admin-modal-section-title">5. 배송 · 교환/반품 · 불가 사항 · A/S 안내</span>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button type="button" onclick="applyAdminPolicyDefaultsToForm()" class="ax-btn ax-btn-secondary ax-btn-sm">기본 안내 불러오기</button>
+                        <button type="button" onclick="saveAdminPolicyDefaultsNow()" class="ax-btn ax-btn-secondary ax-btn-sm">현재 내용을 공통 기본으로 저장</button>
+                        <button type="button" onclick="clearAdminPolicyFields()" class="ax-btn ax-btn-secondary ax-btn-sm">비우기</button>
+                    </div>
+                </div>
+                <div class="ax-admin-policy-grid">
+                    <div>
+                        <label class="ax-label" for="apShippingInfo">배송 안내</label>
+                        <textarea id="apShippingInfo" class="ax-input" rows="3"></textarea>
+                    </div>
+                    <div>
+                        <label class="ax-label" for="apExchangeInfo">교환 / 반품 안내</label>
+                        <textarea id="apExchangeInfo" class="ax-input" rows="3"></textarea>
+                    </div>
+                    <div>
+                        <label class="ax-label" for="apNonReturnableInfo">교환 / 반품 불가 사항 안내</label>
+                        <textarea id="apNonReturnableInfo" class="ax-input" rows="3"></textarea>
+                    </div>
+                    <div>
+                        <label class="ax-label" for="apAsInfo">A/S 안내</label>
+                        <textarea id="apAsInfo" class="ax-input" rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+                <button type="button" onclick="closeAdminProductModal()" class="ax-btn ax-btn-secondary">취소</button>
+                <button type="submit" id="btnApSaveSubmit" class="ax-btn ax-btn-primary">상품 저장하기</button>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+<div id="adminMallBootstrap" hidden
+     data-products="{{ (products or []) | tojson | forceescape }}"
+     data-categories="{{ (all_categories or mall_categories or []) | tojson | forceescape }}"
+     data-category-labels="{{ (category_labels or {}) | tojson | forceescape }}"
+     data-policy-defaults="{{ (policy_defaults or {}) | tojson | forceescape }}"></div>
 <script>
+    const __admBootEl = document.getElementById('adminMallBootstrap');
+    let adminProducts = __admBootEl ? JSON.parse(__admBootEl.dataset.products || '[]') : [];
+    let adminCategories = __admBootEl ? JSON.parse(__admBootEl.dataset.categories || '[]') : [];
+    let adminCategoryLabels = __admBootEl ? JSON.parse(__admBootEl.dataset.categoryLabels || '{}') : {};
+    let adminPolicyDefaults = __admBootEl ? JSON.parse(__admBootEl.dataset.policyDefaults || '{}') : {};
+    let apDetailImages = [];
+    let apPendingUploads = 0;
+
+    function switchAdminTab(tabName) {
+        const tabs = ['products', 'categories', 'orders'];
+        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders' };
+        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders' };
+        tabs.forEach(t => {
+            const btn = document.getElementById(tMap[t]);
+            const panel = document.getElementById(pMap[t]);
+            const isSel = (t === tabName);
+            if (btn) btn.classList.toggle('active', isSel);
+            if (panel) panel.classList.toggle('ax-is-hidden', !isSel);
+        });
+    }
+
+    function rebuildCategoryLabelsMap() {
+        const nextMap = {};
+        (adminCategories || []).forEach(c => {
+            if (c && c.code) nextMap[String(c.code).toUpperCase()] = c.name || c.code;
+        });
+        nextMap.ETC = '기타';
+        adminCategoryLabels = nextMap;
+    }
+
+    function populateCategorySelects() {
+        const filterSel = document.getElementById('adminProdCatFilter');
+        const prevFilter = filterSel ? filterSel.value : 'ALL';
+        const modalSel = document.getElementById('apCategory');
+        const prevModal = modalSel ? modalSel.value : '';
+
+        if (filterSel) {
+            const opts = ['<option value="ALL">전체 카테고리</option>'];
+            adminCategories.forEach(c => {
+                opts.push(`<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)}</option>`);
+            });
+            opts.push('<option value="ETC">기타</option>');
+            filterSel.innerHTML = opts.join('');
+            filterSel.value = Array.from(filterSel.options).some(o => o.value === prevFilter) ? prevFilter : 'ALL';
+        }
+
+        if (modalSel) {
+            const opts = adminCategories.map(c =>
+                `<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)} (${window.mallEscapeHtml(c.code)})</option>`
+            );
+            opts.push('<option value="ETC">기타 (ETC)</option>');
+            modalSel.innerHTML = opts.join('');
+            if (prevModal && Array.from(modalSel.options).some(o => o.value === prevModal)) {
+                modalSel.value = prevModal;
+            } else if (adminCategories.length > 0) {
+                modalSel.value = adminCategories[0].code;
+            }
+        }
+    }
+
+    function renderAdminProductsList() {
+        const box = document.getElementById('adminProductsListContainer');
+        const cntBadge = document.getElementById('adminProdTotalBadge');
+        const tabCnt = document.getElementById('adminTabProductsCount');
+        if (tabCnt) tabCnt.innerText = String(adminProducts.length);
+
+        const catFilter = String(document.getElementById('adminProdCatFilter')?.value || 'ALL').toUpperCase();
+        const searchQ = String(document.getElementById('adminProdSearchInput')?.value || '').trim().toLowerCase();
+
+        const filtered = adminProducts.filter(p => {
+            const pCat = String(p.category || '').toUpperCase();
+            if (catFilter !== 'ALL' && pCat !== catFilter) return false;
+            if (searchQ) {
+                const hay = `${p.num} ${p.name || ''} ${p.specs || ''}`.toLowerCase();
+                if (!hay.includes(searchQ)) return false;
+            }
+            return true;
+        });
+        if (cntBadge) cntBadge.innerText = `${filtered.length}건`;
+        if (!box) return;
+
+        if (filtered.length === 0) {
+            box.innerHTML = '<div class="ax-detail-empty-box">조건에 맞는 등록 상품이 없습니다.</div>';
+            return;
+        }
+
+        box.innerHTML = filtered.map(p => {
+            const catCode = String(p.category || 'ETC').toUpperCase();
+            const catName = adminCategoryLabels[catCode] || catCode;
+            const dImgs = Array.isArray(p.detail_images) ? p.detail_images.length : 0;
+            const hasDetail = Boolean((p.detail_content || '').trim()) || dImgs > 0;
+            const imgHtml = p.image_url
+                ? `<img src="${window.mallEscapeHtml(p.image_url)}" alt="${window.mallEscapeHtml(p.name)}" style="width:54px; height:54px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
+                : `<div style="width:54px; height:54px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;"><svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></div>`;
+            return `
+                <div class="ax-admin-prod-row">
+                    <div class="ax-admin-prod-main">
+                        ${imgHtml}
+                        <div style="flex:1; min-width:0;">
+                            <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:wrap;">
+                                <span class="ax-code-chip" style="padding:1px 6px; font-size:0.6875rem;">#${Number(p.num)}</span>
+                                <span class="ax-badge ax-badge-neutral" style="padding:1px 6px; font-size:0.6875rem;">${window.mallEscapeHtml(catName)}</span>
+                                ${hasDetail ? `<span class="ax-badge ax-badge-indigo" style="padding:1px 6px; font-size:0.6875rem;">상세이미지 ${dImgs}장</span>` : ''}
+                            </div>
+                            <div style="font-size:0.93rem; font-weight:700; color:var(--ax-text-primary);">${window.mallEscapeHtml(p.name)}</div>
+                            <div class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">
+                                판매가 ${Number(p.price || 0).toLocaleString()}원 · <strong style="color:var(--ax-accent-primary);">LIVE가 ${Number(p.live_price || p.price || 0).toLocaleString()}원</strong> · 총 재고 ${Number(p.total_stock || 0)}개
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ax-admin-prod-actions">
+                        <a href="/product/${Number(p.num)}" target="_blank" rel="noopener noreferrer" class="ax-btn ax-btn-secondary ax-btn-sm">보기</a>
+                        <button type="button" data-product-id="${Number(p.id)}" onclick="openAdminProductModal(Number(this.dataset.productId))" class="ax-btn ax-btn-charcoal ax-btn-sm">수정</button>
+                        <button type="button" data-product-id="${Number(p.id)}" onclick="deleteAdminProduct(Number(this.dataset.productId))" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderAdminCategoriesTable() {
+        const tbody = document.getElementById('adminCategoriesTbody');
+        const cntBadge = document.getElementById('adminCatCountBadge');
+        const tabCnt = document.getElementById('adminTabCategoriesCount');
+        if (cntBadge) cntBadge.innerText = `${adminCategories.length}개 카테고리`;
+        if (tabCnt) tabCnt.innerText = String(adminCategories.length);
+        if (!tbody) return;
+
+        if (adminCategories.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--ax-text-muted); padding:24px;">등록된 카테고리가 없습니다. 위에서 새 카테고리를 추가하세요.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = adminCategories.map(c => `
+            <tr data-cat-row-id="${Number(c.id)}">
+                <td><input type="number" class="ax-input ax-input-compact ax-num" id="catOrder_${Number(c.id)}" value="${Number(c.sort_order || 0)}" min="0" max="9999"></td>
+                <td><span class="ax-code-chip">${window.mallEscapeHtml(c.code)}</span></td>
+                <td><input type="text" class="ax-input ax-input-compact" id="catName_${Number(c.id)}" value="${window.mallEscapeHtml(c.name)}" maxlength="40"></td>
+                <td class="ax-num" style="font-weight:700;">${Number(c.product_count || 0)}개</td>
+                <td style="text-align:center;">
+                    <input type="checkbox" id="catActive_${Number(c.id)}" ${c.is_active ? 'checked' : ''} aria-label="스토어 노출 여부" style="accent-color:var(--ax-accent-primary); width:16px; height:16px;">
+                </td>
+                <td>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" data-cat-id="${Number(c.id)}" onclick="saveAdminCategoryRow(Number(this.dataset.catId))" class="ax-btn ax-btn-charcoal ax-btn-sm">저장</button>
+                        <button type="button" data-cat-id="${Number(c.id)}" data-cat-name="${window.mallEscapeHtml(c.name)}" onclick="deleteAdminCategoryRow(Number(this.dataset.catId), this.dataset.catName)" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function applyCategoriesPayload(cats) {
+        adminCategories = Array.isArray(cats) ? cats : [];
+        rebuildCategoryLabelsMap();
+        populateCategorySelects();
+        renderAdminCategoriesTable();
+        renderAdminProductsList();
+    }
+
+    async function createAdminCategory(e) {
+        e.preventDefault();
+        const nameEl = document.getElementById('catNewName');
+        const codeEl = document.getElementById('catNewCode');
+        const orderEl = document.getElementById('catNewOrder');
+        const activeEl = document.getElementById('catNewActive');
+        const btn = document.getElementById('btnCreateCategory');
+
+        const name = nameEl ? nameEl.value.trim() : '';
+        if (!name) {
+            alert('카테고리명을 입력해 주세요.');
+            return;
+        }
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/categories/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: name,
+                    code: codeEl ? codeEl.value.trim() : '',
+                    sort_order: orderEl ? Number(orderEl.value || 0) : 0,
+                    is_active: activeEl ? Boolean(activeEl.checked) : true
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '카테고리 추가에 실패했습니다.');
+                return;
+            }
+            if (nameEl) nameEl.value = '';
+            if (codeEl) codeEl.value = '';
+            applyCategoriesPayload(data.categories || []);
+            showMallToast('새 카테고리가 등록되었습니다.');
+        } catch (err) {
+            alert('카테고리 추가 오류: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function saveAdminCategoryRow(catId) {
+        const name = document.getElementById(`catName_${catId}`)?.value.trim() || '';
+        const sortOrder = Number(document.getElementById(`catOrder_${catId}`)?.value || 0);
+        const isActive = Boolean(document.getElementById(`catActive_${catId}`)?.checked);
+        if (!name) {
+            alert('카테고리명을 입력해 주세요.');
+            return;
+        }
+        try {
+            const res = await fetch('/api/admin/categories/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: catId, name, sort_order: sortOrder, is_active: isActive })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '카테고리 저장에 실패했습니다.');
+                return;
+            }
+            applyCategoriesPayload(data.categories || []);
+            showMallToast('카테고리 정보가 저장되었습니다.');
+        } catch (err) {
+            alert('카테고리 저장 오류: ' + err.message);
+        }
+    }
+
+    async function deleteAdminCategoryRow(catId, catName) {
+        if (!confirm(`[${catName}] 카테고리를 삭제하시겠습니까?\n이 카테고리에 속한 상품은 삭제되지 않고 [기타(ETC)]로 이동됩니다.`)) {
+            return;
+        }
+        try {
+            const res = await fetch('/api/admin/categories/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: catId })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '카테고리 삭제 실패');
+                return;
+            }
+            const delCode = String(data.deleted_code || '').toUpperCase();
+            if (delCode) {
+                adminProducts.forEach(p => {
+                    if (String(p.category || '').toUpperCase() === delCode) {
+                        p.category = 'ETC';
+                    }
+                });
+            }
+            applyCategoriesPayload(data.categories || []);
+            showMallToast(`카테고리가 삭제되었습니다. (이동된 상품 ${Number(data.moved_products || 0)}건)`);
+        } catch (err) {
+            alert('카테고리 삭제 오류: ' + err.message);
+        }
+    }
+
+    function setAdminModalUploadBusy(delta) {
+        apPendingUploads = Math.max(0, apPendingUploads + delta);
+        const btn = document.getElementById('btnApSaveSubmit');
+        if (!btn) return;
+        const isEdit = Boolean(document.getElementById('apEditId')?.value);
+        if (apPendingUploads > 0) {
+            btn.disabled = true;
+            btn.innerText = '이미지 업로드 중...';
+        } else {
+            btn.disabled = false;
+            btn.innerText = isEdit ? '수정 내용 저장' : '상품 등록 완료';
+        }
+    }
+
+    function syncAdminMainImagePreview(url) {
+        const img = document.getElementById('apImagePreview');
+        const ph = document.getElementById('apImagePlaceholder');
+        const trimmed = String(url || '').trim();
+        if (!img || !ph) return;
+        if (trimmed) {
+            img.src = trimmed;
+            img.classList.remove('ax-is-hidden');
+            ph.classList.add('ax-is-hidden');
+        } else {
+            img.removeAttribute('src');
+            img.classList.add('ax-is-hidden');
+            ph.classList.remove('ax-is-hidden');
+        }
+    }
+
+    async function uploadAdminSingleImage(file) {
+        const fd = new FormData();
+        fd.append('image', file);
+        const res = await fetch('/api/admin/upload/image', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok' || !data.url) {
+            throw new Error(data.message || '이미지 업로드 실패');
+        }
+        return data.url;
+    }
+
+    async function onAdminMainImageSelected(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const stEl = document.getElementById('apMainUploadStatus');
+        if (stEl) stEl.innerText = '업로드 중...';
+        setAdminModalUploadBusy(1);
+        try {
+            const url = await uploadAdminSingleImage(file);
+            document.getElementById('apImageUrl').value = url;
+            syncAdminMainImagePreview(url);
+            if (stEl) stEl.innerText = '업로드 완료';
+        } catch (err) {
+            alert(err.message);
+            if (stEl) stEl.innerText = '';
+        } finally {
+            event.target.value = '';
+            setAdminModalUploadBusy(-1);
+        }
+    }
+
+    function renderAdminDetailImagesList() {
+        const listEl = document.getElementById('apDetailImagesList');
+        const badgeEl = document.getElementById('apDetailImagesBadge');
+        if (badgeEl) badgeEl.innerText = `이미지 ${apDetailImages.length}장`;
+        if (!listEl) return;
+        if (apDetailImages.length === 0) {
+            listEl.innerHTML = '<div style="text-align:center; padding:12px; font-size:0.8rem; color:var(--ax-text-muted); background:#fff; border:1px dashed var(--ax-border-strong); border-radius:8px;">등록된 상세 이미지가 없습니다.</div>';
+            return;
+        }
+        listEl.innerHTML = apDetailImages.map((u, idx) => `
+            <div class="ax-admin-detail-row">
+                <img class="ax-admin-detail-thumb" src="${window.mallEscapeHtml(u)}" alt="상세 이미지 ${idx + 1}">
+                <span class="ax-code-chip">${idx + 1}</span>
+                <span class="ax-admin-detail-url" title="${window.mallEscapeHtml(u)}">${window.mallEscapeHtml(u)}</span>
+                <button type="button" data-idx="${idx}" data-delta="-1" onclick="moveAdminDetailImg(Number(this.dataset.idx), Number(this.dataset.delta))" class="ax-btn ax-btn-secondary ax-btn-sm" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                <button type="button" data-idx="${idx}" data-delta="1" onclick="moveAdminDetailImg(Number(this.dataset.idx), Number(this.dataset.delta))" class="ax-btn ax-btn-secondary ax-btn-sm" ${idx === apDetailImages.length - 1 ? 'disabled' : ''}>↓</button>
+                <button type="button" data-idx="${idx}" onclick="removeAdminDetailImg(Number(this.dataset.idx))" class="ax-btn ax-btn-danger-soft ax-btn-sm">✕</button>
+            </div>
+        `).join('');
+    }
+
+    function moveAdminDetailImg(idx, delta) {
+        const target = idx + delta;
+        if (target < 0 || target >= apDetailImages.length) return;
+        const tmp = apDetailImages[idx];
+        apDetailImages[idx] = apDetailImages[target];
+        apDetailImages[target] = tmp;
+        renderAdminDetailImagesList();
+    }
+
+    function removeAdminDetailImg(idx) {
+        apDetailImages.splice(idx, 1);
+        renderAdminDetailImagesList();
+    }
+
+    function addAdminDetailImgUrl() {
+        const inp = document.getElementById('apDetailImgUrlInput');
+        const val = inp ? inp.value.trim() : '';
+        if (!val) {
+            alert('추가할 상세 이미지 URL을 입력해 주세요.');
+            return;
+        }
+        if (apDetailImages.length >= 30) {
+            alert('상세 이미지는 최대 30장까지 등록할 수 있습니다.');
+            return;
+        }
+        apDetailImages.push(val);
+        inp.value = '';
+        renderAdminDetailImagesList();
+    }
+
+    async function onAdminDetailImagesSelected(event) {
+        const files = Array.from(event.target.files || []);
+        if (files.length === 0) return;
+        const stEl = document.getElementById('apDetailUploadStatus');
+        const btn = document.getElementById('btnApAddDetailFiles');
+        if (btn) btn.disabled = true;
+        setAdminModalUploadBusy(1);
+        try {
+            let cnt = 0;
+            for (let i = 0; i < files.length; i++) {
+                if (apDetailImages.length >= 30) break;
+                if (stEl) stEl.innerText = `업로드 중 (${i + 1}/${files.length})...`;
+                const url = await uploadAdminSingleImage(files[i]);
+                apDetailImages.push(url);
+                cnt++;
+                renderAdminDetailImagesList();
+            }
+            if (stEl) stEl.innerText = cnt > 0 ? `${cnt}장 업로드 완료` : '';
+        } catch (err) {
+            alert('상세 이미지 업로드 오류: ' + err.message);
+            if (stEl) stEl.innerText = '';
+        } finally {
+            event.target.value = '';
+            if (btn) btn.disabled = false;
+            setAdminModalUploadBusy(-1);
+        }
+    }
+
+    function addAdminOptionRow(color = '', size = '', stock = 10) {
+        const tbody = document.getElementById('apOptionsTbody');
+        if (!tbody) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="text" class="ax-input ax-input-compact ap-opt-color" value="${window.mallEscapeHtml(color)}" placeholder="예: 블랙"></td>
+            <td><input type="text" class="ax-input ax-input-compact ap-opt-size" value="${window.mallEscapeHtml(size)}" placeholder="예: FREE"></td>
+            <td><input type="number" class="ax-input ax-input-compact ax-num ap-opt-stock" value="${Number(stock || 0)}" min="0"></td>
+            <td style="text-align:center;"><button type="button" onclick="this.closest('tr').remove()" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    function generateAdminOptionMatrix() {
+        const colors = (document.getElementById('apGenColors')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+        const sizes = (document.getElementById('apGenSizes')?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (colors.length === 0 || sizes.length === 0) {
+            alert('색상과 사이즈를 최소 1개 이상 입력해 주세요.');
+            return;
+        }
+        const tbody = document.getElementById('apOptionsTbody');
+        if (tbody) tbody.innerHTML = '';
+        colors.forEach(c => sizes.forEach(s => addAdminOptionRow(c, s, 15)));
+    }
+
+    function applyAdminPolicyDefaultsToForm() {
+        document.getElementById('apShippingInfo').value = adminPolicyDefaults.shipping_info || '';
+        document.getElementById('apExchangeInfo').value = adminPolicyDefaults.exchange_return_info || '';
+        document.getElementById('apNonReturnableInfo').value = adminPolicyDefaults.non_returnable_info || '';
+        document.getElementById('apAsInfo').value = adminPolicyDefaults.as_info || '';
+    }
+
+    function clearAdminPolicyFields() {
+        document.getElementById('apShippingInfo').value = '';
+        document.getElementById('apExchangeInfo').value = '';
+        document.getElementById('apNonReturnableInfo').value = '';
+        document.getElementById('apAsInfo').value = '';
+    }
+
+    async function saveAdminPolicyDefaultsNow() {
+        const payload = {
+            shipping_info: document.getElementById('apShippingInfo').value.trim(),
+            exchange_return_info: document.getElementById('apExchangeInfo').value.trim(),
+            non_returnable_info: document.getElementById('apNonReturnableInfo').value.trim(),
+            as_info: document.getElementById('apAsInfo').value.trim()
+        };
+        try {
+            const res = await fetch('/api/admin/policy-defaults', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                adminPolicyDefaults = data.defaults || payload;
+                showMallToast('공통 기본 안내가 저장되었습니다.');
+            } else {
+                alert(data.message || '기본 안내 저장 실패');
+            }
+        } catch (err) {
+            alert('기본 안내 저장 오류: ' + err.message);
+        }
+    }
+
+    function openAdminProductModal(productId) {
+        const modal = document.getElementById('adminProductModal');
+        const titleEl = document.getElementById('adminProductModalTitle');
+        const submitBtn = document.getElementById('btnApSaveSubmit');
+        populateCategorySelects();
+
+        const tbody = document.getElementById('apOptionsTbody');
+        if (tbody) tbody.innerHTML = '';
+        document.getElementById('apMainUploadStatus').innerText = '';
+        document.getElementById('apDetailUploadStatus').innerText = '';
+        document.getElementById('apDetailImgUrlInput').value = '';
+
+        if (productId) {
+            const prod = adminProducts.find(p => Number(p.id) === Number(productId));
+            if (!prod) {
+                alert('상품 정보를 찾을 수 없습니다.');
+                return;
+            }
+            document.getElementById('apEditId').value = String(prod.id);
+            if (titleEl) titleEl.innerText = `#${prod.num}번 상품 수정`;
+            if (submitBtn) submitBtn.innerText = '수정 내용 저장';
+            document.getElementById('apNum').value = prod.num;
+
+            const catSel = document.getElementById('apCategory');
+            const pCat = String(prod.category || 'ETC').toUpperCase();
+            if (catSel && !Array.from(catSel.options).some(o => o.value === pCat)) {
+                const extraOpt = document.createElement('option');
+                extraOpt.value = pCat;
+                extraOpt.text = pCat;
+                catSel.appendChild(extraOpt);
+            }
+            if (catSel) catSel.value = pCat;
+
+            document.getElementById('apName').value = prod.name || '';
+            document.getElementById('apConsumerPrice').value = prod.consumer_price || prod.price || 0;
+            document.getElementById('apPrice').value = prod.price || 0;
+            document.getElementById('apLivePrice').value = prod.live_price || prod.price || 0;
+            document.getElementById('apImageUrl').value = prod.image_url || '';
+            syncAdminMainImagePreview(prod.image_url || '');
+            document.getElementById('apSpecs').value = prod.specs || '';
+            document.getElementById('apDetailContent').value = prod.detail_content || '';
+            apDetailImages = Array.isArray(prod.detail_images) ? prod.detail_images.slice() : [];
+            renderAdminDetailImagesList();
+            document.getElementById('apShippingInfo').value = prod.shipping_info || '';
+            document.getElementById('apExchangeInfo').value = prod.exchange_return_info || '';
+            document.getElementById('apNonReturnableInfo').value = prod.non_returnable_info || '';
+            document.getElementById('apAsInfo').value = prod.as_info || '';
+            const opts = Array.isArray(prod.options) && prod.options.length > 0
+                ? prod.options
+                : [{ color: '기본', size: 'FREE', stock: 10 }];
+            opts.forEach(o => addAdminOptionRow(o.color, o.size, o.stock));
+        } else {
+            document.getElementById('apEditId').value = '';
+            if (titleEl) titleEl.innerText = '새 상품 등록';
+            if (submitBtn) submitBtn.innerText = '상품 등록 완료';
+            const maxNum = adminProducts.reduce((m, p) => Math.max(m, Number(p.num) || 0), 0);
+            document.getElementById('apNum').value = String(maxNum + 1);
+            document.getElementById('apName').value = '';
+            document.getElementById('apConsumerPrice').value = '';
+            document.getElementById('apPrice').value = '';
+            document.getElementById('apLivePrice').value = '';
+            document.getElementById('apImageUrl').value = '';
+            syncAdminMainImagePreview('');
+            document.getElementById('apSpecs').value = '';
+            document.getElementById('apDetailContent').value = '';
+            apDetailImages = [];
+            renderAdminDetailImagesList();
+            applyAdminPolicyDefaultsToForm();
+            generateAdminOptionMatrix();
+        }
+
+        if (modal) modal.classList.add('is-open');
+    }
+
+    function closeAdminProductModal() {
+        const modal = document.getElementById('adminProductModal');
+        if (modal) modal.classList.remove('is-open');
+    }
+
+    async function saveAdminProduct(e) {
+        e.preventDefault();
+        if (apPendingUploads > 0) {
+            alert('이미지 업로드가 완료될 때까지 잠시 기다려 주세요.');
+            return;
+        }
+        const pendingUrl = document.getElementById('apDetailImgUrlInput')?.value.trim() || '';
+        if (pendingUrl && apDetailImages.length < 30 && !apDetailImages.includes(pendingUrl)) {
+            apDetailImages.push(pendingUrl);
+            document.getElementById('apDetailImgUrlInput').value = '';
+            renderAdminDetailImagesList();
+        }
+
+        const options = [];
+        document.querySelectorAll('#apOptionsTbody tr').forEach(tr => {
+            const c = tr.querySelector('.ap-opt-color')?.value.trim() || '';
+            const s = tr.querySelector('.ap-opt-size')?.value.trim() || '';
+            const stk = Math.max(0, Number(tr.querySelector('.ap-opt-stock')?.value || 0));
+            if (c && s) options.push({ color: c, size: s, stock: stk });
+        });
+        if (options.length === 0) {
+            alert('최소 1개 이상의 옵션(색상/사이즈)을 입력해 주세요.');
+            return;
+        }
+
+        const editId = document.getElementById('apEditId')?.value || '';
+        const price = Math.max(0, Number(document.getElementById('apPrice')?.value || 0));
+        const consPrice = Math.max(0, Number(document.getElementById('apConsumerPrice')?.value || 0)) || price;
+        const livePrice = Math.max(0, Number(document.getElementById('apLivePrice')?.value || 0)) || price;
+        const payload = {
+            num: Number(document.getElementById('apNum')?.value || 0),
+            category: document.getElementById('apCategory')?.value || 'ETC',
+            name: document.getElementById('apName')?.value.trim() || '',
+            price: price,
+            consumer_price: consPrice,
+            live_price: livePrice,
+            image_url: document.getElementById('apImageUrl')?.value.trim() || '',
+            specs: document.getElementById('apSpecs')?.value.trim() || '',
+            detail_content: document.getElementById('apDetailContent')?.value.trim() || '',
+            detail_images: apDetailImages.slice(),
+            shipping_info: document.getElementById('apShippingInfo')?.value.trim() || '',
+            exchange_return_info: document.getElementById('apExchangeInfo')?.value.trim() || '',
+            non_returnable_info: document.getElementById('apNonReturnableInfo')?.value.trim() || '',
+            as_info: document.getElementById('apAsInfo')?.value.trim() || '',
+            options: options
+        };
+        if (editId) payload.id = Number(editId);
+
+        const btn = document.getElementById('btnApSaveSubmit');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerText = '저장 중...';
+        }
+        try {
+            const endpoint = editId ? '/api/admin/products/update' : '/api/admin/products/add';
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '상품 저장 실패');
+                return;
+            }
+            const savedProd = data.product;
+            if (savedProd) {
+                const idx = adminProducts.findIndex(p => Number(p.id) === Number(savedProd.id));
+                if (idx >= 0) {
+                    adminProducts[idx] = savedProd;
+                } else {
+                    adminProducts.push(savedProd);
+                }
+                adminProducts.sort((a, b) => Number(a.num) - Number(b.num));
+            }
+            if (Array.isArray(data.categories)) {
+                adminCategories = data.categories;
+                rebuildCategoryLabelsMap();
+                populateCategorySelects();
+                renderAdminCategoriesTable();
+            }
+            renderAdminProductsList();
+            closeAdminProductModal();
+            showMallToast(editId ? '상품 정보가 수정되었습니다.' : '새 상품이 등록되었습니다.');
+        } catch (err) {
+            alert('상품 저장 오류: ' + err.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = editId ? '수정 내용 저장' : '상품 등록 완료';
+            }
+        }
+    }
+
+    async function deleteAdminProduct(productId) {
+        const prod = adminProducts.find(p => Number(p.id) === Number(productId));
+        const label = prod ? `#${prod.num} ${prod.name}` : `상품 #${productId}`;
+        if (!confirm(`[${label}] 상품을 삭제하시겠습니까?\n동일 호스트 OBS 재고 목록에서도 함께 삭제됩니다.`)) {
+            return;
+        }
+        try {
+            const res = await fetch('/api/admin/products/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: productId })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert(data.message || '상품 삭제 실패');
+                return;
+            }
+            adminProducts = adminProducts.filter(p => Number(p.id) !== Number(productId));
+            if (Array.isArray(data.categories)) {
+                adminCategories = data.categories;
+                rebuildCategoryLabelsMap();
+                populateCategorySelects();
+                renderAdminCategoriesTable();
+            }
+            renderAdminProductsList();
+            showMallToast('상품이 삭제되었습니다.');
+        } catch (err) {
+            alert('상품 삭제 오류: ' + err.message);
+        }
+    }
+
     async function syncProductsFromObsNow() {
         try {
             const res = await fetch('/api/sync/pull-now', { method: 'POST' });
@@ -233,5 +1160,22 @@
             alert('할인율 적용 오류: ' + e.message);
         }
     }
+
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') {
+            closeAdminProductModal();
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('adminProductModal');
+        if (modal && modal.parentElement !== document.body) {
+            document.body.appendChild(modal);
+        }
+        rebuildCategoryLabelsMap();
+        populateCategorySelects();
+        renderAdminCategoriesTable();
+        renderAdminProductsList();
+    });
 </script>
 {% endblock %}

@@ -9,10 +9,12 @@
     <div class="ax-toolbar-left">
         <nav class="ax-segmented-bar" aria-label="상품 카테고리">
             <a href="/?category=ALL{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'ALL' %}active{% endif %}">전체</a>
-            <a href="/?category=TOP{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'TOP' %}active{% endif %}">상의/탑</a>
-            <a href="/?category=OUTER{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'OUTER' %}active{% endif %}">아우터</a>
-            <a href="/?category=BOTTOM{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'BOTTOM' %}active{% endif %}">팬츠/스커트</a>
-            <a href="/?category=DRESS{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'DRESS' %}active{% endif %}">원피스/세트</a>
+            {% for cat in (mall_categories or []) %}
+            <a href="/?category={{ cat.code | urlencode }}{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == cat.code %}active{% endif %}">{{ cat.name }}</a>
+            {% endfor %}
+            {% if has_etc_products or current_category == 'ETC' %}
+            <a href="/?category=ETC{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'ETC' %}active{% endif %}">기타</a>
+            {% endif %}
         </nav>
         <span class="ax-badge ax-badge-neutral ax-num">등록 상품 {{ products|length }}건</span>
     </div>
@@ -47,8 +49,9 @@
             {% endif %}
         </a>
         <div class="ax-product-body">
-            <div data-csr-stock-num="{{ p.num }}" data-csr-cat="{{ p.category }}" class="ax-product-meta ax-num">
-                {{ p.category }} · 잔여 {{ p.total_stock }}개
+            {% set cat_disp = category_labels.get(p.category, p.category) if category_labels is defined else p.category %}
+            <div data-csr-stock-num="{{ p.num }}" data-csr-cat="{{ cat_disp }}" class="ax-product-meta ax-num">
+                {{ cat_disp }} · 잔여 {{ p.total_stock }}개
             </div>
             <a href="/product/{{ p.num }}" class="ax-product-title">
                 {{ p.name }}
