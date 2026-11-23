@@ -13,7 +13,7 @@ import base64
 import hashlib
 import secrets
 from threading import RLock
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -83,7 +83,7 @@ def constant_time_equals(val_a: str, val_b: str) -> bool:
         return False
 
 
-def is_safe_redirect_url(target: str) -> bool:
+def is_safe_redirect_url(target: Any) -> bool:
     if not target or not isinstance(target, str):
         return False
     target = target.strip()
@@ -247,7 +247,7 @@ def create_signed_token(secret_key: str, purpose: str, payload: Optional[dict] =
     return f"{b64_body}.{sig}"
 
 
-def verify_signed_token(secret_key: str, purpose: str, token: str):
+def verify_signed_token(secret_key: Any, purpose: Any, token: Any):
     if not token or not isinstance(token, str) or "." not in token:
         return None
     try:

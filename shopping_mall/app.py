@@ -9,7 +9,6 @@ OBS 실시간 연동 독립형 쇼핑몰 서버 (shopping_mall/app.py)
 
 import os
 import sys
-import io
 import json
 import time
 import base64
@@ -18,7 +17,6 @@ import shutil
 import sqlite3
 import threading
 import urllib.request
-import urllib.error
 from datetime import datetime, timedelta
 from typing import Optional
 from flask import Flask, Response, request, jsonify, render_template, send_from_directory, redirect, url_for, session

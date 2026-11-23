@@ -15,6 +15,7 @@ import sqlite3
 import secrets as _secrets
 from datetime import datetime
 from threading import RLock, Condition
+from typing import Any
 
 import mall_security
 
@@ -727,7 +728,7 @@ def get_mall_policy_defaults() -> dict:
     return dict(DEFAULT_MALL_POLICIES)
 
 
-def set_mall_policy_defaults(policy_data: dict) -> dict:
+def set_mall_policy_defaults(policy_data: Any) -> dict:
     """쇼핑몰 공통 4대 기본 안내를 DB에 영구 저장합니다."""
     raw = policy_data if isinstance(policy_data, dict) else {}
     normalized = {
@@ -740,7 +741,7 @@ def set_mall_policy_defaults(policy_data: dict) -> dict:
     return normalized
 
 
-def create_mall_product(prod_data: dict) -> dict:
+def create_mall_product(prod_data: Any) -> dict:
     """쇼핑몰 관리자에서 신규 상품을 직접 등록합니다."""
     if not isinstance(prod_data, dict):
         return {"ok": False, "message": "잘못된 상품 데이터입니다."}
@@ -822,7 +823,7 @@ def create_mall_product(prod_data: dict) -> dict:
             conn.close()
 
 
-def update_mall_product(product_id: int, prod_data: dict) -> dict:
+def update_mall_product(product_id: int, prod_data: Any) -> dict:
     """쇼핑몰 관리자에서 기존 상품 정보, 카테고리, 상세페이지, 4대 안내 및 옵션을 수정합니다."""
     if not isinstance(prod_data, dict):
         return {"ok": False, "message": "잘못된 상품 데이터입니다."}

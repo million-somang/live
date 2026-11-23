@@ -229,6 +229,11 @@
         }
         .tab-section { display: none; flex-direction: column; gap: 22px; }
         .tab-section.active { display: flex; }
+        .kpi-num.is-pending { color: #d97706; }
+        .order-item-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #cbd5e1; }
+        .order-item-row:last-child { border-bottom: none; }
+        .user-role-badge { font-size: 0.78rem; font-weight: 800; color: #64748b; }
+        .user-role-badge.is-admin { color: #4f46e5; }
     </style>
 </head>
 <body>
@@ -286,7 +291,7 @@
                 </div>
                 <div class="kpi-card {% if pending_count > 0 %}pending-alert{% endif %}" style="cursor:pointer;" onclick="switchAdminTab('users', document.getElementById('sideBtn_users'))">
                     <div class="kpi-title">⏳ 가입 승인 대기 (PENDING)</div>
-                    <div class="kpi-num" style="color:{% if pending_count > 0 %}#d97706{% else %}#0f172a{% endif %};">
+                    <div class="kpi-num{% if pending_count > 0 %} is-pending{% endif %}">
                         {{ pending_count }}명
                     </div>
                 </div>
@@ -365,7 +370,7 @@
                                     🛍️ 구매한 상품 내역 ({{ (item_list or [])|length }}개 품목)
                                 </div>
                                 {% for it in (item_list or []) %}
-                                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0; {% if not loop.last %}border-bottom:1px dashed #cbd5e1;{% endif %}">
+                                <div class="order-item-row">
                                     <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
                                         {% if it.image_url %}
                                         <img src="{{ it.image_url }}" style="width:48px; height:48px; border-radius:10px; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">
@@ -393,14 +398,22 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
                                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                     <span style="font-size:0.8rem; font-weight:800; color:#475569;">상태 변경:</span>
-                                    <select onchange="updateAdminMallOrderStatus({{ ord.id }}, {payment_status: this.value})" class="input-sm" style="padding:6px 10px; font-size:0.82rem; font-weight:800;">
+                                    <select data-order-id="{{ ord.id }}" onchange="updateAdminMallOrderStatus(Number(this.dataset.orderId), {payment_status: this.value})" class="input-sm" style="padding:6px 10px; font-size:0.82rem; font-weight:800;">
                                         {% for pst in ['입금대기', '입금완료', '환불완료'] %}
-                                        <option value="{{ pst }}" {% if ord.payment_status == pst %}selected{% endif %}>💳 {{ pst }}</option>
+                                        {% if ord.payment_status == pst %}
+                                        <option value="{{ pst }}" selected>💳 {{ pst }}</option>
+                                        {% else %}
+                                        <option value="{{ pst }}">💳 {{ pst }}</option>
+                                        {% endif %}
                                         {% endfor %}
                                     </select>
-                                    <select onchange="updateAdminMallOrderStatus({{ ord.id }}, {order_status: this.value})" class="input-sm" style="padding:6px 10px; font-size:0.82rem; font-weight:800;">
+                                    <select data-order-id="{{ ord.id }}" onchange="updateAdminMallOrderStatus(Number(this.dataset.orderId), {order_status: this.value})" class="input-sm" style="padding:6px 10px; font-size:0.82rem; font-weight:800;">
                                         {% for st in ['결제대기', '상품준비중', '배송중', '배송완료', '주문취소'] %}
-                                        <option value="{{ st }}" {% if ord.order_status == st %}selected{% endif %}>📦 {{ st }}</option>
+                                        {% if ord.order_status == st %}
+                                        <option value="{{ st }}" selected>📦 {{ st }}</option>
+                                        {% else %}
+                                        <option value="{{ st }}">📦 {{ st }}</option>
+                                        {% endif %}
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -461,7 +474,7 @@
                                     <td>{{ u.display_name }}</td>
                                     <td>{{ u.phone or '-' }}</td>
                                     <td>
-                                        <span style="font-size:0.78rem; font-weight:800; color:{% if u.role == 'ADMIN' %}#a5b4fc{% else %}#cbd5e1{% endif %};">
+                                        <span class="user-role-badge{% if u.role == 'ADMIN' %} is-admin{% endif %}">
                                             {{ u.role }}
                                         </span>
                                     </td>
@@ -476,19 +489,19 @@
                                     <td style="font-size:0.8rem; color:var(--text-muted);">{{ u.created_at }}</td>
                                     <td>
                                         {% if u.status != 'APPROVED' %}
-                                        <button type="button" class="btn-act approve" onclick="updateUserStatus({{ u.id }}, 'APPROVED')">✅ 즉시 승인</button>
+                                        <button type="button" class="btn-act approve" data-user-id="{{ u.id }}" onclick="updateUserStatus(Number(this.dataset.userId), 'APPROVED')">✅ 즉시 승인</button>
                                         {% endif %}
                                         {% if u.status == 'PENDING' %}
-                                        <button type="button" class="btn-act reject" onclick="updateUserStatus({{ u.id }}, 'REJECTED')">반려</button>
+                                        <button type="button" class="btn-act reject" data-user-id="{{ u.id }}" onclick="updateUserStatus(Number(this.dataset.userId), 'REJECTED')">반려</button>
                                         {% endif %}
                                         {% if u.status == 'APPROVED' %}
-                                        <button type="button" class="btn-act reject" onclick="updateUserStatus({{ u.id }}, 'SUSPENDED')">정지</button>
+                                        <button type="button" class="btn-act reject" data-user-id="{{ u.id }}" onclick="updateUserStatus(Number(this.dataset.userId), 'SUSPENDED')">정지</button>
                                         {% endif %}
                                         {% if u.status != 'PENDING' %}
-                                        <button type="button" class="btn-act" onclick="updateUserStatus({{ u.id }}, 'PENDING')">대기전환</button>
+                                        <button type="button" class="btn-act" data-user-id="{{ u.id }}" onclick="updateUserStatus(Number(this.dataset.userId), 'PENDING')">대기전환</button>
                                         {% endif %}
-                                        <button type="button" class="btn-act" onclick="resetUserPasswordPrompt({{ u.id }}, '{{ u.username }}')">🔑 비번변경</button>
-                                        <button type="button" class="btn-act" style="color:#fda4af;" onclick="deleteUserAccount({{ u.id }}, '{{ u.username }}')">🗑️</button>
+                                        <button type="button" class="btn-act" data-user-id="{{ u.id }}" data-username="{{ u.username }}" onclick="resetUserPasswordPrompt(Number(this.dataset.userId), this.dataset.username)">🔑 비번변경</button>
+                                        <button type="button" class="btn-act" style="color:#fda4af;" data-user-id="{{ u.id }}" data-username="{{ u.username }}" onclick="deleteUserAccount(Number(this.dataset.userId), this.dataset.username)">🗑️</button>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -554,7 +567,7 @@
                                     <td>{{ '🟢 활성' if c.is_active else '⚪ 비활성' }}</td>
                                     <td>{{ c.created_at }}</td>
                                     <td>
-                                        <button type="button" class="btn-act" onclick="toggleInvite({{ c.id }}, {{ 'false' if c.is_active else 'true' }})">
+                                        <button type="button" class="btn-act" data-code-id="{{ c.id }}" data-next-active="{{ 'false' if c.is_active else 'true' }}" onclick="toggleInvite(Number(this.dataset.codeId), this.dataset.nextActive === 'true')">
                                             {{ '비활성화' if c.is_active else '다시 활성화' }}
                                         </button>
                                     </td>
@@ -814,10 +827,19 @@
         </main>
     </div>
 
+    <div id="adminDashboardBootstrap" hidden data-traffic-snapshot="{{ (traffic_snapshot or {}) | tojson | forceescape }}"></div>
     <script>
         let trafficPollTimer = null;
         let isTrafficAutoPoll = true;
-        let lastTrafficSnapshot = {{ (traffic_snapshot or {}) | tojson }};
+        let lastTrafficSnapshot = {};
+        try {
+            const bootEl = document.getElementById('adminDashboardBootstrap');
+            if (bootEl && bootEl.dataset.trafficSnapshot) {
+                lastTrafficSnapshot = JSON.parse(bootEl.dataset.trafficSnapshot);
+            }
+        } catch (_e) {
+            lastTrafficSnapshot = {};
+        }
 
         function switchAdminTab(tabName, btnEl) {
             document.querySelectorAll('.tab-section').forEach(el => el.classList.remove('active'));

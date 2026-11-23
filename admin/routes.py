@@ -10,6 +10,7 @@ from flask import Blueprint, render_template, request, jsonify, session, redirec
 import os
 import sys
 import secrets
+from typing import Optional
 from urllib.parse import urlencode
 import database
 import security_core
@@ -23,6 +24,15 @@ except Exception:
     mall_database = None
 
 admin_bp = Blueprint("admin_bp", __name__, url_prefix="/admin")
+
+
+def _parse_required_int(raw_val) -> Optional[int]:
+    if raw_val is None or isinstance(raw_val, bool):
+        return None
+    try:
+        return int(raw_val)
+    except (TypeError, ValueError):
+        return None
 
 
 def _get_current_admin_user():
@@ -264,9 +274,13 @@ def admin_api_user_status():
         return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
 
     data = request.get_json(silent=True) or {}
-    uid = data.get("user_id")
-    new_status = data.get("status")
-    new_role = data.get("role")
+    uid = _parse_required_int(data.get("user_id"))
+    raw_status = data.get("status")
+    new_status = str(raw_status).strip() if raw_status is not None else ""
+    if uid is None or not new_status:
+        return jsonify({"status": "error", "message": "필수 요청 파라미터(user_id, status)가 올바르지 않습니다."}), 400
+    raw_role = data.get("role")
+    new_role = str(raw_role).strip() if isinstance(raw_role, str) and raw_role.strip() else None
     ok = database.update_studio_user_status(
         user_id=uid,
         new_status=new_status,
@@ -310,8 +324,11 @@ def admin_api_user_delete():
         return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
 
     data = request.get_json(silent=True) or {}
+    uid = _parse_required_int(data.get("user_id"))
+    if uid is None:
+        return jsonify({"status": "error", "message": "올바른 회원 ID(user_id)가 필요합니다."}), 400
     res = database.delete_studio_user(
-        user_id=data.get("user_id"),
+        user_id=uid,
         actor_id=admin_user.get("username", "admin"),
         ip_address=str(request.remote_addr or "")
     )
@@ -326,9 +343,12 @@ def admin_api_user_reset_password():
         return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
 
     data = request.get_json(silent=True) or {}
+    uid = _parse_required_int(data.get("user_id"))
+    if uid is None:
+        return jsonify({"status": "error", "message": "올바른 회원 ID(user_id)가 필요합니다."}), 400
     res = database.change_studio_user_password(
-        user_id=data.get("user_id"),
-        new_password=data.get("new_password", ""),
+        user_id=uid,
+        new_password=str(data.get("new_password") or ""),
         actor_id=admin_user.get("username", "admin"),
         ip_address=str(request.remote_addr or "")
     )
@@ -360,7 +380,10 @@ def admin_api_invite_toggle():
         return jsonify({"status": "error", "message": "관리자 권한이 필요합니다."}), 403
 
     data = request.get_json(silent=True) or {}
-    ok = database.toggle_studio_invite_code(data.get("code_id"), bool(data.get("is_active")))
+    code_id = _parse_required_int(data.get("code_id"))
+    if code_id is None:
+        return jsonify({"status": "error", "message": "올바른 초대 코드 ID(code_id)가 필요합니다."}), 400
+    ok = database.toggle_studio_invite_code(code_id, bool(data.get("is_active")))
     return jsonify({"status": "ok" if ok else "error"}), (200 if ok else 400)
 
 
