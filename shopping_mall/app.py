@@ -579,6 +579,8 @@ def mall_home():
     has_etc = any((p.get("category") or "").upper() == "ETC" for p in all_prods)
     products = mall_database.get_all_mall_products(category=category, search=search, sort=sort)
     live_state = mall_database.get_full_live_state()
+    show_hero = (category == "ALL" and not search)
+    hero_banners = mall_database.list_mall_hero_banners(active_only=True) if show_hero else []
     return render_template(
         "index.html",
         products=products,
@@ -587,6 +589,7 @@ def mall_home():
         current_category=category,
         search_query=search,
         current_sort=sort,
+        hero_banners=hero_banners,
         active_nav="home"
     )
 
@@ -991,6 +994,7 @@ def mall_admin_view():
     live_state = mall_database.get_full_live_state()
     all_categories = mall_database.get_mall_categories(active_only=False)
     policy_defaults = mall_database.get_mall_policy_defaults()
+    hero_banners = mall_database.list_mall_hero_banners(active_only=False)
     return render_template(
         "admin.html",
         products=products,
@@ -998,6 +1002,7 @@ def mall_admin_view():
         live_state=live_state,
         all_categories=all_categories,
         policy_defaults=policy_defaults,
+        hero_banners=hero_banners,
         active_nav="admin"
     )
 
@@ -1841,6 +1846,50 @@ def api_mall_admin_store_info():
     data = request.get_json(silent=True) or {}
     saved = mall_database.set_mall_store_info(data)
     return jsonify({"status": "ok", "store_info": saved}), 200
+
+
+@app.route("/api/admin/banners", methods=["GET"])
+def api_mall_admin_banners_list():
+    return jsonify({"status": "ok", "banners": mall_database.list_mall_hero_banners(active_only=False)}), 200
+
+
+@app.route("/api/admin/banners/save", methods=["POST"])
+def api_mall_admin_banners_save():
+    data = request.get_json(silent=True) or {}
+    res = mall_database.save_mall_hero_banner(data)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "배너 저장에 실패했습니다.")}), 400
+    return jsonify({"status": "ok", "banner": res.get("banner"), "banners": res.get("banners", [])}), 200
+
+
+@app.route("/api/admin/banners/toggle", methods=["POST"])
+def api_mall_admin_banners_toggle():
+    data = request.get_json(silent=True) or {}
+    try:
+        bid = int(data.get("id") or 0)
+    except Exception:
+        bid = 0
+    if bid <= 0:
+        return jsonify({"status": "error", "message": "올바른 배너 ID가 필요합니다."}), 400
+    res = mall_database.toggle_mall_hero_banner(bid, data.get("is_active"))
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "배너 상태 변경에 실패했습니다.")}), 404
+    return jsonify({"status": "ok", "banners": res.get("banners", [])}), 200
+
+
+@app.route("/api/admin/banners/delete", methods=["POST"])
+def api_mall_admin_banners_delete():
+    data = request.get_json(silent=True) or {}
+    try:
+        bid = int(data.get("id") or 0)
+    except Exception:
+        bid = 0
+    if bid <= 0:
+        return jsonify({"status": "error", "message": "올바른 배너 ID가 필요합니다."}), 400
+    res = mall_database.delete_mall_hero_banner(bid)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "배너 삭제에 실패했습니다.")}), 404
+    return jsonify({"status": "ok", "banners": res.get("banners", [])}), 200
 
 
 @app.route("/api/reviews/add", methods=["POST"])

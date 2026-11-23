@@ -313,6 +313,29 @@ def init_mall_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_wishlist_user ON mall_wishlist (user_id, id DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_wishlist_prod ON mall_wishlist (product_num)")
 
+            # 12. 메인 페이지 이벤트 히어로 배너 테이블
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_hero_banners (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    eyebrow TEXT DEFAULT '',
+                    title TEXT DEFAULT '',
+                    subtitle TEXT DEFAULT '',
+                    cta_label TEXT DEFAULT '',
+                    link_url TEXT DEFAULT '',
+                    image_url TEXT DEFAULT '',
+                    theme TEXT DEFAULT 'indigo',
+                    sort_order INTEGER DEFAULT 10,
+                    is_active INTEGER DEFAULT 1,
+                    start_at TEXT DEFAULT '',
+                    end_at TEXT DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_hero_banners_active_sort ON mall_hero_banners (is_active, sort_order, id DESC)"
+            )
+
             conn.commit()
         finally:
             conn.close()
@@ -2310,6 +2333,203 @@ def clear_user_wishlist(user_id: int) -> int:
             return deleted
         finally:
             conn.close()
+
+
+ALLOWED_BANNER_THEMES = ("indigo", "charcoal", "slate", "emerald")
+
+
+def _sanitize_banner_link(url: Any) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("/") and not raw.startswith("//") and not raw.startswith("/\\"):
+        return raw[:300]
+    lower = raw.lower()
+    if lower.startswith("https://") or lower.startswith("http://"):
+        return raw[:300]
+    return ""
+
+
+def _sanitize_banner_image_url(url: Any) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("/") and not raw.startswith("//") and not raw.startswith("/\\"):
+        return raw[:300]
+    lower = raw.lower()
+    if lower.startswith("https://") or lower.startswith("http://"):
+        return raw[:300]
+    return ""
+
+
+def _normalize_banner_date(val: Any) -> str:
+    raw = str(val or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        return raw
+    return ""
+
+
+def _format_banner_row(row_dict: dict, today_str: str) -> dict:
+    item = dict(row_dict)
+    item["id"] = int(item.get("id") or 0)
+    item["sort_order"] = int(item.get("sort_order") or 0)
+    item["is_active"] = 1 if int(item.get("is_active") or 0) else 0
+    theme = str(item.get("theme") or "indigo").strip().lower()
+    item["theme"] = theme if theme in ALLOWED_BANNER_THEMES else "indigo"
+    start_at = _normalize_banner_date(item.get("start_at"))
+    end_at = _normalize_banner_date(item.get("end_at"))
+    item["start_at"] = start_at
+    item["end_at"] = end_at
+
+    if not item["is_active"]:
+        item["schedule_status"] = "INACTIVE"
+    elif start_at and today_str < start_at:
+        item["schedule_status"] = "SCHEDULED"
+    elif end_at and today_str > end_at:
+        item["schedule_status"] = "EXPIRED"
+    else:
+        item["schedule_status"] = "ACTIVE"
+    return item
+
+
+def list_mall_hero_banners(active_only: bool = False) -> list:
+    """메인 히어로 배너 목록을 노출 순서대로 반환합니다."""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM mall_hero_banners ORDER BY sort_order ASC, id DESC")
+            rows = [_format_banner_row(dict(r), today_str) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    if active_only:
+        return [r for r in rows if r["schedule_status"] == "ACTIVE"]
+    return rows
+
+
+def save_mall_hero_banner(banner_data: Any) -> dict:
+    """메인 히어로 배너를 신규 등록하거나 수정합니다."""
+    raw = banner_data if isinstance(banner_data, dict) else {}
+    try:
+        banner_id = int(raw.get("id") or 0)
+    except Exception:
+        banner_id = 0
+
+    eyebrow = str(raw.get("eyebrow") or "").strip()[:60]
+    title = str(raw.get("title") or "").strip()[:140]
+    subtitle = str(raw.get("subtitle") or "").strip()[:300]
+    cta_label = str(raw.get("cta_label") or "").strip()[:50]
+    link_url = _sanitize_banner_link(raw.get("link_url"))
+    image_url = _sanitize_banner_image_url(raw.get("image_url"))
+    theme = str(raw.get("theme") or "indigo").strip().lower()
+    if theme not in ALLOWED_BANNER_THEMES:
+        theme = "indigo"
+
+    raw_sort = raw.get("sort_order")
+    try:
+        sort_order = int(str(raw_sort).strip()) if raw_sort is not None and str(raw_sort).strip() else 10
+    except Exception:
+        sort_order = 10
+
+    raw_active = raw.get("is_active")
+    is_active = 0 if raw_active in (0, False, "0", "false", "False") else 1
+    start_at = _normalize_banner_date(raw.get("start_at"))
+    end_at = _normalize_banner_date(raw.get("end_at"))
+
+    if not title and not image_url:
+        return {"ok": False, "message": "배너 제목 또는 배너 이미지 중 하나 이상을 입력해 주세요."}
+    if start_at and end_at and start_at > end_at:
+        return {"ok": False, "message": "종료일은 시작일 이후 날짜로 입력해 주세요."}
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            if banner_id > 0:
+                cur.execute("SELECT id FROM mall_hero_banners WHERE id = ?", (banner_id,))
+                if not cur.fetchone():
+                    return {"ok": False, "message": "수정할 배너를 찾을 수 없습니다."}
+                cur.execute(
+                    """
+                    UPDATE mall_hero_banners
+                    SET eyebrow = ?, title = ?, subtitle = ?, cta_label = ?, link_url = ?,
+                        image_url = ?, theme = ?, sort_order = ?, is_active = ?,
+                        start_at = ?, end_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        eyebrow, title, subtitle, cta_label, link_url, image_url,
+                        theme, sort_order, is_active, start_at, end_at, now_str, banner_id,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO mall_hero_banners
+                    (eyebrow, title, subtitle, cta_label, link_url, image_url, theme,
+                     sort_order, is_active, start_at, end_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        eyebrow, title, subtitle, cta_label, link_url, image_url,
+                        theme, sort_order, is_active, start_at, end_at, now_str, now_str,
+                    ),
+                )
+                banner_id = int(cur.lastrowid or 0)
+            conn.commit()
+            cur.execute("SELECT * FROM mall_hero_banners WHERE id = ?", (banner_id,))
+            saved_row = cur.fetchone()
+        finally:
+            conn.close()
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    saved = _format_banner_row(dict(saved_row), today_str) if saved_row else None
+    return {"ok": True, "banner": saved, "banners": list_mall_hero_banners(active_only=False)}
+
+
+def toggle_mall_hero_banner(banner_id: int, is_active: Any) -> dict:
+    """히어로 배너 활성/비활성 상태를 전환합니다."""
+    try:
+        bid = int(banner_id)
+    except Exception:
+        return {"ok": False, "message": "올바른 배너 ID가 필요합니다."}
+    active_int = 0 if is_active in (0, False, "0", "false", "False") else 1
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE mall_hero_banners SET is_active = ?, updated_at = ? WHERE id = ?",
+                (active_int, now_str, bid),
+            )
+            if int(cur.rowcount or 0) == 0:
+                return {"ok": False, "message": "배너를 찾을 수 없습니다."}
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": True, "banners": list_mall_hero_banners(active_only=False)}
+
+
+def delete_mall_hero_banner(banner_id: int) -> dict:
+    """히어로 배너를 삭제합니다."""
+    try:
+        bid = int(banner_id)
+    except Exception:
+        return {"ok": False, "message": "올바른 배너 ID가 필요합니다."}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM mall_hero_banners WHERE id = ?", (bid,))
+            if int(cur.rowcount or 0) == 0:
+                return {"ok": False, "message": "삭제할 배너를 찾을 수 없습니다."}
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": True, "banners": list_mall_hero_banners(active_only=False)}
 
 
 try:

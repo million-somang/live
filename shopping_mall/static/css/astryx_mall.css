@@ -2684,6 +2684,306 @@ img {
     }
 }
 
+/* --------------------------------------------------------------------------
+   Event Hero Banner Carousel (Main Storefront & Admin)
+   -------------------------------------------------------------------------- */
+.ax-hero-section {
+    position: relative;
+    margin-bottom: 18px;
+    border-radius: var(--ax-radius-card);
+    overflow: hidden;
+    border: 1px solid var(--ax-border-subtle);
+    background: var(--ax-surface-primary);
+    box-shadow: var(--ax-shadow-card);
+}
+
+.ax-hero-track {
+    position: relative;
+}
+
+.ax-hero-slide {
+    display: none;
+    position: relative;
+}
+
+.ax-hero-slide.is-active {
+    display: block;
+}
+
+.ax-hero-theme-indigo {
+    background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+    color: var(--ax-text-primary);
+}
+
+.ax-hero-theme-charcoal {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #f8fafc;
+}
+
+.ax-hero-theme-slate {
+    background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+    color: var(--ax-text-primary);
+}
+
+.ax-hero-theme-emerald {
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    color: var(--ax-text-primary);
+}
+
+.ax-hero-inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: center;
+    gap: 24px;
+    padding: 34px 58px;
+    min-height: 220px;
+}
+
+.ax-hero-inner.has-image {
+    grid-template-columns: 1.2fr 0.8fr;
+}
+
+.ax-hero-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.ax-hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid var(--ax-accent-border);
+    color: var(--ax-accent-primary);
+}
+
+.ax-hero-theme-charcoal .ax-hero-eyebrow {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #c7d2fe;
+}
+
+.ax-hero-title {
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1.28;
+    letter-spacing: -0.025em;
+    word-break: keep-all;
+}
+
+.ax-hero-sub {
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--ax-text-secondary);
+    max-width: 60ch;
+}
+
+.ax-hero-theme-charcoal .ax-hero-sub {
+    color: #cbd5e1;
+}
+
+.ax-hero-cta {
+    margin-top: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: var(--ax-radius-control);
+    font-size: 0.86rem;
+    font-weight: 700;
+    background: var(--ax-accent-primary);
+    color: #ffffff;
+    transition: background 0.15s ease, transform 0.12s ease;
+}
+
+.ax-hero-cta:hover {
+    background: var(--ax-accent-hover);
+}
+
+.ax-hero-theme-charcoal .ax-hero-cta {
+    background: #ffffff;
+    color: var(--ax-charcoal);
+}
+
+.ax-hero-theme-charcoal .ax-hero-cta:hover {
+    background: #e2e8f0;
+}
+
+.ax-hero-media {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.ax-hero-media img {
+    width: 100%;
+    max-height: 215px;
+    object-fit: cover;
+    display: block;
+}
+
+.ax-hero-full-link {
+    display: block;
+    width: 100%;
+}
+
+.ax-hero-full-img {
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+    display: block;
+}
+
+.ax-hero-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 4;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.15);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--ax-text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+
+.ax-hero-nav-btn:hover {
+    background: #ffffff;
+    color: var(--ax-accent-primary);
+}
+
+.ax-hero-nav-btn.prev {
+    left: 12px;
+}
+
+.ax-hero-nav-btn.next {
+    right: 12px;
+}
+
+.ax-hero-controls {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.72);
+    color: #ffffff;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.ax-hero-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ax-hero-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    border: none;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.45);
+    cursor: pointer;
+    transition: width 0.18s ease, background 0.18s ease;
+}
+
+.ax-hero-dot.is-active {
+    width: 18px;
+    background: #ffffff;
+}
+
+.ax-banner-thumb {
+    width: 92px;
+    height: 54px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid var(--ax-border-subtle);
+    flex-shrink: 0;
+}
+
+.ax-banner-thumb-placeholder {
+    width: 92px;
+    height: 54px;
+    border-radius: 8px;
+    border: 1px solid var(--ax-border-subtle);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.ax-banner-preview-wrap {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ax-banner-preview-img {
+    width: 100%;
+    max-width: 320px;
+    max-height: 120px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid var(--ax-border-subtle);
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .ax-hero-inner,
+    .ax-hero-inner.has-image {
+        grid-template-columns: 1fr;
+        padding: 20px 18px 46px;
+        gap: 14px;
+        min-height: 170px;
+    }
+    .ax-hero-title {
+        font-size: 1.25rem;
+    }
+    .ax-hero-media img {
+        max-height: 165px;
+    }
+    .ax-hero-nav-btn {
+        width: 30px;
+        height: 30px;
+        top: auto;
+        bottom: 10px;
+        transform: none;
+    }
+    .ax-hero-nav-btn.prev {
+        left: 12px;
+    }
+    .ax-hero-nav-btn.next {
+        left: 48px;
+        right: auto;
+    }
+}
+
 /* Must come AFTER all display classes */
 .ax-is-hidden {
     display: none;
