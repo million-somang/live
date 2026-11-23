@@ -166,7 +166,7 @@
         <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 웹 주문 내역</h2>
         <span class="ax-badge ax-badge-indigo ax-num">{{ orders|length }}건</span>
     </div>
-    <div style="max-height:680px; overflow-y:auto; display:flex; flex-direction:column; gap:12px;">
+    <div style="display:flex; flex-direction:column; gap:12px;">
         {% for ord in orders %}
         {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
         {% set safe_total = (ord.total_amount or 0)|int %}
