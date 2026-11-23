@@ -94,21 +94,27 @@
         <span class="ax-badge ax-badge-neutral ax-num">등록 상품 {{ products|length }}건</span>
     </div>
 
-    <form method="GET" action="/" class="ax-toolbar-search">
+    <form method="GET" action="/" class="ax-toolbar-sort">
         <input type="hidden" name="category" value="{{ current_category }}">
-        <div class="ax-search-wrap">
-            <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <input type="text" name="q" value="{{ search_query }}" placeholder="상품명, 상품번호, 스펙 검색..." class="ax-input ax-input-search">
-        </div>
-        <select name="sort" onchange="this.form.submit()" class="ax-select" style="width:auto; min-width:128px; font-weight:600;">
+        {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+        <select name="sort" onchange="this.form.submit()" class="ax-select" style="width:auto; min-width:128px; font-weight:600;" aria-label="상품 정렬">
             {% if current_sort == 'num_asc' %}<option value="num_asc" selected>상품번호순</option>{% else %}<option value="num_asc">상품번호순</option>{% endif %}
             {% if current_sort == 'newest' %}<option value="newest" selected>최신등록순</option>{% else %}<option value="newest">최신등록순</option>{% endif %}
             {% if current_sort == 'price_asc' %}<option value="price_asc" selected>낮은가격순</option>{% else %}<option value="price_asc">낮은가격순</option>{% endif %}
             {% if current_sort == 'price_desc' %}<option value="price_desc" selected>높은가격순</option>{% else %}<option value="price_desc">높은가격순</option>{% endif %}
         </select>
-        <button type="submit" class="ax-btn ax-btn-charcoal">검색</button>
     </form>
 </div>
+
+{% if search_query %}
+<div id="homeSearchActiveBar" class="ax-search-active-bar">
+    <div>
+        <span class="ax-badge ax-badge-indigo" style="margin-right:6px;">검색 결과</span>
+        <strong>'{{ search_query }}'</strong> 검색 상품 <span class="ax-num">({{ products|length }}건)</span>
+    </div>
+    <a href="/?category={{ current_category | urlencode }}" class="ax-btn ax-btn-secondary ax-btn-sm">검색 초기화</a>
+</div>
+{% endif %}
 
 <!-- 상품 그리드 -->
 {% if products %}

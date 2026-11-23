@@ -1037,6 +1037,35 @@ def api_mall_catalog():
     return resp, 200
 
 
+@app.route("/api/search/suggest", methods=["GET"])
+def api_mall_search_suggest():
+    """헤더 검색창 실시간 추천 드롭다운용 경량 상품 검색 API"""
+    q = (request.args.get("q") or "").strip()
+    try:
+        limit = max(1, min(8, int(request.args.get("limit") or 6)))
+    except Exception:
+        limit = 6
+    if not q:
+        return jsonify({"status": "ok", "query": "", "items": [], "total": 0}), 200
+
+    prods = mall_database.get_all_mall_products(category="ALL", search=q, sort="num_asc")
+    cat_map = mall_database.get_mall_category_label_map()
+    items = []
+    for p in prods[:limit]:
+        cat_code = str(p.get("category") or "").upper()
+        items.append({
+            "num": int(p.get("num") or 0),
+            "name": str(p.get("name") or ""),
+            "price": int(p.get("price") or 0),
+            "consumer_price": int(p.get("consumer_price") or 0),
+            "discount_rate": int(p.get("discount_rate") or 0),
+            "image_url": str(p.get("image_url") or ""),
+            "category_label": str(cat_map.get(cat_code, cat_code or "기타")),
+            "total_stock": int(p.get("total_stock") or 0),
+        })
+    return jsonify({"status": "ok", "query": q, "items": items, "total": len(prods)}), 200
+
+
 @app.route("/api/live/state-lite", methods=["GET"])
 def api_mall_live_state_lite():
     """

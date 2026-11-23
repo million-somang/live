@@ -6,7 +6,7 @@
     <title>{% block title %}골라방 LIVE — 공식 온라인 스토어{% endblock %}</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261124b">
+    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261124c">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -42,6 +42,29 @@
                     <span>주문조회</span>
                 </a>
             </nav>
+
+            <form id="headerSearchForm" class="ax-header-search" method="GET" action="/" role="search" autocomplete="off">
+                <div class="ax-search-wrap ax-header-search-wrap">
+                    <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="text"
+                           inputmode="search"
+                           id="headerSearchInput"
+                           name="q"
+                           value="{{ search_query if search_query is defined else request.args.get('q', '') }}"
+                           placeholder="상품명·번호 검색..."
+                           class="ax-input ax-input-search ax-header-search-input"
+                           aria-label="상품 검색"
+                           aria-autocomplete="list"
+                           aria-controls="headerSearchDropdown">
+                    <button type="button" id="headerSearchClearBtn" class="ax-header-search-clear ax-is-hidden" aria-label="검색어 지우기" title="검색어 지우기">
+                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                    <button type="button" id="headerSearchSubmitBtn" class="ax-header-search-submit" aria-label="검색 실행" title="검색">
+                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </button>
+                </div>
+                <div id="headerSearchDropdown" class="ax-header-search-dropdown ax-is-hidden" role="listbox" aria-label="실시간 상품 추천"></div>
+            </form>
 
             <div class="ax-header-actions">
                 <a href="/wishlist" class="ax-util-btn {% if active_nav == 'wishlist' %}ax-util-btn-active{% endif %}" title="찜한 상품">
@@ -801,6 +824,7 @@
                 }
             }
             window.syncMallWishlistUI();
+            _initHeaderProductSearch();
             // /live 이외의 페이지에서도 SSE로 방송 시작/종료 및 재고 변동을 초경량 CSR 구독
             if (window.location.pathname !== '/live' && window.EventSource) {
                 try {
@@ -811,6 +835,193 @@
                 } catch (e) {}
             }
         });
+
+        function _initHeaderProductSearch() {
+            const formEl = document.getElementById('headerSearchForm');
+            const inputEl = document.getElementById('headerSearchInput');
+            const clearBtn = document.getElementById('headerSearchClearBtn');
+            const submitBtn = document.getElementById('headerSearchSubmitBtn');
+            const dropEl = document.getElementById('headerSearchDropdown');
+            if (!formEl || !inputEl || !dropEl) return;
+
+            let debounceTimer = null;
+            let activeIdx = -1;
+            let currentQuery = '';
+
+            function syncClearBtn() {
+                if (!clearBtn) return;
+                clearBtn.classList.toggle('ax-is-hidden', !inputEl.value.trim());
+            }
+
+            function hideDropdown() {
+                dropEl.classList.add('ax-is-hidden');
+                activeIdx = -1;
+            }
+
+            function highlightOption(nextIdx) {
+                const opts = Array.from(dropEl.querySelectorAll('[data-suggest-href]'));
+                if (opts.length === 0) {
+                    activeIdx = -1;
+                    return;
+                }
+                if (nextIdx < 0) nextIdx = opts.length - 1;
+                if (nextIdx >= opts.length) nextIdx = 0;
+                activeIdx = nextIdx;
+                opts.forEach((el, idx) => el.classList.toggle('is-active', idx === activeIdx));
+            }
+
+            function renderSuggestions(queryText, payload) {
+                const items = (payload && Array.isArray(payload.items)) ? payload.items : [];
+                const total = Number((payload && payload.total) || items.length);
+                const esc = window.mallEscapeHtml;
+                if (items.length === 0) {
+                    dropEl.innerHTML = `<div class="ax-search-suggest-empty">'<strong>${esc(queryText)}</strong>'에 해당하는 상품이 없습니다.</div>`;
+                    dropEl.classList.remove('ax-is-hidden');
+                    activeIdx = -1;
+                    return;
+                }
+                const listHtml = items.map((it, idx) => {
+                    const thumb = it.image_url
+                        ? `<img src="${esc(it.image_url)}" alt="" class="ax-search-suggest-thumb">`
+                        : `<span class="ax-search-suggest-thumb ax-search-suggest-thumb-empty"><svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></span>`;
+                    const discBadge = Number(it.discount_rate) > 0
+                        ? `<span class="ax-discount-pct ax-num" style="font-size:0.74rem;">${Number(it.discount_rate)}%</span>`
+                        : '';
+                    return `
+                        <a href="/product/${Number(it.num)}" class="ax-search-suggest-item" role="option" data-suggest-href="/product/${Number(it.num)}" data-suggest-idx="${idx}">
+                            ${thumb}
+                            <div class="ax-search-suggest-info">
+                                <div class="ax-search-suggest-meta ax-num">#${Number(it.num)} · ${esc(it.category_label)}</div>
+                                <div class="ax-search-suggest-title">${esc(it.name)}</div>
+                            </div>
+                            <div class="ax-search-suggest-price">
+                                ${discBadge}
+                                <strong class="ax-num">${Number(it.price || 0).toLocaleString()}원</strong>
+                            </div>
+                        </a>`;
+                }).join('');
+                const allHref = '/?q=' + encodeURIComponent(queryText);
+                dropEl.innerHTML = `${listHtml}<a href="${allHref}" class="ax-search-suggest-footer" data-suggest-href="${allHref}">'<strong>${esc(queryText)}</strong>' 전체 검색 결과 보기 (<span class="ax-num">${total}</span>건)</a>`;
+                dropEl.classList.remove('ax-is-hidden');
+                activeIdx = -1;
+            }
+
+            async function querySuggest(rawVal) {
+                const q = String(rawVal || '').trim();
+                currentQuery = q;
+                if (!q) {
+                    hideDropdown();
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/search/suggest?q=' + encodeURIComponent(q) + '&limit=6', { cache: 'no-store' });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    if (inputEl.value.trim() !== q) return;
+                    renderSuggestions(q, data);
+                } catch (e) {}
+            }
+
+            syncClearBtn();
+
+            inputEl.addEventListener('input', () => {
+                syncClearBtn();
+                clearTimeout(debounceTimer);
+                const q = inputEl.value.trim();
+                if (!q) {
+                    hideDropdown();
+                    return;
+                }
+                debounceTimer = setTimeout(() => querySuggest(q), 180);
+            });
+
+            inputEl.addEventListener('focus', () => {
+                const q = inputEl.value.trim();
+                if (q && dropEl.innerHTML.trim() && currentQuery === q) {
+                    dropEl.classList.remove('ax-is-hidden');
+                }
+            });
+
+            inputEl.addEventListener('keydown', (ev) => {
+                const isOpen = !dropEl.classList.contains('ax-is-hidden');
+                if (ev.key === 'Escape') {
+                    hideDropdown();
+                    return;
+                }
+                if (ev.key === 'ArrowDown') {
+                    ev.preventDefault();
+                    if (!isOpen && inputEl.value.trim()) {
+                        querySuggest(inputEl.value.trim());
+                    } else if (isOpen) {
+                        highlightOption(activeIdx + 1);
+                    }
+                    return;
+                }
+                if (ev.key === 'ArrowUp' && isOpen) {
+                    ev.preventDefault();
+                    highlightOption(activeIdx - 1);
+                    return;
+                }
+                if (ev.key === 'Enter' && isOpen && activeIdx >= 0) {
+                    const activeEl = dropEl.querySelector(`[data-suggest-idx="${activeIdx}"]`);
+                    if (activeEl && activeEl.getAttribute('href')) {
+                        ev.preventDefault();
+                        window.location.href = activeEl.getAttribute('href');
+                    }
+                }
+            });
+
+            formEl.addEventListener('submit', (ev) => {
+                const q = inputEl.value.trim();
+                if (!q) {
+                    ev.preventDefault();
+                    hideDropdown();
+                    if (window.location.pathname === '/' && new URLSearchParams(window.location.search).get('q')) {
+                        window.location.href = '/';
+                    } else {
+                        inputEl.focus();
+                    }
+                    return;
+                }
+                inputEl.value = q;
+            });
+
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    inputEl.value = '';
+                    syncClearBtn();
+                    hideDropdown();
+                    if (new URLSearchParams(window.location.search).get('q')) {
+                        window.location.href = '/';
+                        return;
+                    }
+                    inputEl.focus();
+                });
+            }
+
+            if (submitBtn) {
+                submitBtn.addEventListener('click', () => {
+                    const q = inputEl.value.trim();
+                    if (!q) {
+                        hideDropdown();
+                        inputEl.focus();
+                        return;
+                    }
+                    inputEl.value = q;
+                    if (typeof formEl.requestSubmit === 'function') {
+                        formEl.requestSubmit();
+                    } else {
+                        formEl.submit();
+                    }
+                });
+            }
+
+            document.addEventListener('click', (ev) => {
+                if (!formEl.contains(ev.target)) {
+                    hideDropdown();
+                }
+            });
+        }
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
