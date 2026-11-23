@@ -2273,6 +2273,32 @@ img {
     gap: 12px;
 }
 
+.ax-order-subbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.ax-claim-memo-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 10px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--ax-surface-secondary);
+    border: 1px solid var(--ax-border-subtle);
+}
+
+.ax-claim-memo-input {
+    flex: 1;
+    min-width: 220px;
+}
+
 @media (max-width: 768px) {
     .ax-cat-create-form,
     .ax-form-row-3,

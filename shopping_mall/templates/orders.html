@@ -47,7 +47,7 @@
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <span class="ax-badge {% if ord.payment_status == '입금완료' %}ax-badge-success{% elif ord.payment_status == '환불완료' %}ax-badge-live{% else %}ax-badge-warning{% endif %}">{{ ord.payment_status }}</span>
-                <span class="ax-badge {% if ord.order_status == '배송완료' %}ax-badge-success{% elif ord.order_status == '주문취소' %}ax-badge-live{% else %}ax-badge-indigo{% endif %}">{{ ord.order_status }}</span>
+                <span class="ax-badge {% if ord.order_status in ('배송완료', '교환완료') %}ax-badge-success{% elif ord.order_status in ('주문취소', '환불완료') %}ax-badge-live{% elif ord.order_status in ('환불요청', '교환요청') %}ax-badge-warning{% else %}ax-badge-indigo{% endif %}">{{ ord.order_status }}</span>
             </div>
         </div>
         <div style="margin-bottom:12px; font-size:0.86rem; color:var(--ax-text-secondary);">

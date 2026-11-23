@@ -1282,18 +1282,91 @@ def api_mall_orders_lookup():
     return jsonify({"status": "ok", "orders": [], "count": 0}), 200
 
 
+def _restore_obs_stock_for_items(restored_items: list) -> int:
+    """주문취소·환불완료로 복구된 품목 수량을 동일 호스트 OBS 재고 DB(live_commerce.db)에도 반영합니다."""
+    if not restored_items:
+        return 0
+    obs_db_path = _get_obs_db_path()
+    if not obs_db_path or not os.path.exists(obs_db_path):
+        return 0
+    updated = 0
+    conn = None
+    try:
+        conn = sqlite3.connect(obs_db_path, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='product_options'")
+        if not cur.fetchone():
+            return 0
+        for it in restored_items:
+            p_num = int(it.get("product_num") or 0)
+            color = str(it.get("color") or "-")
+            size = str(it.get("size") or "-")
+            qty = max(0, int(it.get("quantity") or 0))
+            if p_num <= 0 or qty <= 0:
+                continue
+            cur.execute("SELECT id FROM products WHERE num = ? LIMIT 1", (p_num,))
+            p_row = cur.fetchone()
+            if not p_row:
+                continue
+            obs_pid = int(p_row["id"])
+            cur.execute(
+                "UPDATE product_options SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?",
+                (qty, obs_pid, color, size),
+            )
+            if cur.rowcount == 0:
+                cur.execute(
+                    "SELECT id FROM product_options WHERE product_id = ? ORDER BY id ASC LIMIT 1",
+                    (obs_pid,),
+                )
+                fb = cur.fetchone()
+                if fb:
+                    cur.execute(
+                        "UPDATE product_options SET stock = stock + ? WHERE id = ?",
+                        (qty, int(fb["id"])),
+                    )
+            if cur.rowcount > 0:
+                updated += 1
+        conn.commit()
+    except Exception as e:
+        print(f"[ShoppingMall] OBS DB 재고 복구 경고: {e}")
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return updated
+
+
 @app.route("/api/admin/order-status", methods=["POST"])
 def api_mall_admin_order_status():
     data = request.get_json(silent=True) or {}
     order_id = data.get("order_id")
     if not order_id:
         return jsonify({"status": "error", "message": "order_id가 필요합니다."}), 400
-    ok = mall_database.update_mall_order_status(
+    res = mall_database.update_mall_order_workflow(
         order_id=order_id,
         payment_status=data.get("payment_status"),
-        order_status=data.get("order_status")
+        order_status=data.get("order_status"),
+        claim_reason=data.get("claim_reason"),
     )
-    return jsonify({"status": "ok" if ok else "error"}), 200
+    if not res.get("ok"):
+        return jsonify({
+            "status": "error",
+            "message": res.get("message") or "주문 상태 변경에 실패했습니다."
+        }), 400
+    obs_restored = (
+        _restore_obs_stock_for_items(res.get("restored_items") or [])
+        if res.get("stock_restored_now")
+        else 0
+    )
+    return jsonify({
+        "status": "ok",
+        "order": res.get("order"),
+        "stock_restored_now": bool(res.get("stock_restored_now")),
+        "obs_stock_restored": obs_restored,
+    }), 200
 
 
 @app.route("/api/admin/apply-discount", methods=["POST"])

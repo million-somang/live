@@ -152,6 +152,9 @@ def init_mall_db():
                     payment_method TEXT NOT NULL DEFAULT 'BANK',
                     payment_status TEXT NOT NULL DEFAULT '입금대기',
                     order_status TEXT NOT NULL DEFAULT '결제대기',
+                    claim_reason TEXT DEFAULT '',
+                    claim_updated_at TEXT DEFAULT '',
+                    stock_restored INTEGER NOT NULL DEFAULT 0,
                     subtotal_amount INTEGER NOT NULL DEFAULT 0,
                     shipping_fee INTEGER NOT NULL DEFAULT 4000,
                     total_amount INTEGER NOT NULL DEFAULT 0,
@@ -223,6 +226,9 @@ def init_mall_db():
                 ("mall_orders", "user_id", "INTEGER DEFAULT NULL"),
                 ("mall_orders", "is_guest", "INTEGER NOT NULL DEFAULT 0"),
                 ("mall_orders", "guest_password_hash", "TEXT DEFAULT ''"),
+                ("mall_orders", "claim_reason", "TEXT DEFAULT ''"),
+                ("mall_orders", "claim_updated_at", "TEXT DEFAULT ''"),
+                ("mall_orders", "stock_restored", "INTEGER NOT NULL DEFAULT 0"),
             ]:
                 try:
                     cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_def}")
@@ -1624,22 +1630,159 @@ def lookup_guest_mall_order(order_code: str, buyer_phone: str, guest_password: s
             conn.close()
 
 
-def update_mall_order_status(order_id, payment_status=None, order_status=None):
+VALID_ORDER_STATUSES = (
+    "결제대기",
+    "상품준비중",
+    "배송중",
+    "배송완료",
+    "주문취소",
+    "환불요청",
+    "환불완료",
+    "교환요청",
+    "교환완료",
+)
+VALID_PAYMENT_STATUSES = ("입금대기", "입금완료", "환불대기", "환불완료")
+CLAIM_ORDER_STATUSES = ("환불요청", "환불완료", "교환요청", "교환완료")
+STOCK_RESTORE_ORDER_STATUSES = ("주문취소", "환불완료")
+
+
+def update_mall_order_workflow(
+    order_id,
+    payment_status=None,
+    order_status=None,
+    claim_reason=None,
+):
+    """
+    쇼핑몰 주문 상태/입금 상태/환불·교환 사유를 갱신하고,
+    '주문취소' 또는 '환불완료' 전환 시 아직 복구되지 않은 품목 재고를 1회 자동 복구합니다.
+    """
+    try:
+        oid = int(order_id)
+    except Exception:
+        return {"ok": False, "message": "유효하지 않은 주문 ID입니다."}
+
+    clean_pay = str(payment_status).strip() if payment_status is not None else ""
+    clean_ord = str(order_status).strip() if order_status is not None else ""
+    if clean_pay and clean_pay not in VALID_PAYMENT_STATUSES:
+        return {"ok": False, "message": f"허용되지 않는 입금 상태입니다: {clean_pay}"}
+    if clean_ord and clean_ord not in VALID_ORDER_STATUSES:
+        return {"ok": False, "message": f"허용되지 않는 주문 상태입니다: {clean_ord}"}
+
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            if payment_status:
-                cur.execute("UPDATE mall_orders SET payment_status = ? WHERE id = ?", (payment_status, int(order_id)))
-            if order_status:
-                cur.execute("UPDATE mall_orders SET order_status = ? WHERE id = ?", (order_status, int(order_id)))
+            cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "message": "주문을 찾을 수 없습니다."}
+
+            cur_pay = str(row["payment_status"] or "입금대기")
+            cur_ord = str(row["order_status"] or "결제대기")
+            next_pay = clean_pay or cur_pay
+            next_ord = clean_ord or cur_ord
+
+            if clean_pay == "환불완료" and not clean_ord:
+                next_ord = "환불완료"
+            elif clean_ord == "환불완료" and not clean_pay:
+                next_pay = "환불완료"
+            elif clean_ord == "환불요청" and not clean_pay and next_pay == "입금완료":
+                next_pay = "환불대기"
+
+            cur_reason = str(row["claim_reason"] or "") if "claim_reason" in row.keys() else ""
+            next_reason = str(claim_reason).strip() if claim_reason is not None else cur_reason
+            cur_claim_ts = str(row["claim_updated_at"] or "") if "claim_updated_at" in row.keys() else ""
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if next_ord in ("주문취소", *CLAIM_ORDER_STATUSES) or claim_reason is not None or next_ord != cur_ord:
+                next_claim_ts = now_str if (next_ord in ("주문취소", *CLAIM_ORDER_STATUSES) or claim_reason is not None) else cur_claim_ts
+            else:
+                next_claim_ts = cur_claim_ts
+
+            already_restored = int(row["stock_restored"] or 0) if "stock_restored" in row.keys() else 0
+            next_restored = already_restored
+            restored_items = []
+
+            if next_ord in STOCK_RESTORE_ORDER_STATUSES and already_restored == 0:
+                cur.execute(
+                    "SELECT product_num, color, size, quantity FROM mall_order_items WHERE order_id = ? ORDER BY id ASC",
+                    (oid,),
+                )
+                ord_items = cur.fetchall()
+                for it in ord_items:
+                    p_num = int(it["product_num"])
+                    color = str(it["color"] or "-")
+                    size = str(it["size"] or "-")
+                    qty = max(0, int(it["quantity"] or 0))
+                    if qty <= 0:
+                        continue
+                    cur.execute("SELECT id FROM mall_products WHERE num = ? LIMIT 1", (p_num,))
+                    p_row = cur.fetchone()
+                    if p_row:
+                        mall_pid = int(p_row["id"])
+                        cur.execute(
+                            "UPDATE mall_product_options SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?",
+                            (qty, mall_pid, color, size),
+                        )
+                        if cur.rowcount == 0:
+                            cur.execute(
+                                "SELECT id FROM mall_product_options WHERE product_id = ? ORDER BY id ASC LIMIT 1",
+                                (mall_pid,),
+                            )
+                            fallback_opt = cur.fetchone()
+                            if fallback_opt:
+                                cur.execute(
+                                    "UPDATE mall_product_options SET stock = stock + ? WHERE id = ?",
+                                    (qty, int(fallback_opt["id"])),
+                                )
+                    restored_items.append({
+                        "product_num": p_num,
+                        "color": color,
+                        "size": size,
+                        "quantity": qty,
+                    })
+                next_restored = 1
+
+            cur.execute(
+                """
+                UPDATE mall_orders
+                SET payment_status = ?,
+                    order_status = ?,
+                    claim_reason = ?,
+                    claim_updated_at = ?,
+                    stock_restored = ?
+                WHERE id = ?
+                """,
+                (next_pay, next_ord, next_reason, next_claim_ts, next_restored, oid),
+            )
             conn.commit()
-            deleted = cur.rowcount > 0
-            if deleted:
-                bump_state_version(bump_catalog=True)
-            return deleted
+            bump_state_version(bump_catalog=True)
+
+            cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
+            updated_row = cur.fetchone()
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (oid,))
+            items = [dict(ir) for ir in cur.fetchall()]
+            order_dict = dict(updated_row) if updated_row else {}
+            order_dict.pop("guest_password_hash", None)
+            order_dict["items"] = items
+            order_dict["order_items"] = items
+
+            return {
+                "ok": True,
+                "order": order_dict,
+                "restored_items": restored_items,
+                "stock_restored_now": bool(already_restored == 0 and next_restored == 1),
+            }
         finally:
             conn.close()
+
+
+def update_mall_order_status(order_id, payment_status=None, order_status=None):
+    res = update_mall_order_workflow(
+        order_id=order_id,
+        payment_status=payment_status,
+        order_status=order_status,
+    )
+    return bool(res.get("ok"))
 
 
 def get_mall_reviews(product_num, limit=50):
