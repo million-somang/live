@@ -80,22 +80,24 @@
             return `
                 <div class="ax-cart-row">
                     ${item.image_url
-                    ? `<img src="${item.image_url}" alt="" style="width:74px; height:74px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
-                    : `<div style="width:74px; height:74px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;"><svg class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></div>`}
-                    <div style="flex:1; min-width:0;">
+                    ? `<img src="${item.image_url}" alt="" class="ax-cart-row-thumb">`
+                    : `<div class="ax-cart-row-thumb ax-cart-row-thumb-empty"><svg class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></div>`}
+                    <div class="ax-cart-row-info">
                         <div style="margin-bottom:4px;">
                             <span class="ax-code-chip">#${item.num}번 상품</span>
                         </div>
-                        <div style="font-size:0.96rem; font-weight:800; color:var(--ax-text-primary);">${item.name}</div>
+                        <div style="font-size:0.96rem; font-weight:800; color:var(--ax-text-primary); word-break:break-word;">${item.name}</div>
                         <div style="font-size:0.82rem; color:var(--ax-text-secondary); margin-top:2px;">옵션: ${item.color} / ${item.size}</div>
                         <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-top:4px;">${line.toLocaleString()}원</div>
                     </div>
-                    <div class="ax-qty-stepper">
-                        <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, -1)" aria-label="수량 감소">−</button>
-                        <span class="ax-num" style="min-width:30px; text-align:center; font-weight:700; font-size:0.875rem;">${item.quantity}</span>
-                        <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, 1)" aria-label="수량 증가">+</button>
+                    <div class="ax-cart-row-controls">
+                        <div class="ax-qty-stepper">
+                            <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, -1)" aria-label="수량 감소">−</button>
+                            <span class="ax-num" style="min-width:30px; text-align:center; font-weight:700; font-size:0.875rem;">${item.quantity}</span>
+                            <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, 1)" aria-label="수량 증가">+</button>
+                        </div>
+                        <button type="button" onclick="removeCartItem(${idx})" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
                     </div>
-                    <button type="button" onclick="removeCartItem(${idx})" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
                 </div>
             `;
         }).join('');

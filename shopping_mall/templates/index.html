@@ -97,7 +97,7 @@
     <form method="GET" action="/" class="ax-toolbar-sort">
         <input type="hidden" name="category" value="{{ current_category }}">
         {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
-        <select name="sort" onchange="this.form.submit()" class="ax-select" style="width:auto; min-width:128px; font-weight:600;" aria-label="상품 정렬">
+        <select name="sort" onchange="this.form.submit()" class="ax-select" aria-label="상품 정렬">
             {% if current_sort == 'num_asc' %}<option value="num_asc" selected>상품번호순</option>{% else %}<option value="num_asc">상품번호순</option>{% endif %}
             {% if current_sort == 'newest' %}<option value="newest" selected>최신등록순</option>{% else %}<option value="newest">최신등록순</option>{% endif %}
             {% if current_sort == 'price_asc' %}<option value="price_asc" selected>낮은가격순</option>{% else %}<option value="price_asc">낮은가격순</option>{% endif %}

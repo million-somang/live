@@ -40,7 +40,7 @@
 <div style="display:flex; flex-direction:column; gap:16px;">
     {% for ord in orders %}
     <div class="ax-card ax-order-card">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; border-bottom:1px solid var(--ax-border-subtle); margin-bottom:14px;">
+        <div class="ax-order-card-head">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span class="ax-code-chip">{{ ord.order_code }}</span>
                 <span class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary);">{{ ord.created_at }}</span>
@@ -50,9 +50,10 @@
                 <span class="ax-badge {% if ord.order_status in ('배송완료', '교환완료') %}ax-badge-success{% elif ord.order_status in ('주문취소', '환불완료') %}ax-badge-live{% elif ord.order_status in ('환불요청', '교환요청') %}ax-badge-warning{% else %}ax-badge-indigo{% endif %}">{{ ord.order_status }}</span>
             </div>
         </div>
-        <div style="margin-bottom:12px; font-size:0.86rem; color:var(--ax-text-secondary);">
-            <strong style="color:var(--ax-text-primary);">수령인:</strong> {{ ord.buyer_name }} (<span class="ax-num">{{ ord.buyer_phone }}</span>) ·
-            <strong style="color:var(--ax-text-primary);">배송지:</strong> {{ ord.address }} {{ ord.address_detail }}
+        <div class="ax-order-card-meta">
+            <span><strong style="color:var(--ax-text-primary);">수령인:</strong> {{ ord.buyer_name }} (<span class="ax-num">{{ ord.buyer_phone }}</span>)</span>
+            <span class="ax-order-meta-sep">·</span>
+            <span><strong style="color:var(--ax-text-primary);">배송지:</strong> {{ ord.address }} {{ ord.address_detail }}</span>
         </div>
         <div class="ax-surface-muted">
             {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
@@ -70,9 +71,9 @@
         {% set safe_total = (ord.total_amount or 0)|int %}
         {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
         {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
-        <div class="ax-num" style="text-align:right; margin-top:12px; font-size:1.08rem; font-weight:800; color:var(--ax-accent-primary);">
-            <span style="font-size:0.82rem; color:var(--ax-text-secondary); font-weight:600; margin-right:8px;">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</span>
-            총 결제 금액: {{ "{:,}".format(safe_total) }}원
+        <div class="ax-order-total-row ax-num">
+            <span class="ax-order-total-breakdown">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</span>
+            <span class="ax-order-total-main">총 결제 금액: {{ "{:,}".format(safe_total) }}원</span>
         </div>
     </div>
     {% endfor %}
