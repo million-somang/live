@@ -340,7 +340,8 @@ def _inject_mall_globals():
         "mall_public_url": resolve_mall_public_url(),
         "live_order_token": create_live_order_token(),
         "mall_categories": mall_database.get_mall_categories(active_only=True),
-        "category_labels": mall_database.get_mall_category_label_map()
+        "category_labels": mall_database.get_mall_category_label_map(),
+        "user_wishlist_nums": mall_database.get_user_wishlist_nums(int(u["id"])) if u else [],
     }
 
 
@@ -624,6 +625,7 @@ def mall_product_detail(num):
     review_summary = mall_database.get_mall_review_summary(num)
     related = [p for p in mall_database.get_all_mall_products() if p["num"] != num][:4]
     live_state = mall_database.get_full_live_state()
+    product_wish_count = mall_database.get_product_wish_count(num)
     return render_template(
         "product_detail.html",
         product=product,
@@ -631,8 +633,94 @@ def mall_product_detail(num):
         review_summary=review_summary,
         related_products=related,
         live_state=live_state,
+        product_wish_count=product_wish_count,
         active_nav="shop"
     )
+
+
+@app.route("/wishlist", methods=["GET"])
+def mall_wishlist_page():
+    """찜한 상품 목록 페이지"""
+    pull_sync_from_obs_server(force=False)
+    u = get_current_mall_user()
+    wishlist_products = mall_database.get_user_wishlist_products(int(u["id"])) if u else []
+    live_state = mall_database.get_full_live_state()
+    return render_template(
+        "wishlist.html",
+        wishlist_products=wishlist_products,
+        live_state=live_state,
+        active_nav="wishlist"
+    )
+
+
+@app.route("/api/wishlist", methods=["GET"])
+def api_mall_wishlist_get():
+    u = get_current_mall_user()
+    if u:
+        nums = mall_database.get_user_wishlist_nums(int(u["id"]))
+        prods = mall_database.get_products_by_nums(nums)
+        return jsonify({
+            "status": "ok",
+            "is_member": True,
+            "product_nums": [p["num"] for p in prods],
+            "products": prods,
+            "count": len(prods),
+        }), 200
+
+    raw_nums = (request.args.get("nums") or "").strip()
+    parsed = [part for part in raw_nums.split(",") if part.strip()] if raw_nums else []
+    prods = mall_database.get_products_by_nums(parsed)
+    return jsonify({
+        "status": "ok",
+        "is_member": False,
+        "product_nums": [p["num"] for p in prods],
+        "products": prods,
+        "count": len(prods),
+    }), 200
+
+
+@app.route("/api/wishlist/toggle", methods=["POST"])
+def api_mall_wishlist_toggle():
+    u = get_current_mall_user()
+    if not u:
+        return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "로그인이 필요합니다."}), 401
+    if not mall_security.verify_csrf_token(session, request):
+        return jsonify({"status": "error", "code": "CSRF_INVALID", "message": "CSRF 보안 토큰 검증에 실패했습니다."}), 403
+
+    data = request.get_json(silent=True) or {}
+    p_num = data.get("product_num")
+    if p_num is None:
+        return jsonify({"status": "error", "message": "product_num이 필요합니다."}), 400
+    res = mall_database.toggle_user_wishlist(int(u["id"]), p_num)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message") or "찜하기 처리 실패"}), 400
+    return jsonify({"status": "ok", **res}), 200
+
+
+@app.route("/api/wishlist/sync", methods=["POST"])
+def api_mall_wishlist_sync():
+    u = get_current_mall_user()
+    if not u:
+        return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "로그인이 필요합니다."}), 401
+    if not mall_security.verify_csrf_token(session, request):
+        return jsonify({"status": "error", "code": "CSRF_INVALID", "message": "CSRF 보안 토큰 검증에 실패했습니다."}), 403
+
+    data = request.get_json(silent=True) or {}
+    nums = data.get("product_nums") or []
+    merged = mall_database.merge_user_wishlist(int(u["id"]), nums if isinstance(nums, list) else [])
+    return jsonify({"status": "ok", "product_nums": merged, "count": len(merged)}), 200
+
+
+@app.route("/api/wishlist/clear", methods=["POST"])
+def api_mall_wishlist_clear():
+    u = get_current_mall_user()
+    if not u:
+        return jsonify({"status": "error", "code": "AUTH_REQUIRED", "message": "로그인이 필요합니다."}), 401
+    if not mall_security.verify_csrf_token(session, request):
+        return jsonify({"status": "error", "code": "CSRF_INVALID", "message": "CSRF 보안 토큰 검증에 실패했습니다."}), 403
+
+    deleted = mall_database.clear_user_wishlist(int(u["id"]))
+    return jsonify({"status": "ok", "deleted": deleted, "product_nums": [], "count": 0}), 200
 
 
 @app.route("/cart", methods=["GET"])

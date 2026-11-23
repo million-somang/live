@@ -261,6 +261,19 @@ def init_mall_db():
                         VALUES (?, ?, ?, 1, ?)
                     """, (c_code, c_name, c_order, seed_ts))
 
+            # 9. 상품 찜 목록 테이블 (mall_wishlist)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_wishlist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    product_num INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(user_id, product_num)
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_wishlist_user ON mall_wishlist (user_id, id DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_wishlist_prod ON mall_wishlist (product_num)")
+
             conn.commit()
         finally:
             conn.close()
@@ -2050,6 +2063,174 @@ def get_primary_mall_admin_user():
             """)
             row = cur.fetchone()
             return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def _normalize_wish_product_nums(raw_nums) -> list[int]:
+    result: list[int] = []
+    seen: set[int] = set()
+    for val in (raw_nums or []):
+        try:
+            num = int(str(val).strip())
+        except Exception:
+            continue
+        if num <= 0 or num in seen:
+            continue
+        seen.add(num)
+        result.append(num)
+        if len(result) >= 100:
+            break
+    return result
+
+
+def get_user_wishlist_nums(user_id: int) -> list[int]:
+    if not user_id:
+        return []
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT w.product_num
+                FROM mall_wishlist w
+                INNER JOIN mall_products p ON p.num = w.product_num
+                WHERE w.user_id = ?
+                ORDER BY w.id DESC
+                """,
+                (int(user_id),),
+            )
+            return [int(r["product_num"]) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+
+def get_product_wish_count(product_num: int) -> int:
+    try:
+        p_num = int(product_num)
+    except Exception:
+        return 0
+    if p_num <= 0:
+        return 0
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM mall_wishlist WHERE product_num = ?", (p_num,))
+            row = cur.fetchone()
+            return int(row[0] or 0) if row else 0
+        finally:
+            conn.close()
+
+
+def get_products_by_nums(product_nums) -> list[dict]:
+    clean_nums = _normalize_wish_product_nums(product_nums)
+    if not clean_nums:
+        return []
+    products: list[dict] = []
+    with mall_db_lock:
+        for num in clean_nums:
+            prod = get_mall_product_by_num(num)
+            if prod:
+                products.append(prod)
+    return products
+
+
+def get_user_wishlist_products(user_id: int) -> list[dict]:
+    nums = get_user_wishlist_nums(user_id)
+    return get_products_by_nums(nums)
+
+
+def toggle_user_wishlist(user_id: int, product_num: int) -> dict:
+    try:
+        uid = int(user_id)
+        p_num = int(product_num)
+    except Exception:
+        return {"ok": False, "message": "유효하지 않은 요청입니다."}
+    if uid <= 0 or p_num <= 0:
+        return {"ok": False, "message": "유효하지 않은 상품 또는 회원 정보입니다."}
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM mall_products WHERE num = ? LIMIT 1", (p_num,))
+            if not cur.fetchone():
+                return {"ok": False, "message": "존재하지 않는 상품입니다."}
+
+            cur.execute(
+                "SELECT id FROM mall_wishlist WHERE user_id = ? AND product_num = ? LIMIT 1",
+                (uid, p_num),
+            )
+            existing = cur.fetchone()
+            if existing:
+                cur.execute("DELETE FROM mall_wishlist WHERE id = ?", (int(existing["id"]),))
+                wished = False
+            else:
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cur.execute(
+                    "INSERT OR IGNORE INTO mall_wishlist (user_id, product_num, created_at) VALUES (?, ?, ?)",
+                    (uid, p_num, now_str),
+                )
+                wished = True
+            conn.commit()
+        finally:
+            conn.close()
+
+    nums = get_user_wishlist_nums(uid)
+    return {
+        "ok": True,
+        "wished": wished,
+        "product_num": p_num,
+        "wishlist_nums": nums,
+        "wishlist_count": len(nums),
+        "product_wish_count": get_product_wish_count(p_num),
+    }
+
+
+def merge_user_wishlist(user_id: int, product_nums) -> list[int]:
+    try:
+        uid = int(user_id)
+    except Exception:
+        return []
+    if uid <= 0:
+        return []
+    clean_nums = _normalize_wish_product_nums(product_nums)
+    if clean_nums:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with mall_db_lock:
+            conn = get_connection()
+            try:
+                cur = conn.cursor()
+                for p_num in reversed(clean_nums):
+                    cur.execute("SELECT 1 FROM mall_products WHERE num = ? LIMIT 1", (p_num,))
+                    if cur.fetchone():
+                        cur.execute(
+                            "INSERT OR IGNORE INTO mall_wishlist (user_id, product_num, created_at) VALUES (?, ?, ?)",
+                            (uid, p_num, now_str),
+                        )
+                conn.commit()
+            finally:
+                conn.close()
+    return get_user_wishlist_nums(uid)
+
+
+def clear_user_wishlist(user_id: int) -> int:
+    try:
+        uid = int(user_id)
+    except Exception:
+        return 0
+    if uid <= 0:
+        return 0
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM mall_wishlist WHERE user_id = ?", (uid,))
+            deleted = int(cur.rowcount or 0)
+            conn.commit()
+            return deleted
         finally:
             conn.close()
 

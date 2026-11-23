@@ -6,7 +6,7 @@
     <title>{% block title %}골라방 LIVE — 공식 온라인 스토어{% endblock %}</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261123d">
+    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261123e">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -44,6 +44,11 @@
             </nav>
 
             <div class="ax-header-actions">
+                <a href="/wishlist" class="ax-util-btn {% if active_nav == 'wishlist' %}ax-util-btn-active{% endif %}" title="찜한 상품">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                    <span class="ax-hide-xs">찜목록</span>
+                    <span class="ax-cart-badge ax-wish-badge" id="navWishlistBadge">{{ (user_wishlist_nums or [])|length }}</span>
+                </a>
                 <a href="/cart" class="ax-util-btn">
                     <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
                     <span>장바구니</span>
@@ -167,6 +172,7 @@
             <div class="ax-footer-links">
                 <a href="/" style="font-weight:600;">스토어 홈</a>
                 <a href="/orders" style="font-weight:600;">주문/배송 조회</a>
+                <a href="/wishlist" style="font-weight:600;">찜목록</a>
                 <a href="/cart" style="font-weight:600;">장바구니</a>
                 <a href="/admin" style="font-weight:600;">스토어 어드민</a>
             </div>
@@ -176,14 +182,151 @@
     <div id="mallBaseBootstrap" hidden
          data-logged-in="{{ (True if current_mall_user else False) | tojson | forceescape }}"
          data-live-order-token="{{ (live_order_token or '') | tojson | forceescape }}"
-         data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"></div>
+         data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"
+         data-wishlist-nums="{{ (user_wishlist_nums or []) | tojson | forceescape }}"></div>
 
     <script>
         const MALL_CART_KEY = 'gollabang_mall_cart_v1';
+        const MALL_WISHLIST_KEY = 'golabang_mall_wishlist_v1';
         const __baseBootEl = document.getElementById('mallBaseBootstrap');
         window.__MALL_USER_LOGGED_IN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.loggedIn || 'false') : false;
         window.__LIVE_ORDER_TOKEN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.liveOrderToken || '""') : '';
+        let __mallWishlistNums = __baseBootEl ? JSON.parse(__baseBootEl.dataset.wishlistNums || '[]') : [];
         let pendingInstantBuyItem = null;
+
+        function _normalizeWishNums(arr) {
+            const out = [];
+            const seen = new Set();
+            (Array.isArray(arr) ? arr : []).forEach(v => {
+                const n = Number(v);
+                if (Number.isInteger(n) && n > 0 && !seen.has(n)) {
+                    seen.add(n);
+                    out.push(n);
+                }
+            });
+            return out.slice(0, 100);
+        }
+
+        function _getGuestWishlistNums() {
+            try {
+                const raw = localStorage.getItem(MALL_WISHLIST_KEY);
+                return _normalizeWishNums(raw ? JSON.parse(raw) : []);
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function _saveGuestWishlistNums(nums) {
+            try {
+                localStorage.setItem(MALL_WISHLIST_KEY, JSON.stringify(_normalizeWishNums(nums)));
+            } catch (e) {}
+        }
+
+        window.getMallWishlistNums = function() {
+            if (window.__MALL_USER_LOGGED_IN__) {
+                return _normalizeWishNums(__mallWishlistNums);
+            }
+            return _getGuestWishlistNums();
+        };
+
+        window.syncMallWishlistUI = function() {
+            const nums = window.getMallWishlistNums();
+            const numSet = new Set(nums);
+            const badge = document.getElementById('navWishlistBadge');
+            if (badge) badge.innerText = String(nums.length);
+            document.querySelectorAll('[data-wish-num]').forEach(btn => {
+                const n = Number(btn.getAttribute('data-wish-num') || btn.dataset.wishNum || 0);
+                const active = numSet.has(n);
+                btn.classList.toggle('is-active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                btn.setAttribute('title', active ? '찜 해제' : '상품 찜하기');
+            });
+        };
+
+        window.toggleMallWishlist = async function(productNum, ev) {
+            if (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+            }
+            const num = Number(productNum);
+            if (!num || num <= 0) return;
+
+            if (window.__MALL_USER_LOGGED_IN__) {
+                try {
+                    const res = await fetch('/api/wishlist/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ product_num: num })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        showMallToast((data && data.message) || '찜하기 처리에 실패했습니다.');
+                        return;
+                    }
+                    __mallWishlistNums = _normalizeWishNums(data.wishlist_nums || []);
+                    const pdBtn = document.getElementById('pdWishBtn');
+                    const pdCnt = document.getElementById('pdWishCount');
+                    if (pdBtn && pdCnt && Number(pdBtn.dataset.wishNum) === num && data.product_wish_count !== undefined) {
+                        pdCnt.innerText = String(Number(data.product_wish_count || 0));
+                    }
+                    window.syncMallWishlistUI();
+                    showMallToast(data.wished ? '찜 목록에 추가되었습니다.' : '찜 목록에서 제거되었습니다.');
+                    if (typeof window.__onMallWishlistChanged === 'function') {
+                        window.__onMallWishlistChanged(num, Boolean(data.wished), __mallWishlistNums);
+                    }
+                } catch (err) {
+                    showMallToast('찜하기 요청 중 오류가 발생했습니다.');
+                }
+                return;
+            }
+
+            const cur = _getGuestWishlistNums();
+            const exists = cur.includes(num);
+            const nextList = exists ? cur.filter(x => x !== num) : [num].concat(cur).slice(0, 100);
+            _saveGuestWishlistNums(nextList);
+
+            const pdBtn = document.getElementById('pdWishBtn');
+            const pdCnt = document.getElementById('pdWishCount');
+            if (pdBtn && pdCnt && Number(pdBtn.dataset.wishNum) === num) {
+                const curCnt = Number(pdCnt.innerText || 0);
+                pdCnt.innerText = String(Math.max(0, curCnt + (exists ? -1 : 1)));
+            }
+            window.syncMallWishlistUI();
+            showMallToast(!exists ? '찜 목록에 추가되었습니다.' : '찜 목록에서 제거되었습니다.');
+            if (typeof window.__onMallWishlistChanged === 'function') {
+                window.__onMallWishlistChanged(num, !exists, nextList);
+            }
+        };
+
+        window.clearMallWishlist = async function() {
+            if (window.__MALL_USER_LOGGED_IN__) {
+                try {
+                    const res = await fetch('/api/wishlist/clear', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        showMallToast((data && data.message) || '찜 목록 비우기에 실패했습니다.');
+                        return;
+                    }
+                    __mallWishlistNums = [];
+                } catch (err) {
+                    showMallToast('찜 목록 비우기 중 오류가 발생했습니다.');
+                    return;
+                }
+            } else {
+                try {
+                    localStorage.removeItem(MALL_WISHLIST_KEY);
+                } catch (e) {}
+            }
+            window.syncMallWishlistUI();
+            showMallToast('찜 목록을 모두 비웠습니다.');
+            if (typeof window.__onMallWishlistChanged === 'function') {
+                window.__onMallWishlistChanged(0, false, []);
+            }
+        };
 
         window.mallEscapeHtml = function(text) {
             const div = document.createElement('div');
@@ -547,8 +690,29 @@
             }
         });
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             updateNavCartBadge();
+            if (window.__MALL_USER_LOGGED_IN__) {
+                const guestNums = _getGuestWishlistNums();
+                if (guestNums.length > 0) {
+                    try {
+                        const res = await fetch('/api/wishlist/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ product_nums: guestNums })
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.status === 'ok') {
+                            __mallWishlistNums = _normalizeWishNums(data.product_nums || []);
+                            try { localStorage.removeItem(MALL_WISHLIST_KEY); } catch (e) {}
+                            if (typeof window.__onMallWishlistSynced === 'function') {
+                                window.__onMallWishlistSynced(__mallWishlistNums);
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+            window.syncMallWishlistUI();
             // /live 이외의 페이지에서도 SSE로 방송 시작/종료 및 재고 변동을 초경량 CSR 구독
             if (window.location.pathname !== '/live' && window.EventSource) {
                 try {

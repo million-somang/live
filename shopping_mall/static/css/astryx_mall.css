@@ -351,6 +351,12 @@ img {
     color: var(--ax-text-secondary);
 }
 
+.ax-util-btn-active {
+    background: var(--ax-accent-soft);
+    color: var(--ax-accent-primary);
+    border-color: rgba(79, 70, 229, 0.35);
+}
+
 .ax-cart-badge {
     background: var(--ax-accent-primary);
     color: #ffffff;
@@ -364,6 +370,11 @@ img {
     align-items: center;
     justify-content: center;
     font-variant-numeric: tabular-nums;
+}
+
+.ax-cart-badge.ax-wish-badge {
+    background: var(--ax-live);
+    color: #ffffff;
 }
 
 /* --------------------------------------------------------------------------
@@ -819,6 +830,65 @@ img {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+.ax-product-thumb-wrap {
+    position: relative;
+}
+
+.ax-wish-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid var(--ax-border-subtle);
+    color: var(--ax-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--ax-shadow-card);
+    transition: transform 0.14s ease, color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.ax-wish-btn:hover {
+    color: var(--ax-live);
+    border-color: var(--ax-live-border);
+    transform: scale(1.06);
+}
+
+.ax-wish-btn.is-active {
+    color: var(--ax-live);
+    border-color: var(--ax-live-border);
+    background: var(--ax-live-soft);
+}
+
+.ax-wish-btn.is-active .ax-wish-heart,
+.ax-wish-detail-btn.is-active .ax-wish-heart,
+.ax-wish-mobile-btn.is-active .ax-wish-heart {
+    fill: var(--ax-live);
+    stroke: var(--ax-live);
+}
+
+.ax-wish-detail-btn {
+    gap: 6px;
+    flex: 0 0 auto;
+    min-width: 96px;
+}
+
+.ax-wish-detail-btn.is-active,
+.ax-wish-mobile-btn.is-active {
+    color: var(--ax-live);
+    border-color: var(--ax-live-border);
+    background: var(--ax-live-soft);
+}
+
+.ax-wish-mobile-btn {
+    flex-shrink: 0;
 }
 
 .ax-product-thumb {
@@ -1647,6 +1717,14 @@ img {
     .ax-container {
         padding-left: 14px;
         padding-right: 14px;
+    }
+    .ax-hide-xs {
+        display: none;
+    }
+    .ax-header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
     }
     .ax-brand {
         font-size: 1rem;

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}찜한 상품 — 골라방 LIVE{% endblock %}
+
+{% block content %}
+<div class="ax-card ax-card-pad" style="margin-bottom:20px;">
+    <div class="ax-page-header" style="margin-bottom:0; align-items:center;">
+        <div>
+            <span class="ax-badge-eyebrow">MY WISHLIST</span>
+            <div class="ax-page-title-row">
+                <h1 class="ax-page-title">찜한 상품</h1>
+                <span id="wishlistTotalBadge" class="ax-badge ax-badge-indigo ax-num">{{ (wishlist_products or [])|length }}개</span>
+            </div>
+            <p class="ax-page-sub">관심 있는 상품을 한곳에 모아두고 원할 때 바로 장바구니에 담거나 주문하실 수 있습니다.</p>
+        </div>
+
+        <div class="ax-admin-controls">
+            <a href="/" class="ax-btn ax-btn-secondary">스토어 홈 둘러보기</a>
+            <button type="button" id="btnClearWishlist" onclick="clearMallWishlist()" class="ax-btn ax-btn-danger-soft ax-is-hidden">전체 비우기</button>
+        </div>
+    </div>
+</div>
+
+<div id="wishlistGridWrap"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<div id="mallWishlistBootstrap" hidden
+     data-products="{{ (wishlist_products or []) | tojson | forceescape }}"
+     data-category-labels="{{ (category_labels or {}) | tojson | forceescape }}"></div>
+<script>
+    const __wishBootEl = document.getElementById('mallWishlistBootstrap');
+    let wishlistProducts = __wishBootEl ? JSON.parse(__wishBootEl.dataset.products || '[]') : [];
+    const __WISH_CAT_LABELS__ = __wishBootEl ? JSON.parse(__wishBootEl.dataset.categoryLabels || '{}') : {};
+    const __WISH_MAP__ = {};
+
+    function _rebuildWishlistMap() {
+        Object.keys(__WISH_MAP__).forEach(k => { delete __WISH_MAP__[k]; });
+        (wishlistProducts || []).forEach(p => { __WISH_MAP__[Number(p.num)] = p; });
+    }
+
+    function renderWishlistPage() {
+        _rebuildWishlistMap();
+        const badge = document.getElementById('wishlistTotalBadge');
+        const clearBtn = document.getElementById('btnClearWishlist');
+        const box = document.getElementById('wishlistGridWrap');
+        if (badge) badge.innerText = `${wishlistProducts.length}개`;
+        if (clearBtn) clearBtn.classList.toggle('ax-is-hidden', wishlistProducts.length === 0);
+        if (!box) return;
+
+        if (wishlistProducts.length === 0) {
+            box.innerHTML = `
+                <div class="ax-card" style="padding:56px 24px; text-align:center;">
+                    <div style="width:52px; height:52px; margin:0 auto 12px; border-radius:14px; background:var(--ax-surface-tertiary); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted);">
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                    </div>
+                    <h3 style="font-size:1.125rem; font-weight:800; color:var(--ax-text-primary);">찜한 상품이 없습니다</h3>
+                    <p style="color:var(--ax-text-secondary); margin-top:6px; font-size:0.875rem;">스토어 홈 또는 상품 상세 화면에서 하트 버튼을 눌러 관심 상품을 담아보세요.</p>
+                    <div style="margin-top:18px;">
+                        <a href="/" class="ax-btn ax-btn-primary">상품 구경하러 가기</a>
+                    </div>
+                </div>`;
+            return;
+        }
+
+        box.innerHTML = '<div class="ax-product-grid">' + wishlistProducts.map(p => {
+            const num = Number(p.num);
+            const catCode = String(p.category || 'ETC').toUpperCase();
+            const catName = __WISH_CAT_LABELS__[catCode] || catCode;
+            const activePrice = Number(p.price || 0);
+            const consumerPrice = Number(p.consumer_price || 0);
+            const activeDisc = Number(p.discount_rate || 0);
+            const thumbMedia = p.image_url
+                ? `<img src="${window.mallEscapeHtml(p.image_url)}" alt="${window.mallEscapeHtml(p.name || '')}" loading="lazy">`
+                : `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`;
+            return `
+                <article class="ax-kpi-card ax-product-card" data-wishlist-card-num="${num}">
+                    <div class="ax-product-thumb-wrap">
+                        <a href="/product/${num}" class="ax-product-thumb">
+                            <span class="ax-thumb-num ax-num">#${num}</span>
+                            ${thumbMedia}
+                        </a>
+                        <button type="button"
+                                class="ax-wish-btn is-active"
+                                data-wish-num="${num}"
+                                onclick="toggleMallWishlist(Number(this.dataset.wishNum), event)"
+                                aria-label="찜 해제"
+                                aria-pressed="true"
+                                title="찜 해제">
+                            <svg class="ax-icon-sm ax-wish-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                        </button>
+                    </div>
+                    <div class="ax-product-body">
+                        <div data-csr-stock-num="${num}" data-csr-cat="${window.mallEscapeHtml(catName)}" class="ax-product-meta ax-num">
+                            ${window.mallEscapeHtml(catName)} · 잔여 ${Number(p.total_stock || 0)}개
+                        </div>
+                        <a href="/product/${num}" class="ax-product-title">${window.mallEscapeHtml(p.name || '')}</a>
+                        <div style="margin-top:auto;">
+                            <div class="ax-price-row">
+                                ${activeDisc > 0 ? `<span class="ax-discount-pct ax-num">${activeDisc}%</span>` : ''}
+                                <span class="ax-price-main ax-num">${activePrice.toLocaleString()}원</span>
+                                ${consumerPrice > activePrice ? `<span class="ax-price-strike ax-num">${consumerPrice.toLocaleString()}원</span>` : ''}
+                            </div>
+                            <div class="ax-product-actions">
+                                <a href="/product/${num}" class="ax-btn ax-btn-secondary ax-btn-sm" style="flex:0.8;">상세</a>
+                                <button type="button" data-product-num="${num}" onclick="wishlistAddCart(Number(this.dataset.productNum))" class="ax-btn ax-btn-outline-charcoal ax-btn-sm" style="flex:0.95;">담기</button>
+                                <button type="button" data-product-num="${num}" onclick="wishlistQuickBuy(Number(this.dataset.productNum))" class="ax-btn ax-btn-primary ax-btn-sm" style="flex:1.25;">바로구매</button>
+                            </div>
+                        </div>
+                    </div>
+                </article>`;
+        }).join('') + '</div>';
+        if (typeof window.syncMallWishlistUI === 'function') window.syncMallWishlistUI();
+    }
+
+    function wishlistAddCart(num) {
+        const prod = __WISH_MAP__[Number(num)];
+        if (!prod) return;
+        const firstOpt = (Array.isArray(prod.options) && prod.options.length > 0)
+            ? prod.options.find(o => Number(o.stock) > 0) || prod.options[0]
+            : { color: '기본', size: 'FREE', stock: 1 };
+        addItemToMallCart({
+            num: prod.num,
+            name: prod.name,
+            price: Number(prod.price || 0),
+            consumer_price: prod.consumer_price,
+            image_url: prod.image_url,
+            color: firstOpt.color,
+            size: firstOpt.size,
+            quantity: 1
+        });
+    }
+
+    function wishlistQuickBuy(num) {
+        const prod = __WISH_MAP__[Number(num)];
+        if (!prod) return;
+        const opts = (Array.isArray(prod.options) && prod.options.length > 0)
+            ? prod.options
+            : [{ color: '기본', size: 'FREE', stock: 10 }];
+        const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
+        openInstantBuyModal({
+            num: prod.num,
+            name: prod.name,
+            price: Number(prod.price || 0),
+            consumer_price: prod.consumer_price,
+            image_url: prod.image_url,
+            color: firstOpt.color,
+            size: firstOpt.size,
+            quantity: 1,
+            source_page: 'MALL',
+            options: opts
+        });
+    }
+
+    async function refreshWishlistFromServer() {
+        const nums = typeof window.getMallWishlistNums === 'function' ? window.getMallWishlistNums() : [];
+        if (nums.length === 0) {
+            wishlistProducts = [];
+            renderWishlistPage();
+            return;
+        }
+        try {
+            const url = window.__MALL_USER_LOGGED_IN__
+                ? '/api/wishlist'
+                : `/api/wishlist?nums=${encodeURIComponent(nums.join(','))}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                wishlistProducts = Array.isArray(data.products) ? data.products : [];
+                renderWishlistPage();
+            }
+        } catch (e) {}
+    }
+
+    window.__onMallWishlistChanged = function(changedNum, wished) {
+        if (changedNum === 0) {
+            wishlistProducts = [];
+            renderWishlistPage();
+            return;
+        }
+        if (!wished) {
+            wishlistProducts = wishlistProducts.filter(p => Number(p.num) !== Number(changedNum));
+            renderWishlistPage();
+        }
+    };
+
+    window.__onMallWishlistSynced = function() {
+        refreshWishlistFromServer();
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (!window.__MALL_USER_LOGGED_IN__) {
+            refreshWishlistFromServer();
+        } else {
+            renderWishlistPage();
+        }
+    });
+</script>
+{% endblock %}
