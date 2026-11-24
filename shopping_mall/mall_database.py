@@ -15,7 +15,7 @@ import sqlite3
 import secrets as _secrets
 from datetime import datetime
 from threading import RLock, Condition
-from typing import Any
+from typing import Any, Optional
 
 import mall_security
 
@@ -252,9 +252,11 @@ def init_mall_db():
                 )
             """)
 
-            # 기존 mall_products, mall_reviews 및 mall_orders 호환성 마이그레이션
+            # 기존 mall_products, mall_reviews, mall_orders 및 mall_order_items 호환성 마이그레이션
             for tbl, col_name, col_def in [
                 ("mall_products", "live_price", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_products", "cost_price", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_products", "supplier_id", "INTEGER DEFAULT NULL"),
                 ("mall_products", "detail_content", "TEXT DEFAULT ''"),
                 ("mall_products", "detail_images", "TEXT DEFAULT '[]'"),
                 ("mall_products", "shipping_info", "TEXT DEFAULT ''"),
@@ -268,6 +270,10 @@ def init_mall_db():
                 ("mall_orders", "claim_reason", "TEXT DEFAULT ''"),
                 ("mall_orders", "claim_updated_at", "TEXT DEFAULT ''"),
                 ("mall_orders", "stock_restored", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_order_items", "unit_cost", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_order_items", "cost_total", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_order_items", "supplier_id", "INTEGER DEFAULT NULL"),
+                ("mall_order_items", "supplier_name", "TEXT DEFAULT ''"),
             ]:
                 try:
                     cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col_name} {col_def}")
@@ -336,6 +342,43 @@ def init_mall_db():
                 "CREATE INDEX IF NOT EXISTS idx_mall_hero_banners_active_sort ON mall_hero_banners (is_active, sort_order, id DESC)"
             )
 
+            # 13. 매입업체 마스터 테이블 (mall_suppliers)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_suppliers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    contact_name TEXT DEFAULT '',
+                    phone TEXT DEFAULT '',
+                    bank_name TEXT DEFAULT '',
+                    bank_account TEXT DEFAULT '',
+                    bank_holder TEXT DEFAULT '',
+                    memo TEXT DEFAULT '',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+
+            # 14. 매입업체별 실제 지급(결제) 내역 테이블 (mall_supplier_settlements)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_supplier_settlements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    supplier_id INTEGER NOT NULL,
+                    amount INTEGER NOT NULL DEFAULT 0,
+                    paid_at TEXT NOT NULL,
+                    payment_method TEXT NOT NULL DEFAULT '계좌이체',
+                    memo TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (supplier_id) REFERENCES mall_suppliers (id) ON DELETE CASCADE
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_supplier_settlements_sup ON mall_supplier_settlements (supplier_id, paid_at DESC, id DESC)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_orders_created_pay ON mall_orders (created_at, payment_status, order_status)"
+            )
+
             conn.commit()
         finally:
             conn.close()
@@ -395,7 +438,15 @@ def _serialize_detail_images(raw):
 parse_detail_images = _parse_detail_images
 
 
-def _format_product_row(prow, opt_rows):
+def _get_supplier_name_map(conn) -> dict[int, str]:
+    try:
+        rows = conn.execute("SELECT id, name FROM mall_suppliers").fetchall()
+        return {int(r["id"]): str(r["name"] or "") for r in rows if r["id"] is not None}
+    except Exception:
+        return {}
+
+
+def _format_product_row(prow, opt_rows, supplier_map: dict[int, str] | None = None):
     keys = set(prow.keys())
     options = []
     total_stock = 0
@@ -423,6 +474,13 @@ def _format_product_row(prow, opt_rows):
     cons_p = int(prow["consumer_price"] or sell_p)
     if cons_p < sell_p:
         cons_p = sell_p
+    cost_p = max(0, int(prow["cost_price"] or 0)) if "cost_price" in keys and prow["cost_price"] is not None else 0
+    raw_sup_id = prow["supplier_id"] if "supplier_id" in keys else None
+    try:
+        sup_id = int(raw_sup_id) if raw_sup_id is not None and int(raw_sup_id) > 0 else None
+    except Exception:
+        sup_id = None
+    sup_name = (supplier_map or {}).get(sup_id, "") if sup_id else ""
     discount_rate = round((cons_p - sell_p) / cons_p * 100) if cons_p > sell_p and cons_p > 0 else 0
     live_discount_rate = round((cons_p - live_p) / cons_p * 100) if cons_p > live_p and cons_p > 0 else discount_rate
 
@@ -438,6 +496,9 @@ def _format_product_row(prow, opt_rows):
         "price": sell_p,
         "live_price": live_p,
         "consumer_price": cons_p,
+        "cost_price": cost_p,
+        "supplier_id": sup_id,
+        "supplier_name": sup_name,
         "discount_rate": discount_rate,
         "live_discount_rate": live_discount_rate,
         "image_url": img_url,
@@ -855,8 +916,17 @@ def create_mall_product(prod_data: Any) -> dict:
         if live_price <= 0:
             live_price = sell_price
         consumer_price = max(sell_price, int(prod_data.get("consumer_price") or sell_price))
+        cost_price = max(0, int(prod_data.get("cost_price") or 0))
     except Exception:
-        return {"ok": False, "message": "가격은 올바른 숫자로 입력해 주세요."}
+        return {"ok": False, "message": "가격 및 원가는 올바른 숫자로 입력해 주세요."}
+
+    raw_sup_id = prod_data.get("supplier_id")
+    try:
+        supplier_id = int(str(raw_sup_id).strip()) if raw_sup_id not in (None, "", 0, "0") else None
+        if supplier_id is not None and supplier_id <= 0:
+            supplier_id = None
+    except Exception:
+        supplier_id = None
 
     raw_opts = prod_data.get("options")
     clean_opts = []
@@ -880,6 +950,11 @@ def create_mall_product(prod_data: Any) -> dict:
         conn = get_connection()
         try:
             cur = conn.cursor()
+            if supplier_id is not None:
+                cur.execute("SELECT id FROM mall_suppliers WHERE id = ?", (supplier_id,))
+                if not cur.fetchone():
+                    return {"ok": False, "message": "선택한 매입업체를 찾을 수 없습니다."}
+
             raw_num = prod_data.get("num")
             if raw_num in (None, ""):
                 cur.execute("SELECT COALESCE(MAX(num), 0) + 1 FROM mall_products")
@@ -894,12 +969,14 @@ def create_mall_product(prod_data: Any) -> dict:
 
             cur.execute("""
                 INSERT INTO mall_products
-                (obs_product_id, num, name, category, price, live_price, consumer_price, image_url, specs,
-                 detail_content, detail_images, shipping_info, exchange_return_info, non_returnable_info, as_info,
+                (obs_product_id, num, name, category, price, live_price, consumer_price, cost_price, supplier_id,
+                 image_url, specs, detail_content, detail_images,
+                 shipping_info, exchange_return_info, non_returnable_info, as_info,
                  is_featured, updated_at, created_at)
-                VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                VALUES (0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             """, (
-                num, name, category, sell_price, live_price, consumer_price, image_url, specs,
+                num, name, category, sell_price, live_price, consumer_price, cost_price, supplier_id,
+                image_url, specs,
                 str(prod_data.get("detail_content") or "").strip(),
                 _serialize_detail_images(prod_data.get("detail_images")),
                 str(prod_data.get("shipping_info") or "").strip(),
@@ -954,13 +1031,31 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
             if live_price <= 0:
                 live_price = sell_price
             consumer_price = max(sell_price, int(prod_data.get("consumer_price") or sell_price)) if "consumer_price" in prod_data else max(sell_price, int(existing["consumer_price"] or sell_price))
+            ext_keys = set(existing.keys())
+            existing_cost = int(existing["cost_price"] or 0) if "cost_price" in ext_keys and existing["cost_price"] is not None else 0
+            cost_price = max(0, int(prod_data.get("cost_price") or 0)) if "cost_price" in prod_data else existing_cost
+            if "supplier_id" in prod_data:
+                raw_sup = prod_data.get("supplier_id")
+                try:
+                    supplier_id = int(str(raw_sup).strip()) if raw_sup not in (None, "", 0, "0") else None
+                    if supplier_id is not None and supplier_id <= 0:
+                        supplier_id = None
+                except Exception:
+                    supplier_id = None
+                if supplier_id is not None:
+                    cur.execute("SELECT id FROM mall_suppliers WHERE id = ?", (supplier_id,))
+                    if not cur.fetchone():
+                        return {"ok": False, "message": "선택한 매입업체를 찾을 수 없습니다."}
+            else:
+                raw_existing_sup = existing["supplier_id"] if "supplier_id" in ext_keys else None
+                supplier_id = int(raw_existing_sup) if raw_existing_sup is not None and int(raw_existing_sup) > 0 else None
+
             category = str(prod_data.get("category") if "category" in prod_data else existing["category"]).strip().upper() or "ETC"
             image_url = str(prod_data.get("image_url") if "image_url" in prod_data else existing["image_url"] or "").strip()
             specs = str(prod_data.get("specs") if "specs" in prod_data else existing["specs"] or "").strip()
             detail_imgs = _serialize_detail_images(prod_data["detail_images"]) if "detail_images" in prod_data else (existing["detail_images"] or "[]")
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            ext_keys = set(existing.keys())
             resolved_texts = {
                 col: (
                     str(prod_data[col] or "").strip()
@@ -973,6 +1068,7 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
             cur.execute("""
                 UPDATE mall_products
                 SET num = ?, name = ?, category = ?, price = ?, live_price = ?, consumer_price = ?,
+                    cost_price = ?, supplier_id = ?,
                     image_url = ?, specs = ?,
                     detail_content = ?, detail_images = ?,
                     shipping_info = ?, exchange_return_info = ?, non_returnable_info = ?, as_info = ?,
@@ -980,6 +1076,7 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
                 WHERE id = ?
             """, (
                 target_num, name, category, sell_price, live_price, consumer_price,
+                cost_price, supplier_id,
                 image_url, specs,
                 resolved_texts["detail_content"], detail_imgs,
                 resolved_texts["shipping_info"], resolved_texts["exchange_return_info"],
@@ -1077,6 +1174,7 @@ def get_all_mall_products(category=None, search=None, sort="num_asc"):
 
             cur.execute(f"SELECT * FROM mall_products {where_sql} {order_sql}", params)
             rows = cur.fetchall()
+            supplier_map = _get_supplier_name_map(conn)
             result = []
             for r in rows:
                 cur.execute(
@@ -1084,7 +1182,7 @@ def get_all_mall_products(category=None, search=None, sort="num_asc"):
                     (r["id"],)
                 )
                 opt_rows = cur.fetchall()
-                result.append(_format_product_row(r, opt_rows))
+                result.append(_format_product_row(r, opt_rows, supplier_map))
             return result
         finally:
             conn.close()
@@ -1102,12 +1200,13 @@ def get_mall_product_by_num(num):
             r = cur.fetchone()
             if not r:
                 return None
+            supplier_map = _get_supplier_name_map(conn)
             cur.execute(
                 "SELECT color, size, stock FROM mall_product_options WHERE product_id = ? ORDER BY id ASC",
                 (r["id"],)
             )
             opt_rows = cur.fetchall()
-            return _format_product_row(r, opt_rows)
+            return _format_product_row(r, opt_rows, supplier_map)
         finally:
             conn.close()
 
@@ -1126,12 +1225,13 @@ def get_mall_product_by_id(product_id):
                 r = cur.fetchone()
             if not r:
                 return None
+            supplier_map = _get_supplier_name_map(conn)
             cur.execute(
                 "SELECT color, size, stock FROM mall_product_options WHERE product_id = ? ORDER BY id ASC",
                 (r["id"],)
             )
             opt_rows = cur.fetchall()
-            return _format_product_row(r, opt_rows)
+            return _format_product_row(r, opt_rows, supplier_map)
         finally:
             conn.close()
 
@@ -1456,6 +1556,7 @@ def create_mall_order(order_data):
         conn = get_connection()
         try:
             cur = conn.cursor()
+            supplier_map = _get_supplier_name_map(conn)
             resolved_items = []
             subtotal = 0
 
@@ -1510,10 +1611,19 @@ def create_mall_order(order_data):
                             (int(any_opt["stock"]) - qty, any_opt["id"])
                         )
 
+                p_keys = set(p_row.keys())
                 sell_price = int(p_row["price"] or 0)
-                live_price = int(p_row["live_price"] or 0) if "live_price" in p_row.keys() and p_row["live_price"] is not None and int(p_row["live_price"]) > 0 else sell_price
+                live_price = int(p_row["live_price"] or 0) if "live_price" in p_keys and p_row["live_price"] is not None and int(p_row["live_price"]) > 0 else sell_price
                 unit_price = live_price if use_live_pricing else sell_price
                 line_total = unit_price * qty
+                unit_cost = max(0, int(p_row["cost_price"] or 0)) if "cost_price" in p_keys and p_row["cost_price"] is not None else 0
+                cost_total = unit_cost * qty
+                raw_sup = p_row["supplier_id"] if "supplier_id" in p_keys else None
+                try:
+                    sup_id = int(raw_sup) if raw_sup is not None and int(raw_sup) > 0 else None
+                except Exception:
+                    sup_id = None
+                sup_name = supplier_map.get(sup_id, "") if sup_id else ""
                 subtotal += line_total
                 resolved_items.append({
                     "product_num": p_num,
@@ -1523,7 +1633,11 @@ def create_mall_order(order_data):
                     "size": size,
                     "quantity": qty,
                     "unit_price": unit_price,
-                    "line_total": line_total
+                    "line_total": line_total,
+                    "unit_cost": unit_cost,
+                    "cost_total": cost_total,
+                    "supplier_id": sup_id,
+                    "supplier_name": sup_name,
                 })
 
             shipping_fee = 4000
@@ -1555,8 +1669,9 @@ def create_mall_order(order_data):
             for item in resolved_items:
                 cur.execute("""
                     INSERT INTO mall_order_items
-                    (order_id, product_num, product_name, image_url, color, size, quantity, unit_price, line_total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (order_id, product_num, product_name, image_url, color, size, quantity,
+                     unit_price, line_total, unit_cost, cost_total, supplier_id, supplier_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     order_id,
                     item["product_num"],
@@ -1566,7 +1681,11 @@ def create_mall_order(order_data):
                     item["size"],
                     item["quantity"],
                     item["unit_price"],
-                    item["line_total"]
+                    item["line_total"],
+                    item["unit_cost"],
+                    item["cost_total"],
+                    item["supplier_id"],
+                    item["supplier_name"],
                 ))
 
             conn.commit()
@@ -2530,6 +2649,552 @@ def delete_mall_hero_banner(banner_id: int) -> dict:
         finally:
             conn.close()
     return {"ok": True, "banners": list_mall_hero_banners(active_only=False)}
+
+
+def _normalize_iso_date(raw_val: Any) -> str:
+    txt = str(raw_val or "").strip()
+    if len(txt) >= 10 and txt[4:5] == "-" and txt[7:8] == "-":
+        candidate = txt[:10]
+        try:
+            datetime.strptime(candidate, "%Y-%m-%d")
+            return candidate
+        except Exception:
+            return ""
+    return ""
+
+
+def _format_supplier_row(row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "name": str(row["name"] or ""),
+        "contact_name": str(row["contact_name"] or ""),
+        "phone": str(row["phone"] or ""),
+        "bank_name": str(row["bank_name"] or ""),
+        "bank_account": str(row["bank_account"] or ""),
+        "bank_holder": str(row["bank_holder"] or ""),
+        "memo": str(row["memo"] or ""),
+        "is_active": bool(int(row["is_active"] if row["is_active"] is not None else 1)),
+        "created_at": str(row["created_at"] or ""),
+        "updated_at": str(row["updated_at"] or ""),
+    }
+
+
+def list_mall_suppliers(active_only: bool = False) -> list[dict]:
+    """등록된 매입업체(공급처) 목록을 조회합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            sql = "SELECT * FROM mall_suppliers"
+            if active_only:
+                sql += " WHERE is_active = 1"
+            sql += " ORDER BY name COLLATE NOCASE ASC, id DESC"
+            rows = conn.execute(sql).fetchall()
+            return [_format_supplier_row(r) for r in rows]
+        finally:
+            conn.close()
+
+
+def save_mall_supplier(data: Any) -> dict:
+    """매입업체를 신규 등록하거나 수정합니다."""
+    raw = data if isinstance(data, dict) else {}
+    try:
+        sup_id = int(raw.get("id") or 0)
+    except Exception:
+        sup_id = 0
+
+    name = str(raw.get("name") or "").strip()[:80]
+    if not name:
+        return {"ok": False, "message": "매입업체명을 입력해 주세요."}
+
+    contact_name = str(raw.get("contact_name") or "").strip()[:60]
+    phone = str(raw.get("phone") or "").strip()[:40]
+    bank_name = str(raw.get("bank_name") or "").strip()[:60]
+    bank_account = str(raw.get("bank_account") or "").strip()[:80]
+    bank_holder = str(raw.get("bank_holder") or "").strip()[:60]
+    memo = str(raw.get("memo") or "").strip()[:300]
+    raw_active = raw.get("is_active")
+    is_active = 0 if raw_active in (0, False, "0", "false", "False") else 1
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            if sup_id > 0:
+                cur.execute("SELECT id FROM mall_suppliers WHERE id = ?", (sup_id,))
+                if not cur.fetchone():
+                    return {"ok": False, "message": "수정할 매입업체를 찾을 수 없습니다."}
+                cur.execute("SELECT id FROM mall_suppliers WHERE LOWER(name) = LOWER(?) AND id != ?", (name, sup_id))
+                if cur.fetchone():
+                    return {"ok": False, "message": f"이미 등록된 업체명입니다: {name}"}
+                cur.execute("""
+                    UPDATE mall_suppliers
+                    SET name = ?, contact_name = ?, phone = ?, bank_name = ?, bank_account = ?, bank_holder = ?,
+                        memo = ?, is_active = ?, updated_at = ?
+                    WHERE id = ?
+                """, (name, contact_name, phone, bank_name, bank_account, bank_holder, memo, is_active, now_str, sup_id))
+                saved_id = sup_id
+            else:
+                cur.execute("SELECT id FROM mall_suppliers WHERE LOWER(name) = LOWER(?)", (name,))
+                if cur.fetchone():
+                    return {"ok": False, "message": f"이미 등록된 업체명입니다: {name}"}
+                cur.execute("""
+                    INSERT INTO mall_suppliers
+                    (name, contact_name, phone, bank_name, bank_account, bank_holder, memo, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (name, contact_name, phone, bank_name, bank_account, bank_holder, memo, is_active, now_str, now_str))
+                saved_id = int(cur.lastrowid or 0)
+            conn.commit()
+            row = conn.execute("SELECT * FROM mall_suppliers WHERE id = ?", (saved_id,)).fetchone()
+            saved_sup = _format_supplier_row(row) if row else None
+        finally:
+            conn.close()
+    return {"ok": True, "supplier": saved_sup, "suppliers": list_mall_suppliers(active_only=False)}
+
+
+def delete_mall_supplier(supplier_id: int) -> dict:
+    """매입업체를 삭제합니다 (연결된 상품의 업체 참조는 해제하고 기존 주문 스냅샷은 보존)."""
+    try:
+        sid = int(supplier_id)
+    except Exception:
+        return {"ok": False, "message": "올바른 매입업체 ID가 필요합니다."}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, name FROM mall_suppliers WHERE id = ?", (sid,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "message": "삭제할 매입업체를 찾을 수 없습니다."}
+            cur.execute("UPDATE mall_products SET supplier_id = NULL WHERE supplier_id = ?", (sid,))
+            cur.execute("DELETE FROM mall_suppliers WHERE id = ?", (sid,))
+            conn.commit()
+        finally:
+            conn.close()
+    return {"ok": True, "suppliers": list_mall_suppliers(active_only=False)}
+
+
+def add_mall_supplier_settlement(data: Any) -> dict:
+    """매입업체에 실제 지급(결제)한 금액을 기록합니다."""
+    raw = data if isinstance(data, dict) else {}
+    try:
+        sup_id = int(raw.get("supplier_id") or 0)
+    except Exception:
+        sup_id = 0
+    if sup_id <= 0:
+        return {"ok": False, "message": "지급 대상 매입업체를 선택해 주세요."}
+
+    try:
+        amount = int(raw.get("amount") or 0)
+    except Exception:
+        amount = 0
+    if amount <= 0:
+        return {"ok": False, "message": "지급 금액은 1원 이상의 숫자로 입력해 주세요."}
+
+    paid_at = _normalize_iso_date(raw.get("paid_at")) or datetime.now().strftime("%Y-%m-%d")
+    payment_method = str(raw.get("payment_method") or "계좌이체").strip()[:40] or "계좌이체"
+    memo = str(raw.get("memo") or "").strip()[:200]
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, name FROM mall_suppliers WHERE id = ?", (sup_id,))
+            sup_row = cur.fetchone()
+            if not sup_row:
+                return {"ok": False, "message": "선택한 매입업체를 찾을 수 없습니다."}
+            cur.execute("""
+                INSERT INTO mall_supplier_settlements (supplier_id, amount, paid_at, payment_method, memo, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (sup_id, amount, paid_at, payment_method, memo, now_str))
+            new_id = int(cur.lastrowid or 0)
+            conn.commit()
+            return {
+                "ok": True,
+                "settlement": {
+                    "id": new_id,
+                    "supplier_id": sup_id,
+                    "supplier_name": str(sup_row["name"] or ""),
+                    "amount": amount,
+                    "paid_at": paid_at,
+                    "payment_method": payment_method,
+                    "memo": memo,
+                    "created_at": now_str,
+                },
+            }
+        finally:
+            conn.close()
+
+
+def delete_mall_supplier_settlement(settlement_id: int) -> dict:
+    """매입업체 지급(결제) 이력을 삭제합니다."""
+    try:
+        settle_id = int(settlement_id)
+    except Exception:
+        return {"ok": False, "message": "올바른 지급 이력 ID가 필요합니다."}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM mall_supplier_settlements WHERE id = ?", (settle_id,))
+            if int(cur.rowcount or 0) == 0:
+                return {"ok": False, "message": "삭제할 지급 이력을 찾을 수 없습니다."}
+            conn.commit()
+            return {"ok": True}
+        finally:
+            conn.close()
+
+
+def get_mall_sales_summary(
+    start_date: str = "",
+    end_date: str = "",
+    include_pending: bool = False,
+    supplier_id: Optional[int] = None,
+) -> dict:
+    """
+    쇼핑몰 매출·매입대금·매출총이익(마진)·택배비(별도) 및 매입업체별 정산 현황을 집계합니다.
+    - 기본 집계 기준: 입금완료 주문 (주문취소·환불완료 제외), include_pending=True 시 입금대기 포함
+    - 이익 공식: 상품 판매대금 - 매입대금 = 매출총이익 (택배비는 별도 KPI)
+    """
+    s_date = _normalize_iso_date(start_date)
+    e_date = _normalize_iso_date(end_date)
+    filter_sup_id = int(supplier_id) if supplier_id is not None and int(supplier_id) > 0 else None
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            suppliers = [_format_supplier_row(r) for r in cur.execute(
+                "SELECT * FROM mall_suppliers ORDER BY name COLLATE NOCASE ASC, id DESC"
+            ).fetchall()]
+            supplier_by_id: dict[int, dict] = {int(s["id"]): s for s in suppliers}
+
+            prod_fallback: dict[int, tuple[int, Optional[int], str]] = {}
+            for pr in cur.execute("SELECT num, cost_price, supplier_id FROM mall_products").fetchall():
+                pnum = int(pr["num"])
+                pcost = max(0, int(pr["cost_price"] or 0))
+                raw_psup = pr["supplier_id"]
+                psup = int(raw_psup) if raw_psup is not None and int(raw_psup) > 0 else None
+                psup_name = str(supplier_by_id[psup]["name"]) if psup and psup in supplier_by_id else ""
+                prod_fallback[pnum] = (pcost, psup, psup_name)
+
+            order_where = [
+                "COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')",
+                "COALESCE(o.payment_status, '') != '환불완료'",
+            ]
+            order_params: list[Any] = []
+            if include_pending:
+                order_where.append("COALESCE(o.payment_status, '입금대기') IN ('입금완료', '입금대기')")
+            else:
+                order_where.append("COALESCE(o.payment_status, '') = '입금완료'")
+            if s_date:
+                order_where.append("substr(o.created_at, 1, 10) >= ?")
+                order_params.append(s_date)
+            if e_date:
+                order_where.append("substr(o.created_at, 1, 10) <= ?")
+                order_params.append(e_date)
+
+            orders_rows = cur.execute(
+                f"""
+                SELECT o.id, o.shipping_fee, o.created_at
+                FROM mall_orders o
+                WHERE {' AND '.join(order_where)}
+                ORDER BY o.id DESC
+                """,
+                order_params,
+            ).fetchall()
+
+            order_ids = [int(r["id"]) for r in orders_rows]
+            order_meta: dict[int, dict] = {
+                int(r["id"]): {
+                    "date": str(r["created_at"] or "")[:10],
+                    "shipping_fee": max(0, int(r["shipping_fee"] or 0)),
+                }
+                for r in orders_rows
+            }
+
+            item_rows = []
+            if order_ids:
+                placeholders = ",".join(["?"] * len(order_ids))
+                item_rows = cur.execute(
+                    f"""
+                    SELECT order_id, product_num, product_name, quantity, line_total,
+                           unit_cost, cost_total, supplier_id, supplier_name
+                    FROM mall_order_items
+                    WHERE order_id IN ({placeholders})
+                    ORDER BY id ASC
+                    """,
+                    order_ids,
+                ).fetchall()
+
+            daily_map: dict[str, dict] = {}
+            product_map: dict[int, dict] = {}
+            sup_agg_map: dict[Any, dict] = {}
+
+            for s in suppliers:
+                sid = int(s["id"])
+                sup_agg_map[sid] = {
+                    "supplier_id": sid,
+                    "supplier_name": str(s["name"]),
+                    "contact_name": str(s["contact_name"]),
+                    "phone": str(s["phone"]),
+                    "bank_name": str(s["bank_name"]),
+                    "bank_account": str(s["bank_account"]),
+                    "bank_holder": str(s["bank_holder"]),
+                    "sold_qty": 0,
+                    "sales_amount": 0,
+                    "purchase_cost": 0,
+                    "settled_amount": 0,
+                    "unpaid_amount": 0,
+                }
+
+            total_sales = 0
+            total_cost = 0
+            total_qty = 0
+            matched_order_ids: set[int] = set()
+
+            for it in item_rows:
+                oid = int(it["order_id"])
+                ometa = order_meta.get(oid)
+                if not ometa:
+                    continue
+                pnum = int(it["product_num"] or 0)
+                pname = str(it["product_name"] or f"상품 #{pnum}")
+                qty = max(0, int(it["quantity"] or 0))
+                line_total = max(0, int(it["line_total"] or 0))
+
+                snap_cost = max(0, int(it["unit_cost"] or 0))
+                snap_cost_total = max(0, int(it["cost_total"] or 0))
+                raw_it_sup = it["supplier_id"]
+                snap_sup_id = int(raw_it_sup) if raw_it_sup is not None and int(raw_it_sup) > 0 else None
+                snap_sup_name = str(it["supplier_name"] or "").strip()
+
+                if snap_cost == 0 and snap_sup_id is None and not snap_sup_name and pnum in prod_fallback:
+                    fb_cost, fb_sup_id, fb_sup_name = prod_fallback[pnum]
+                    eff_unit_cost = fb_cost
+                    eff_cost_total = fb_cost * qty
+                    eff_sup_id = fb_sup_id
+                    eff_sup_name = fb_sup_name
+                else:
+                    eff_unit_cost = snap_cost
+                    eff_cost_total = snap_cost_total if snap_cost_total > 0 or eff_unit_cost == 0 else eff_unit_cost * qty
+                    eff_sup_id = snap_sup_id
+                    eff_sup_name = snap_sup_name or (str(supplier_by_id[eff_sup_id]["name"]) if eff_sup_id and eff_sup_id in supplier_by_id else "")
+
+                if filter_sup_id is not None and eff_sup_id != filter_sup_id:
+                    continue
+
+                matched_order_ids.add(oid)
+                total_qty += qty
+                total_sales += line_total
+                total_cost += eff_cost_total
+
+                dkey = ometa["date"] or "미상"
+                if dkey not in daily_map:
+                    daily_map[dkey] = {
+                        "date": dkey,
+                        "order_ids": set(),
+                        "sold_qty": 0,
+                        "sales_amount": 0,
+                        "shipping_amount": 0,
+                        "purchase_cost": 0,
+                    }
+                d_ent = daily_map[dkey]
+                d_ent["order_ids"].add(oid)
+                d_ent["sold_qty"] += qty
+                d_ent["sales_amount"] += line_total
+                d_ent["purchase_cost"] += eff_cost_total
+
+                if pnum not in product_map:
+                    product_map[pnum] = {
+                        "product_num": pnum,
+                        "product_name": pname,
+                        "supplier_id": eff_sup_id,
+                        "supplier_name": eff_sup_name or "매입업체 미지정",
+                        "sold_qty": 0,
+                        "sales_amount": 0,
+                        "purchase_cost": 0,
+                    }
+                p_ent = product_map[pnum]
+                p_ent["sold_qty"] += qty
+                p_ent["sales_amount"] += line_total
+                p_ent["purchase_cost"] += eff_cost_total
+
+                sup_key: Any = eff_sup_id if (eff_sup_id and eff_sup_id in sup_agg_map) else ("UNASSIGNED" if not eff_sup_name else f"LEGACY:{eff_sup_name}")
+                if sup_key not in sup_agg_map:
+                    sup_agg_map[sup_key] = {
+                        "supplier_id": eff_sup_id,
+                        "supplier_name": eff_sup_name or "매입업체 미지정",
+                        "contact_name": "",
+                        "phone": "",
+                        "bank_name": "",
+                        "bank_account": "",
+                        "bank_holder": "",
+                        "sold_qty": 0,
+                        "sales_amount": 0,
+                        "purchase_cost": 0,
+                        "settled_amount": 0,
+                        "unpaid_amount": 0,
+                    }
+                s_ent = sup_agg_map[sup_key]
+                s_ent["sold_qty"] += qty
+                s_ent["sales_amount"] += line_total
+                s_ent["purchase_cost"] += eff_cost_total
+
+            total_shipping = 0
+            for oid in matched_order_ids:
+                ometa = order_meta.get(oid)
+                if not ometa:
+                    continue
+                ship = int(ometa["shipping_fee"])
+                total_shipping += ship
+                dkey = ometa["date"] or "미상"
+                if dkey in daily_map:
+                    daily_map[dkey]["shipping_amount"] += ship
+
+            settle_where = []
+            settle_params: list[Any] = []
+            if filter_sup_id is not None:
+                settle_where.append("st.supplier_id = ?")
+                settle_params.append(filter_sup_id)
+            if s_date:
+                settle_where.append("st.paid_at >= ?")
+                settle_params.append(s_date)
+            if e_date:
+                settle_where.append("st.paid_at <= ?")
+                settle_params.append(e_date)
+            settle_where_sql = f"WHERE {' AND '.join(settle_where)}" if settle_where else ""
+
+            settle_rows = cur.execute(
+                f"""
+                SELECT st.id, st.supplier_id, COALESCE(sup.name, '') AS supplier_name,
+                       st.amount, st.paid_at, st.payment_method, st.memo, st.created_at
+                FROM mall_supplier_settlements st
+                LEFT JOIN mall_suppliers sup ON sup.id = st.supplier_id
+                {settle_where_sql}
+                ORDER BY st.paid_at DESC, st.id DESC
+                LIMIT 200
+                """,
+                settle_params,
+            ).fetchall()
+
+            sum_where_sql = f"WHERE {' AND '.join(settle_where)}" if settle_where else ""
+            settle_sum_rows = cur.execute(
+                f"""
+                SELECT st.supplier_id, COALESCE(SUM(st.amount), 0) AS total_paid
+                FROM mall_supplier_settlements st
+                {sum_where_sql}
+                GROUP BY st.supplier_id
+                """,
+                settle_params,
+            ).fetchall()
+
+            total_settled = 0
+            for sr in settle_sum_rows:
+                sid = int(sr["supplier_id"])
+                paid = max(0, int(sr["total_paid"] or 0))
+                total_settled += paid
+                if sid in sup_agg_map:
+                    sup_agg_map[sid]["settled_amount"] = paid
+
+            supplier_rows: list[dict] = []
+            for skey, s_ent in sup_agg_map.items():
+                if filter_sup_id is not None and s_ent.get("supplier_id") != filter_sup_id:
+                    continue
+                s_ent["unpaid_amount"] = int(s_ent["purchase_cost"]) - int(s_ent["settled_amount"])
+                supplier_rows.append(s_ent)
+
+            supplier_rows.sort(
+                key=lambda x: (
+                    0 if x["supplier_id"] is not None else 1,
+                    -int(x["purchase_cost"]),
+                    -int(x["sales_amount"]),
+                    str(x["supplier_name"]),
+                )
+            )
+
+            total_unpaid = sum(int(r["unpaid_amount"]) for r in supplier_rows if r.get("supplier_id") is not None)
+
+            daily_rows: list[dict] = []
+            for dkey, d_ent in sorted(daily_map.items(), key=lambda kv: kv[0], reverse=True):
+                dsales = int(d_ent["sales_amount"])
+                dcost = int(d_ent["purchase_cost"])
+                dprofit = dsales - dcost
+                dmrate = round((dprofit / dsales) * 100.0, 1) if dsales > 0 else 0.0
+                daily_rows.append({
+                    "date": dkey,
+                    "order_count": len(d_ent["order_ids"]),
+                    "sold_qty": int(d_ent["sold_qty"]),
+                    "sales_amount": dsales,
+                    "shipping_amount": int(d_ent["shipping_amount"]),
+                    "purchase_cost": dcost,
+                    "gross_profit": dprofit,
+                    "margin_rate": dmrate,
+                })
+
+            product_rows: list[dict] = []
+            for p_ent in sorted(product_map.values(), key=lambda x: (-int(x["sales_amount"]), int(x["product_num"]))):
+                psales = int(p_ent["sales_amount"])
+                pcost = int(p_ent["purchase_cost"])
+                pprofit = psales - pcost
+                pmrate = round((pprofit / psales) * 100.0, 1) if psales > 0 else 0.0
+                product_rows.append({
+                    "product_num": int(p_ent["product_num"]),
+                    "product_name": str(p_ent["product_name"]),
+                    "supplier_id": p_ent["supplier_id"],
+                    "supplier_name": str(p_ent["supplier_name"]),
+                    "sold_qty": int(p_ent["sold_qty"]),
+                    "sales_amount": psales,
+                    "purchase_cost": pcost,
+                    "gross_profit": pprofit,
+                    "margin_rate": pmrate,
+                })
+
+            gross_profit = total_sales - total_cost
+            margin_rate = round((gross_profit / total_sales) * 100.0, 1) if total_sales > 0 else 0.0
+
+            settlements = [
+                {
+                    "id": int(r["id"]),
+                    "supplier_id": int(r["supplier_id"]),
+                    "supplier_name": str(r["supplier_name"] or ""),
+                    "amount": int(r["amount"] or 0),
+                    "paid_at": str(r["paid_at"] or ""),
+                    "payment_method": str(r["payment_method"] or ""),
+                    "memo": str(r["memo"] or ""),
+                    "created_at": str(r["created_at"] or ""),
+                }
+                for r in settle_rows
+            ]
+
+            return {
+                "filters": {
+                    "start_date": s_date,
+                    "end_date": e_date,
+                    "include_pending": bool(include_pending),
+                    "supplier_id": filter_sup_id,
+                },
+                "kpi": {
+                    "order_count": len(matched_order_ids),
+                    "sold_qty": total_qty,
+                    "sales_amount": total_sales,
+                    "shipping_amount": total_shipping,
+                    "total_collected": total_sales + total_shipping,
+                    "purchase_cost": total_cost,
+                    "gross_profit": gross_profit,
+                    "margin_rate": margin_rate,
+                    "total_settled": total_settled,
+                    "total_unpaid": total_unpaid,
+                },
+                "daily_rows": daily_rows,
+                "product_rows": product_rows,
+                "supplier_rows": supplier_rows,
+                "settlements": settlements,
+                "suppliers": suppliers,
+            }
+        finally:
+            conn.close()
 
 
 try:

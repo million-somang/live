@@ -3652,6 +3652,136 @@ img {
     }
 }
 
+/* --------------------------------------------------------------------------
+   Admin Sales, Cost, Margin & Supplier Settlement Management
+   -------------------------------------------------------------------------- */
+.ax-sales-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+    padding: 12px 14px;
+    background: var(--ax-surface-secondary);
+    border: 1px solid var(--ax-border-subtle);
+    border-radius: 12px;
+    margin-bottom: 16px;
+}
+
+.ax-sales-presets {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ax-sales-filter-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ax-sales-filter-controls .ax-input,
+.ax-sales-filter-controls .ax-select {
+    width: auto;
+    min-width: 132px;
+}
+
+.ax-sales-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ax-sales-kpi-card {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ax-sales-kpi-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--ax-text-secondary);
+}
+
+.ax-sales-kpi-value-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ax-sales-kpi-value {
+    font-size: 1.32rem;
+    font-weight: 800;
+    color: var(--ax-text-primary);
+    line-height: 1.25;
+}
+
+.ax-sales-kpi-sub {
+    font-size: 0.74rem;
+    color: var(--ax-text-secondary);
+}
+
+.ax-sales-positive {
+    color: var(--ax-success);
+}
+
+.ax-sales-negative {
+    color: var(--ax-live);
+}
+
+.ax-supplier-form-grid,
+.ax-settlement-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 12px;
+}
+
+@media (max-width: 1024px) {
+    .ax-sales-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ax-supplier-form-grid,
+    .ax-settlement-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .ax-sales-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px 12px;
+    }
+    .ax-sales-filter-controls {
+        width: 100%;
+    }
+    .ax-sales-filter-controls .ax-input,
+    .ax-sales-filter-controls .ax-select {
+        flex: 1 1 130px;
+        width: 100%;
+    }
+    .ax-sales-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .ax-sales-kpi-value {
+        font-size: 1.08rem;
+    }
+    .ax-supplier-form-grid,
+    .ax-settlement-form-grid {
+        grid-template-columns: 1fr;
+    }
+    #adminPanelSales .ax-table th,
+    #adminPanelSales .ax-table td {
+        white-space: nowrap;
+    }
+}
+
 /* Must come AFTER all display classes */
 .ax-is-hidden {
     display: none;

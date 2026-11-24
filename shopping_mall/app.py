@@ -9,6 +9,8 @@ OBS 실시간 연동 독립형 쇼핑몰 서버 (shopping_mall/app.py)
 
 import os
 import sys
+import io
+import csv
 import json
 import time
 import base64
@@ -995,6 +997,7 @@ def mall_admin_view():
     all_categories = mall_database.get_mall_categories(active_only=False)
     policy_defaults = mall_database.get_mall_policy_defaults()
     hero_banners = mall_database.list_mall_hero_banners(active_only=False)
+    suppliers = mall_database.list_mall_suppliers(active_only=False)
     return render_template(
         "admin.html",
         products=products,
@@ -1003,6 +1006,7 @@ def mall_admin_view():
         all_categories=all_categories,
         policy_defaults=policy_defaults,
         hero_banners=hero_banners,
+        suppliers=suppliers,
         active_nav="admin"
     )
 
@@ -1919,6 +1923,135 @@ def api_mall_admin_banners_delete():
     if not res.get("ok"):
         return jsonify({"status": "error", "message": res.get("message", "배너 삭제에 실패했습니다.")}), 404
     return jsonify({"status": "ok", "banners": res.get("banners", [])}), 200
+
+
+@app.route("/api/admin/sales/summary", methods=["GET"])
+def api_mall_admin_sales_summary():
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    include_pending = str(request.args.get("include_pending", "")).strip().lower() in ("1", "true", "yes")
+    raw_sup = request.args.get("supplier_id", "").strip()
+    sup_id = int(raw_sup) if raw_sup.isdigit() and int(raw_sup) > 0 else None
+    summary = mall_database.get_mall_sales_summary(
+        start_date=start_date,
+        end_date=end_date,
+        include_pending=include_pending,
+        supplier_id=sup_id,
+    )
+    return jsonify({"status": "ok", **summary}), 200
+
+
+@app.route("/api/admin/sales/export.csv", methods=["GET"])
+def api_mall_admin_sales_export_csv():
+    start_date = request.args.get("start_date", "")
+    end_date = request.args.get("end_date", "")
+    include_pending = str(request.args.get("include_pending", "")).strip().lower() in ("1", "true", "yes")
+    raw_sup = request.args.get("supplier_id", "").strip()
+    sup_id = int(raw_sup) if raw_sup.isdigit() and int(raw_sup) > 0 else None
+    summary = mall_database.get_mall_sales_summary(
+        start_date=start_date,
+        end_date=end_date,
+        include_pending=include_pending,
+        supplier_id=sup_id,
+    )
+    kpi = summary["kpi"]
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["[매출관리 요약]"])
+    writer.writerow(["집계 기준", "입금대기 포함" if include_pending else "입금완료 기준", "시작일", start_date or "전체", "종료일", end_date or "전체"])
+    writer.writerow(["상품 판매대금(원)", "총 매입대금(원)", "매출총이익(원)", "마진율(%)", "택배비 매출 별도(원)", "업체 지급완료(원)", "업체 미지급 잔액(원)", "유효 주문수", "총 판매수량"])
+    writer.writerow([
+        kpi["sales_amount"], kpi["purchase_cost"], kpi["gross_profit"], kpi["margin_rate"],
+        kpi["shipping_amount"], kpi["total_settled"], kpi["total_unpaid"], kpi["order_count"], kpi["sold_qty"],
+    ])
+    writer.writerow([])
+    writer.writerow(["[매입업체별 정산 현황]"])
+    writer.writerow(["매입업체명", "판매수량", "판매대금(원)", "매입대금 정산예정(원)", "지급완료액(원)", "미지급 잔액(원)", "은행", "계좌번호", "예금주"])
+    for sr in summary["supplier_rows"]:
+        writer.writerow([
+            sr["supplier_name"], sr["sold_qty"], sr["sales_amount"], sr["purchase_cost"],
+            sr["settled_amount"], sr["unpaid_amount"], sr["bank_name"], sr["bank_account"], sr["bank_holder"],
+        ])
+    writer.writerow([])
+    writer.writerow(["[상품별 매출 및 마진]"])
+    writer.writerow(["상품번호", "상품명", "매입업체", "판매수량", "판매대금(원)", "매입대금(원)", "매출총이익(원)", "마진율(%)"])
+    for pr in summary["product_rows"]:
+        writer.writerow([
+            f"#{pr['product_num']}", pr["product_name"], pr["supplier_name"],
+            pr["sold_qty"], pr["sales_amount"], pr["purchase_cost"], pr["gross_profit"], pr["margin_rate"],
+        ])
+    writer.writerow([])
+    writer.writerow(["[일별 매출 추이]"])
+    writer.writerow(["일자", "주문수", "판매수량", "상품 판매대금(원)", "택배비(원)", "매입대금(원)", "매출총이익(원)", "마진율(%)"])
+    for dr in summary["daily_rows"]:
+        writer.writerow([
+            dr["date"], dr["order_count"], dr["sold_qty"], dr["sales_amount"],
+            dr["shipping_amount"], dr["purchase_cost"], dr["gross_profit"], dr["margin_rate"],
+        ])
+
+    csv_bytes = ("\ufeff" + buf.getvalue()).encode("utf-8")
+    return Response(
+        csv_bytes,
+        status=200,
+        headers={
+            "Content-Type": "text/csv; charset=utf-8-sig",
+            "Content-Disposition": 'attachment; filename="mall_sales_report.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.route("/api/admin/suppliers", methods=["GET"])
+def api_mall_admin_suppliers_list():
+    return jsonify({"status": "ok", "suppliers": mall_database.list_mall_suppliers(active_only=False)}), 200
+
+
+@app.route("/api/admin/suppliers/save", methods=["POST"])
+def api_mall_admin_suppliers_save():
+    data = request.get_json(silent=True) or {}
+    res = mall_database.save_mall_supplier(data)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "매입업체 저장에 실패했습니다.")}), 400
+    return jsonify({"status": "ok", "supplier": res.get("supplier"), "suppliers": res.get("suppliers", [])}), 200
+
+
+@app.route("/api/admin/suppliers/delete", methods=["POST"])
+def api_mall_admin_suppliers_delete():
+    data = request.get_json(silent=True) or {}
+    try:
+        sid = int(data.get("id") or 0)
+    except Exception:
+        sid = 0
+    if sid <= 0:
+        return jsonify({"status": "error", "message": "올바른 매입업체 ID가 필요합니다."}), 400
+    res = mall_database.delete_mall_supplier(sid)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "매입업체 삭제에 실패했습니다.")}), 404
+    return jsonify({"status": "ok", "suppliers": res.get("suppliers", [])}), 200
+
+
+@app.route("/api/admin/suppliers/settlements/add", methods=["POST"])
+def api_mall_admin_supplier_settlement_add():
+    data = request.get_json(silent=True) or {}
+    res = mall_database.add_mall_supplier_settlement(data)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "지급 내역 등록에 실패했습니다.")}), 400
+    return jsonify({"status": "ok", "settlement": res.get("settlement")}), 200
+
+
+@app.route("/api/admin/suppliers/settlements/delete", methods=["POST"])
+def api_mall_admin_supplier_settlement_delete():
+    data = request.get_json(silent=True) or {}
+    try:
+        settle_id = int(data.get("id") or 0)
+    except Exception:
+        settle_id = 0
+    if settle_id <= 0:
+        return jsonify({"status": "error", "message": "올바른 지급 이력 ID가 필요합니다."}), 400
+    res = mall_database.delete_mall_supplier_settlement(settle_id)
+    if not res.get("ok"):
+        return jsonify({"status": "error", "message": res.get("message", "지급 이력 삭제에 실패했습니다.")}), 404
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/api/reviews/add", methods=["POST"])

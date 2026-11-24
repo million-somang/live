@@ -1,14 +1,17 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}골라방 LIVE — 공식 온라인 스토어{% endblock %}</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261124d">
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261124e">
     {% block extra_head %}{% endblock %}
 </head>
+
 <body>
     <!-- 1단 슬림 Astryx 헤더 -->
     <header class="ax-header">
@@ -20,78 +23,124 @@
 
             <nav class="ax-nav" aria-label="주 메뉴">
                 <a href="/" class="ax-nav-link {% if active_nav == 'home' %}active{% endif %}">
-                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
+                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 10.5 12 3l9 7.5" />
+                        <path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" />
+                    </svg>
                     <span>스토어 홈</span>
                 </a>
                 <span id="mallNavLiveSlot" data-active-nav="{{ active_nav or '' }}" style="display:inline-flex;">
-                {% if live_state and live_state.is_live %}
-                <a href="/live" class="ax-nav-link ax-nav-live {% if active_nav == 'live' %}active{% endif %}">
-                    <span class="ax-live-dot"></span>
-                    <span>라이브 커머스</span>
-                    <span class="ax-nav-status-tag">방송중</span>
-                </a>
-                {% else %}
-                <span class="ax-nav-link ax-nav-disabled" role="link" aria-disabled="true" title="현재 진행 중인 라이브가 없습니다">
-                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg>
-                    <span>라이브 커머스</span>
-                </span>
-                {% endif %}
+                    {% if live_state and live_state.is_live %}
+                    <a href="/live" class="ax-nav-link ax-nav-live {% if active_nav == 'live' %}active{% endif %}">
+                        <span class="ax-live-dot"></span>
+                        <span>라이브 커머스</span>
+                        <span class="ax-nav-status-tag">방송중</span>
+                    </a>
+                    {% else %}
+                    <span class="ax-nav-link ax-nav-disabled" role="link" aria-disabled="true"
+                        title="현재 진행 중인 라이브가 없습니다">
+                        <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="18" height="14" x="3" y="5" rx="2" />
+                            <path d="m10 9 5 3-5 3Z" />
+                        </svg>
+                        <span>라이브 커머스</span>
+                    </span>
+                    {% endif %}
                 </span>
                 <a href="/orders" class="ax-nav-link {% if active_nav == 'orders' %}active{% endif %}">
-                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                        <path d="m3.3 7 8.7 5 8.7-5" />
+                        <path d="M12 22V12" />
+                    </svg>
                     <span>주문조회</span>
                 </a>
             </nav>
 
-            <form id="headerSearchForm" class="ax-header-search" method="GET" action="/" role="search" autocomplete="off">
+            <form id="headerSearchForm" class="ax-header-search" method="GET" action="/" role="search"
+                autocomplete="off">
                 <div class="ax-search-wrap ax-header-search-wrap">
-                    <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                    <input type="text"
-                           inputmode="search"
-                           id="headerSearchInput"
-                           name="q"
-                           value="{{ search_query if search_query is defined else request.args.get('q', '') }}"
-                           placeholder="상품명·번호 검색..."
-                           class="ax-input ax-input-search ax-header-search-input"
-                           aria-label="상품 검색"
-                           aria-autocomplete="list"
-                           aria-controls="headerSearchDropdown">
-                    <button type="button" id="headerSearchClearBtn" class="ax-header-search-clear ax-is-hidden" aria-label="검색어 지우기" title="검색어 지우기">
-                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.3-4.3" />
+                    </svg>
+                    <input type="text" inputmode="search" id="headerSearchInput" name="q"
+                        value="{{ search_query if search_query is defined else request.args.get('q', '') }}"
+                        placeholder="상품명·번호 검색..." class="ax-input ax-input-search ax-header-search-input"
+                        aria-label="상품 검색" aria-autocomplete="list" aria-controls="headerSearchDropdown">
+                    <button type="button" id="headerSearchClearBtn" class="ax-header-search-clear ax-is-hidden"
+                        aria-label="검색어 지우기" title="검색어 지우기">
+                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 6 6 18" />
+                            <path d="m6 6 12 12" />
+                        </svg>
                     </button>
-                    <button type="button" id="headerSearchSubmitBtn" class="ax-header-search-submit" aria-label="검색 실행" title="검색">
-                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    <button type="button" id="headerSearchSubmitBtn" class="ax-header-search-submit" aria-label="검색 실행"
+                        title="검색">
+                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14" />
+                            <path d="m12 5 7 7-7 7" />
+                        </svg>
                     </button>
                 </div>
-                <div id="headerSearchDropdown" class="ax-header-search-dropdown ax-is-hidden" role="listbox" aria-label="실시간 상품 추천"></div>
+                <div id="headerSearchDropdown" class="ax-header-search-dropdown ax-is-hidden" role="listbox"
+                    aria-label="실시간 상품 추천"></div>
             </form>
 
             <div class="ax-header-actions">
-                <a href="/wishlist" class="ax-util-btn ax-hide-mobile-tab {% if active_nav == 'wishlist' %}ax-util-btn-active{% endif %}" title="찜한 상품">
-                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                <a href="/wishlist"
+                    class="ax-util-btn ax-hide-mobile-tab {% if active_nav == 'wishlist' %}ax-util-btn-active{% endif %}"
+                    title="찜한 상품">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path
+                            d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                    </svg>
                     <span class="ax-hide-xs">찜목록</span>
-                    <span class="ax-cart-badge ax-wish-badge" id="navWishlistBadge">{{ (user_wishlist_nums or [])|length }}</span>
+                    <span class="ax-cart-badge ax-wish-badge" id="navWishlistBadge">{{ (user_wishlist_nums or [])|length
+                        }}</span>
                 </a>
-                <a href="/cart" class="ax-util-btn ax-hide-mobile-tab {% if active_nav == 'cart' %}ax-util-btn-active{% endif %}">
-                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                <a href="/cart"
+                    class="ax-util-btn ax-hide-mobile-tab {% if active_nav == 'cart' %}ax-util-btn-active{% endif %}">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="8" cy="21" r="1" />
+                        <circle cx="19" cy="21" r="1" />
+                        <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+                    </svg>
                     <span>장바구니</span>
                     <span class="ax-cart-badge" id="navCartBadge">0</span>
                 </a>
                 {% if current_mall_user %}
-                    <a href="/orders" class="ax-util-btn ax-hide-mobile">
-                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
-                        <span>{{ current_mall_user.name }}님</span>
-                    </a>
-                    {% if current_mall_user.role == 'ADMIN' %}
-                    <a href="/admin" class="ax-util-btn ax-util-btn-indigo" title="쇼핑몰 관리자">
-                        <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                        <span>관리자</span>
-                    </a>
-                    {% endif %}
-                    <a href="/auth/logout" class="ax-util-btn ax-util-btn-muted">로그아웃</a>
+                <a href="/orders" class="ax-util-btn ax-hide-mobile">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8" r="4" />
+                        <path d="M20 21a8 8 0 0 0-16 0" />
+                    </svg>
+                    <span>{{ current_mall_user.name }}님</span>
+                </a>
+                {% if current_mall_user.role == 'ADMIN' %}
+                <a href="/admin" class="ax-util-btn ax-util-btn-indigo" title="쇼핑몰 관리자">
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                    <span>관리자</span>
+                </a>
+                {% endif %}
+                <a href="/auth/logout" class="ax-util-btn ax-util-btn-muted">로그아웃</a>
                 {% else %}
-                    <a href="/auth/login" class="ax-util-btn">로그인</a>
-                    <a href="/auth/register" class="ax-util-btn ax-util-btn-primary">회원가입</a>
+                <a href="/auth/login" class="ax-util-btn">로그인</a>
+                <a href="/auth/register" class="ax-util-btn ax-util-btn-primary">회원가입</a>
                 {% endif %}
             </div>
         </div>
@@ -104,15 +153,23 @@
     </main>
 
     <!-- 페이지 이동 없는 즉시 구매 모달 (Astryx Dialog) -->
-    <div class="ax-dialog-backdrop" id="instantBuyModal" role="dialog" aria-modal="true" aria-labelledby="instantBuyDialogTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closeInstantBuyModal)">
+    <div class="ax-dialog-backdrop" id="instantBuyModal" role="dialog" aria-modal="true"
+        aria-labelledby="instantBuyDialogTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)"
+        onpointerup="handleDialogBackdropPointerUp(event, this)"
+        onclick="handleDialogBackdropClick(event, this, closeInstantBuyModal)">
         <div class="ax-dialog-card">
             <div class="ax-dialog-header">
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <h3 id="instantBuyDialogTitle" style="font-size:1.08rem; font-weight:800; color:var(--ax-text-primary);">빠른 바로구매 주문서</h3>
+                    <h3 id="instantBuyDialogTitle"
+                        style="font-size:1.08rem; font-weight:800; color:var(--ax-text-primary);">빠른 바로구매 주문서</h3>
                     <span class="ax-badge ax-badge-indigo">비회원·회원 공용</span>
                 </div>
                 <button type="button" class="ax-icon-btn" onclick="closeInstantBuyModal()" aria-label="주문서 닫기">
-                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                    </svg>
                 </button>
             </div>
             {% if not current_mall_user %}
@@ -122,41 +179,53 @@
             {% endif %}
             <div id="ibProductSelectorRow" class="ax-field" style="display:none;">
                 <label class="ax-label" for="ibProductSelect">구매 상품 선택</label>
-                <select id="ibProductSelect" class="ax-select" style="font-weight:700;" onchange="onChangeInstantBuyProduct(this.value)"></select>
+                <select id="ibProductSelect" class="ax-select" style="font-weight:700;"
+                    onchange="onChangeInstantBuyProduct(this.value)"></select>
             </div>
-            <div id="instantBuyItemSummary" class="ax-surface-muted" style="margin-bottom:12px; display:flex; gap:12px; align-items:center;">
+            <div id="instantBuyItemSummary" class="ax-surface-muted"
+                style="margin-bottom:12px; display:flex; gap:12px; align-items:center;">
             </div>
-            <div id="ibOptionQtyRow" class="ax-surface-muted" style="display:none; grid-template-columns:1fr 96px; gap:10px; margin-bottom:14px; background:#fff;">
+            <div id="ibOptionQtyRow" class="ax-surface-muted"
+                style="display:none; grid-template-columns:1fr 96px; gap:10px; margin-bottom:14px; background:#fff;">
                 <div>
                     <label class="ax-label" for="ibOptionSelect">옵션 (색상 / 사이즈)</label>
-                    <select id="ibOptionSelect" class="ax-select ax-select-compact" style="font-weight:700;" onchange="onChangeInstantBuyOptionQty()"></select>
+                    <select id="ibOptionSelect" class="ax-select ax-select-compact" style="font-weight:700;"
+                        onchange="onChangeInstantBuyOptionQty()"></select>
                 </div>
                 <div>
                     <label class="ax-label" for="ibQtyInput">수량</label>
-                    <input type="number" id="ibQtyInput" class="ax-input ax-input-compact ax-num" value="1" min="1" max="99" style="font-weight:700;" onchange="onChangeInstantBuyOptionQty()">
+                    <input type="number" id="ibQtyInput" class="ax-input ax-input-compact ax-num" value="1" min="1"
+                        max="99" style="font-weight:700;" onchange="onChangeInstantBuyOptionQty()">
                 </div>
             </div>
             <form id="instantBuyForm" onsubmit="submitInstantBuyOrder(event)">
                 <div class="ax-form-row-2">
                     <div class="ax-field">
                         <label class="ax-label" for="ibBuyerName">수령인 성함 *</label>
-                        <input type="text" id="ibBuyerName" class="ax-input" placeholder="예: 홍길동" value="{{ current_mall_user.name if current_mall_user else '' }}" required>
+                        <input type="text" id="ibBuyerName" class="ax-input" placeholder="예: 홍길동"
+                            value="{{ current_mall_user.name if current_mall_user else '' }}" required>
                     </div>
                     <div class="ax-field">
                         <label class="ax-label" for="ibBuyerPhone">연락처 (휴대폰) *</label>
-                        <input type="tel" id="ibBuyerPhone" class="ax-input ax-num" placeholder="예: 010-1234-5678" value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
+                        <input type="tel" id="ibBuyerPhone" class="ax-input ax-num" placeholder="예: 010-1234-5678"
+                            value="{{ current_mall_user.phone if current_mall_user else '' }}" required>
                     </div>
                 </div>
                 <div class="ax-field">
                     <label class="ax-label" for="ibAddress">배송지 주소 *</label>
-                    <input type="text" id="ibAddress" class="ax-input" placeholder="도로명 또는 지번 주소 입력" value="{{ current_mall_user.address if current_mall_user else '' }}" required style="margin-bottom:6px;">
-                    <input type="text" id="ibAddressDetail" class="ax-input" placeholder="상세 주소 (동/호수)" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
+                    <input type="text" id="ibAddress" class="ax-input" placeholder="도로명 또는 지번 주소 입력"
+                        value="{{ current_mall_user.address if current_mall_user else '' }}" required
+                        style="margin-bottom:6px;">
+                    <input type="text" id="ibAddressDetail" class="ax-input" placeholder="상세 주소 (동/호수)"
+                        value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
                 </div>
                 {% if not current_mall_user %}
                 <div class="ax-field ax-callout-indigo" id="ibGuestPasswordGroup">
                     <label class="ax-label" for="ibGuestPassword" style="color:#3730a3;">비회원 주문조회 비밀번호 * (4자 이상)</label>
-                    <input type="password" id="ibGuestPassword" class="ax-input" placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)" minlength="4" required style="background:#ffffff;">
-                    <div style="font-size:0.75rem; color:#4338ca; margin-top:5px;">비회원 주문 내역 열람 시 주문번호·연락처와 함께 검증됩니다.</div>
+                    <input type="password" id="ibGuestPassword" class="ax-input"
+                        placeholder="주문/배송 조회 시 사용할 비밀번호 입력 (4자 이상)" minlength="4" required style="background:#ffffff;">
+                    <div style="font-size:0.75rem; color:#4338ca; margin-top:5px;">비회원 주문 내역 열람 시 주문번호·연락처와 함께 검증됩니다.
+                    </div>
                 </div>
                 {% endif %}
                 <div class="ax-field">
@@ -166,19 +235,26 @@
                 <div class="ax-field">
                     <label class="ax-label" for="ibPaymentMethod">결제 수단 (계좌입금 전용)</label>
                     <select id="ibPaymentMethod" class="ax-select" style="font-weight:700;">
-                        <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{ store_info.bank_holder }})</option>
+                        <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{
+                            store_info.bank_holder }})</option>
                     </select>
                     <div class="ax-bank-box" style="margin-top:8px;">
                         <div>
-                            <div style="font-size:0.74rem; font-weight:700; color:var(--ax-warning);">입금 계좌 안내 (택배비 4,000원 포함 금액 입금)</div>
-                            <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;" class="ax-num">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{ store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
+                            <div style="font-size:0.74rem; font-weight:700; color:var(--ax-warning);">입금 계좌 안내 (택배비
+                                4,000원 포함 금액 입금)</div>
+                            <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;"
+                                class="ax-num">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{
+                                    store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
                         </div>
-                        <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
+                        <button type="button" onclick="copyMallBankAccount()"
+                            class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
                     </div>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:18px;">
-                    <button type="button" onclick="closeInstantBuyModal()" class="ax-btn ax-btn-secondary" style="flex:1;">취소</button>
-                    <button type="submit" id="ibSubmitBtn" class="ax-btn ax-btn-primary" style="flex:2;">지금 바로 주문 완료하기</button>
+                    <button type="button" onclick="closeInstantBuyModal()" class="ax-btn ax-btn-secondary"
+                        style="flex:1;">취소</button>
+                    <button type="submit" id="ibSubmitBtn" class="ax-btn ax-btn-primary" style="flex:2;">지금 바로 주문
+                        완료하기</button>
                 </div>
             </form>
         </div>
@@ -216,14 +292,20 @@
                         <span class="ax-footer-biz-item">
                             <strong>사업자등록번호</strong> <span class="ax-num">{{ store_info.biz_reg_no }}</span>
                             {% if store_info.ftc_biz_url %}
-                            <a href="{{ store_info.ftc_biz_url }}" target="_blank" rel="noopener noreferrer" class="ax-footer-ftc-link">[사업자정보확인]</a>
+                            <a href="{{ store_info.ftc_biz_url }}" target="_blank" rel="noopener noreferrer"
+                                class="ax-footer-ftc-link">[사업자정보확인]</a>
                             {% endif %}
                         </span>
-                        <span class="ax-footer-biz-item"><strong>통신판매업신고</strong> <span class="ax-num">{{ store_info.telecom_reg_no }}</span></span>
+                        <span class="ax-footer-biz-item"><strong>통신판매업신고</strong> <span class="ax-num">{{
+                                store_info.telecom_reg_no }}</span></span>
                         <span class="ax-footer-biz-item"><strong>사업장 주소</strong> {{ store_info.biz_address }}</span>
-                        <span class="ax-footer-biz-item"><strong>개인정보보호책임자</strong> {{ store_info.privacy_officer }}</span>
-                        <span class="ax-footer-biz-item"><strong>이메일</strong> <a href="mailto:{{ store_info.contact_email }}" class="ax-footer-inline-link">{{ store_info.contact_email }}</a></span>
-                        <span class="ax-footer-biz-item"><strong>호스팅 제공</strong> {{ store_info.hosting_provider }}</span>
+                        <span class="ax-footer-biz-item"><strong>개인정보보호책임자</strong> {{ store_info.privacy_officer
+                            }}</span>
+                        <span class="ax-footer-biz-item"><strong>이메일</strong> <a
+                                href="mailto:{{ store_info.contact_email }}" class="ax-footer-inline-link">{{
+                                store_info.contact_email }}</a></span>
+                        <span class="ax-footer-biz-item"><strong>호스팅 제공</strong> {{ store_info.hosting_provider
+                            }}</span>
                     </div>
                 </div>
 
@@ -241,10 +323,12 @@
                     <div class="ax-footer-col-title">무통장 입금계좌 &amp; 구매안전 안내</div>
                     <div class="ax-footer-bank-box">
                         <div style="min-width:0;">
-                            <div class="ax-footer-bank-line ax-num">{{ store_info.bank_name }} <strong>{{ store_info.bank_account }}</strong></div>
+                            <div class="ax-footer-bank-line ax-num">{{ store_info.bank_name }} <strong>{{
+                                    store_info.bank_account }}</strong></div>
                             <div class="ax-footer-bank-holder">예금주: {{ store_info.bank_holder }}</div>
                         </div>
-                        <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
+                        <button type="button" onclick="copyMallBankAccount()"
+                            class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
                     </div>
                     <p class="ax-footer-escrow">{{ store_info.escrow_notice }}</p>
                 </div>
@@ -260,39 +344,69 @@
     <!-- 모바일 전용 하단 고정 탭바 (<= 768px; 상세/라이브 구매 바 우선 시 자동 숨김) -->
     <nav id="mallMobileBottomNav" class="ax-mobile-bottom-nav" aria-label="모바일 하단 메뉴">
         <a href="/" class="ax-mobile-tab-item {% if active_nav == 'home' %}active{% endif %}">
-            <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg>
+            <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 10.5 12 3l9 7.5" />
+                <path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5" />
+            </svg>
             <span>홈</span>
         </a>
         <span id="mallMobileLiveSlot" class="ax-mobile-tab-slot" data-active-nav="{{ active_nav or '' }}">
             {% if live_state and live_state.is_live %}
-            <a href="/live" class="ax-mobile-tab-item ax-mobile-tab-live {% if active_nav == 'live' %}active{% endif %}">
+            <a href="/live"
+                class="ax-mobile-tab-item ax-mobile-tab-live {% if active_nav == 'live' %}active{% endif %}">
                 <span class="ax-mobile-tab-live-wrap">
-                    <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg>
+                    <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="14" x="3" y="5" rx="2" />
+                        <path d="m10 9 5 3-5 3Z" />
+                    </svg>
                     <span class="ax-live-dot ax-mobile-tab-dot"></span>
                 </span>
                 <span>라이브</span>
             </a>
             {% else %}
             <span class="ax-mobile-tab-item is-disabled" role="link" aria-disabled="true" title="현재 진행 중인 라이브가 없습니다">
-                <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="m10 9 5 3-5 3Z"/></svg>
+                <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="18" height="14" x="3" y="5" rx="2" />
+                    <path d="m10 9 5 3-5 3Z" />
+                </svg>
                 <span>라이브</span>
             </span>
             {% endif %}
         </span>
         <a href="/wishlist" class="ax-mobile-tab-item {% if active_nav == 'wishlist' %}active{% endif %}">
             <span class="ax-mobile-tab-icon-wrap">
-                <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                <span class="ax-mobile-tab-badge ax-wish-badge {% if not (user_wishlist_nums or []) %}is-zero{% endif %}" id="mobileTabWishlistBadge">{{ (user_wishlist_nums or [])|length }}</span>
+                <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                </svg>
+                <span
+                    class="ax-mobile-tab-badge ax-wish-badge {% if not (user_wishlist_nums or []) %}is-zero{% endif %}"
+                    id="mobileTabWishlistBadge">{{ (user_wishlist_nums or [])|length }}</span>
             </span>
             <span>찜</span>
         </a>
         <a href="/orders" class="ax-mobile-tab-item {% if active_nav == 'orders' %}active{% endif %}">
-            <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+            <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path
+                    d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                <path d="m3.3 7 8.7 5 8.7-5" />
+                <path d="M12 22V12" />
+            </svg>
             <span>주문</span>
         </a>
         <a href="/cart" class="ax-mobile-tab-item {% if active_nav == 'cart' %}active{% endif %}">
             <span class="ax-mobile-tab-icon-wrap">
-                <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                <svg class="ax-mobile-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="8" cy="21" r="1" />
+                    <circle cx="19" cy="21" r="1" />
+                    <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+                </svg>
                 <span class="ax-mobile-tab-badge is-zero" id="mobileTabCartBadge">0</span>
             </span>
             <span>장바구니</span>
@@ -300,13 +414,13 @@
     </nav>
 
     <div id="mallBaseBootstrap" hidden
-         data-logged-in="{{ (True if current_mall_user else False) | tojson | forceescape }}"
-         data-live-order-token="{{ (live_order_token or '') | tojson | forceescape }}"
-         data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"
-         data-wishlist-nums="{{ (user_wishlist_nums or []) | tojson | forceescape }}"
-         data-bank-name="{{ (store_info.bank_name or '카카오뱅크') | tojson | forceescape }}"
-         data-bank-account="{{ (store_info.bank_account or '3333 233 094904') | tojson | forceescape }}"
-         data-bank-holder="{{ (store_info.bank_holder or '박창현') | tojson | forceescape }}"></div>
+        data-logged-in="{{ (True if current_mall_user else False) | tojson | forceescape }}"
+        data-live-order-token="{{ (live_order_token or '') | tojson | forceescape }}"
+        data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"
+        data-wishlist-nums="{{ (user_wishlist_nums or []) | tojson | forceescape }}"
+        data-bank-name="{{ (store_info.bank_name or '카카오뱅크') | tojson | forceescape }}"
+        data-bank-account="{{ (store_info.bank_account or '3333 233 094904') | tojson | forceescape }}"
+        data-bank-holder="{{ (store_info.bank_holder or '박창현') | tojson | forceescape }}"></div>
 
     <script>
         const MALL_CART_KEY = 'gollabang_mall_cart_v1';
@@ -347,17 +461,17 @@
         function _saveGuestWishlistNums(nums) {
             try {
                 localStorage.setItem(MALL_WISHLIST_KEY, JSON.stringify(_normalizeWishNums(nums)));
-            } catch (e) {}
+            } catch (e) { }
         }
 
-        window.getMallWishlistNums = function() {
+        window.getMallWishlistNums = function () {
             if (window.__MALL_USER_LOGGED_IN__) {
                 return _normalizeWishNums(__mallWishlistNums);
             }
             return _getGuestWishlistNums();
         };
 
-        window.syncMallWishlistUI = function() {
+        window.syncMallWishlistUI = function () {
             const nums = window.getMallWishlistNums();
             const numSet = new Set(nums);
             const badge = document.getElementById('navWishlistBadge');
@@ -376,7 +490,7 @@
             });
         };
 
-        window.toggleMallWishlist = async function(productNum, ev) {
+        window.toggleMallWishlist = async function (productNum, ev) {
             if (ev) {
                 ev.preventDefault();
                 ev.stopPropagation();
@@ -431,7 +545,7 @@
             }
         };
 
-        window.clearMallWishlist = async function() {
+        window.clearMallWishlist = async function () {
             if (window.__MALL_USER_LOGGED_IN__) {
                 try {
                     const res = await fetch('/api/wishlist/clear', {
@@ -452,7 +566,7 @@
             } else {
                 try {
                     localStorage.removeItem(MALL_WISHLIST_KEY);
-                } catch (e) {}
+                } catch (e) { }
             }
             window.syncMallWishlistUI();
             showMallToast('찜 목록을 모두 비웠습니다.');
@@ -461,7 +575,7 @@
             }
         };
 
-        window.mallEscapeHtml = function(text) {
+        window.mallEscapeHtml = function (text) {
             const div = document.createElement('div');
             div.textContent = text == null ? '' : String(text);
             return div.innerHTML;
@@ -480,7 +594,7 @@
         function saveMallCart(items) {
             try {
                 localStorage.setItem(MALL_CART_KEY, JSON.stringify(items || []));
-            } catch (e) {}
+            } catch (e) { }
             updateNavCartBadge();
         }
 
@@ -682,7 +796,7 @@
                     if (savedBuyer.address) document.getElementById('ibAddress').value = savedBuyer.address;
                     if (savedBuyer.address_detail) document.getElementById('ibAddressDetail').value = savedBuyer.address_detail;
                 }
-            } catch (e) {}
+            } catch (e) { }
             document.getElementById('instantBuyModal').style.display = 'flex';
         }
 
@@ -753,7 +867,7 @@
                 localStorage.setItem('mall_last_buyer_v1', JSON.stringify({
                     name: buyer_name, phone: buyer_phone, address: address, address_detail: address_detail
                 }));
-            } catch (err) {}
+            } catch (err) { }
 
             try {
                 if (btn) {
@@ -796,7 +910,7 @@
                             guest_password: guest_password
                         }));
                     }
-                } catch (e) {}
+                } catch (e) { }
                 showMallToast(`주문 완료! 주문번호 [${data.order.order_code}] · 총 ${data.order.total_amount.toLocaleString()}원 (카카오뱅크 3333 233 094904 박창현)`);
                 if (typeof onLiveOrderCompleted === 'function') {
                     onLiveOrderCompleted(data.order);
@@ -817,7 +931,7 @@
 
         // 전역 CSR 경량 상태 반영기 (네비게이션 라이브 메뉴 활성/방송중 배지 및 상품 실시간 재고 동기화)
         let __mallLastIsLive = __baseBootEl ? JSON.parse(__baseBootEl.dataset.isLive || 'false') : false;
-        window.__mallApplyLiteState = function(state) {
+        window.__mallApplyLiteState = function (state) {
             if (!state || typeof state !== 'object') return;
             const isLive = Boolean(state.is_live);
             const navSlot = document.getElementById('mallNavLiveSlot');
@@ -876,12 +990,12 @@
                         const data = await res.json();
                         if (res.ok && data.status === 'ok') {
                             __mallWishlistNums = _normalizeWishNums(data.product_nums || []);
-                            try { localStorage.removeItem(MALL_WISHLIST_KEY); } catch (e) {}
+                            try { localStorage.removeItem(MALL_WISHLIST_KEY); } catch (e) { }
                             if (typeof window.__onMallWishlistSynced === 'function') {
                                 window.__onMallWishlistSynced(__mallWishlistNums);
                             }
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             }
             window.syncMallWishlistUI();
@@ -897,9 +1011,9 @@
                 try {
                     const es = new EventSource('/api/live/stream');
                     es.addEventListener('live_state', (ev) => {
-                        try { window.__mallApplyLiteState(JSON.parse(ev.data)); } catch (e) {}
+                        try { window.__mallApplyLiteState(JSON.parse(ev.data)); } catch (e) { }
                     });
-                } catch (e) {}
+                } catch (e) { }
             }
         });
 
@@ -986,7 +1100,7 @@
                     const data = await res.json();
                     if (inputEl.value.trim() !== q) return;
                     renderSuggestions(q, data);
-                } catch (e) {}
+                } catch (e) { }
             }
 
             syncClearBtn();
@@ -1092,4 +1206,5 @@
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
+
 </html>

@@ -63,6 +63,9 @@
             <span>배너 관리</span>
             <span class="ax-num">(<span id="adminTabBannersCount">{{ (hero_banners or [])|length }}</span>)</span>
         </button>
+        <button type="button" id="adminTabSales" class="ax-tab-btn" data-tab="sales" onclick="switchAdminTab(this.dataset.tab)">
+            <span>매출 관리</span>
+        </button>
         <button type="button" id="adminTabStore" class="ax-tab-btn" data-tab="store" onclick="switchAdminTab(this.dataset.tab)">
             <span>스토어 설정</span>
         </button>
@@ -484,6 +487,297 @@
     </div>
 </section>
 
+<!-- 7. 매출 · 매입원가 · 마진 · 매입업체 정산 관리 패널 -->
+<section id="adminPanelSales" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">매출 · 마진 · 매입업체 정산 관리</h2>
+                <span id="salesBasisPill" class="ax-badge ax-badge-indigo">입금완료 기준 (택배비 별도)</span>
+            </div>
+            <p style="font-size:0.8125rem; color:var(--ax-text-secondary); margin-top:2px;">상품 판매대금·매입대금(원가)·매출총이익(마진)·택배비(별도)와 매입업체별 정산 예정·지급완료·미지급 잔액을 한눈에 관리합니다.</p>
+        </div>
+        <div class="ax-toolbar-actions">
+            <button type="button" id="btnExportSalesCsv" onclick="downloadAdminSalesCsv()" class="ax-btn ax-btn-secondary ax-btn-sm">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                <span>CSV 다운로드</span>
+            </button>
+            <button type="button" id="btnRefreshSales" onclick="loadAdminSalesSummary()" class="ax-btn ax-btn-charcoal ax-btn-sm">새로고침</button>
+        </div>
+    </div>
+
+    <!-- 기간 · 업체 · 집계기준 필터 바 -->
+    <div class="ax-sales-filter-bar">
+        <div class="ax-sales-presets" role="group" aria-label="조회 기간 프리셋">
+            <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm sales-preset-btn" data-preset="today" onclick="applySalesDatePreset('today')">오늘</button>
+            <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm sales-preset-btn" data-preset="7d" onclick="applySalesDatePreset('7d')">최근 7일</button>
+            <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm sales-preset-btn" data-preset="month" onclick="applySalesDatePreset('month')">이번 달</button>
+            <button type="button" class="ax-btn ax-btn-charcoal ax-btn-sm sales-preset-btn" data-preset="all" onclick="applySalesDatePreset('all')">전체</button>
+        </div>
+
+        <div class="ax-sales-filter-controls">
+            <input type="date" id="salesStartDate" class="ax-input ax-input-compact ax-num" aria-label="시작일" onchange="onSalesCustomDateChange()">
+            <span style="color:var(--ax-text-muted); font-weight:700;">~</span>
+            <input type="date" id="salesEndDate" class="ax-input ax-input-compact ax-num" aria-label="종료일" onchange="onSalesCustomDateChange()">
+            <select id="salesSupplierFilter" class="ax-select ax-select-compact" aria-label="매입업체 필터" onchange="loadAdminSalesSummary()"></select>
+            <label class="ax-agree-check-label" style="padding:5px 10px; border:1px solid var(--ax-border-strong); border-radius:8px; background:#fff; white-space:nowrap;">
+                <input type="checkbox" id="salesIncludePending" onchange="loadAdminSalesSummary()">
+                <span style="font-size:0.8rem; font-weight:700;">입금대기 주문 포함</span>
+            </label>
+            <button type="button" id="btnApplySalesFilter" onclick="loadAdminSalesSummary()" class="ax-btn ax-btn-primary ax-btn-sm">조회</button>
+        </div>
+    </div>
+
+    <!-- 6대 핵심 KPI 카드 -->
+    <div class="ax-sales-kpi-grid">
+        <div class="ax-kpi-card ax-sales-kpi-card">
+            <div class="ax-sales-kpi-label">상품 판매대금</div>
+            <div id="kpiSalesAmount" class="ax-sales-kpi-value ax-num">0원</div>
+            <div id="kpiSalesSub" class="ax-sales-kpi-sub">입금완료 주문 기준 (택배비 제외)</div>
+        </div>
+        <div class="ax-kpi-card ax-sales-kpi-card">
+            <div class="ax-sales-kpi-label">총 매입대금 (원가)</div>
+            <div id="kpiPurchaseCost" class="ax-sales-kpi-value ax-num">0원</div>
+            <div class="ax-sales-kpi-sub">판매수량 × 상품 매입원가 합계</div>
+        </div>
+        <div class="ax-kpi-card ax-sales-kpi-card">
+            <div class="ax-sales-kpi-label">매출총이익 · 마진율</div>
+            <div class="ax-sales-kpi-value-row">
+                <span id="kpiGrossProfit" class="ax-sales-kpi-value ax-sales-positive ax-num">0원</span>
+                <span id="kpiMarginRate" class="ax-badge ax-badge-indigo ax-num">0.0%</span>
+            </div>
+            <div class="ax-sales-kpi-sub">상품 판매대금 − 총 매입대금</div>
+        </div>
+        <div class="ax-kpi-card ax-sales-kpi-card">
+            <div class="ax-sales-kpi-label">업체 미지급 잔액</div>
+            <div id="kpiTotalUnpaid" class="ax-sales-kpi-value ax-num">0원</div>
+            <div id="kpiTotalSettledSub" class="ax-sales-kpi-sub ax-num">지급완료 0원</div>
+        </div>
+        <div class="ax-kpi-card ax-sales-kpi-card">
+            <div class="ax-sales-kpi-label">택배비 매출 (별도)</div>
+            <div id="kpiShippingAmount" class="ax-sales-kpi-value ax-num">0원</div>
+            <div id="kpiTotalCollectedSub" class="ax-sales-kpi-sub ax-num">실수령 합계(상품+택배비) 0원</div>
+        </div>
+        <div class="ax-kpi-card ax-sales-kpi-card">
+            <div class="ax-sales-kpi-label">유효 주문 · 판매수량</div>
+            <div id="kpiOrderQty" class="ax-sales-kpi-value ax-num">0건 · 0개</div>
+            <div class="ax-sales-kpi-sub">주문취소 · 환불완료 제외</div>
+        </div>
+    </div>
+
+    <!-- 매출관리 3대 서브탭 -->
+    <div style="margin:16px 0;">
+        <nav id="adminSalesSubtabs" class="ax-segmented-bar" aria-label="매출관리 세부 영역">
+            <button type="button" id="salesSubTabAnalysis" class="ax-tab-btn active" data-sales-subtab="analysis" onclick="switchSalesSubtab(this.dataset.salesSubtab)">매출·마진 분석</button>
+            <button type="button" id="salesSubTabSettlement" class="ax-tab-btn" data-sales-subtab="settlement" onclick="switchSalesSubtab(this.dataset.salesSubtab)">매입업체별 정산</button>
+            <button type="button" id="salesSubTabSuppliers" class="ax-tab-btn" data-sales-subtab="suppliers" onclick="switchSalesSubtab(this.dataset.salesSubtab)">
+                <span>매입업체 관리</span>
+                <span class="ax-num">(<span id="adminSalesSupplierCount">{{ (suppliers or [])|length }}</span>)</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- 서브탭 1: 상품별·일별 매출/마진 분석 -->
+    <div id="salesSubAnalysis">
+        <div class="ax-admin-modal-section" style="background:#fff;">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">상품별 판매 · 매입원가 · 마진 내역</span>
+                <span id="salesProductRowsBadge" class="ax-badge ax-badge-neutral ax-num">0개 상품</span>
+            </div>
+            <div class="ax-table-wrap">
+                <table class="ax-table">
+                    <thead>
+                        <tr>
+                            <th>상품</th>
+                            <th>매입업체</th>
+                            <th>판매수량</th>
+                            <th>판매대금</th>
+                            <th>매입대금(원가)</th>
+                            <th>매출총이익</th>
+                            <th>마진율</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesProductTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="ax-admin-modal-section" style="background:#fff; margin-bottom:0;">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">일별 매출 추이</span>
+                <span id="salesDailyRowsBadge" class="ax-badge ax-badge-neutral ax-num">0일</span>
+            </div>
+            <div class="ax-table-wrap">
+                <table class="ax-table">
+                    <thead>
+                        <tr>
+                            <th>일자</th>
+                            <th>유효 주문</th>
+                            <th>판매수량</th>
+                            <th>상품 판매대금</th>
+                            <th>택배비(별도)</th>
+                            <th>매입대금</th>
+                            <th>매출총이익</th>
+                            <th>마진율</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesDailyTbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 서브탭 2: 매입업체별 정산 및 지급(결제) 관리 -->
+    <div id="salesSubSettlement" class="ax-is-hidden">
+        <form id="supplierSettlementForm" onsubmit="submitSupplierSettlement(event)" class="ax-admin-modal-section">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">매입업체 지급(결제) 내역 등록</span>
+                <span style="font-size:0.76rem; color:var(--ax-text-secondary);">매입업체로 송금·결제한 실제 지급 금액을 기록하면 미지급 잔액이 즉시 차감됩니다.</span>
+            </div>
+            <div class="ax-settlement-form-grid">
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="settleSupplierId">지급 대상 매입업체 *</label>
+                    <select id="settleSupplierId" class="ax-select ax-select-compact" required></select>
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="settlePaidAt">지급일 *</label>
+                    <input type="date" id="settlePaidAt" class="ax-input ax-input-compact ax-num" required>
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="settleAmount">지급 금액(원) *</label>
+                    <input type="number" id="settleAmount" class="ax-input ax-input-compact ax-num" min="1" placeholder="예: 100000" required>
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="settleMethod">결제 수단</label>
+                    <select id="settleMethod" class="ax-select ax-select-compact">
+                        <option value="계좌이체">계좌이체</option>
+                        <option value="현금">현금</option>
+                        <option value="법인카드">법인카드</option>
+                        <option value="기타">기타</option>
+                    </select>
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="settleMemo">지급 메모</label>
+                    <input type="text" id="settleMemo" class="ax-input ax-input-compact" placeholder="예: 1차 선입금 / 세금계산서 발행">
+                </div>
+                <div style="display:flex; align-items:end;">
+                    <button type="submit" id="btnSubmitSettlement" class="ax-btn ax-btn-primary ax-btn-sm ax-btn-block">지급 등록</button>
+                </div>
+            </div>
+        </form>
+
+        <div class="ax-admin-modal-section" style="background:#fff;">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">매입업체별 정산 예정 · 지급완료 · 미지급 현황</span>
+            </div>
+            <div class="ax-table-wrap">
+                <table class="ax-table">
+                    <thead>
+                        <tr>
+                            <th>매입업체명</th>
+                            <th>정산 계좌 정보</th>
+                            <th>판매수량</th>
+                            <th>판매대금</th>
+                            <th>정산예정(매입대금)</th>
+                            <th>지급완료액</th>
+                            <th>미지급 잔액</th>
+                            <th>정산</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesSupplierSettleTbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="ax-admin-modal-section" style="background:#fff; margin-bottom:0;">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">매입업체 지급(결제) 이력</span>
+                <span id="salesSettlementLogBadge" class="ax-badge ax-badge-neutral ax-num">0건</span>
+            </div>
+            <div class="ax-table-wrap">
+                <table class="ax-table">
+                    <thead>
+                        <tr>
+                            <th>지급일</th>
+                            <th>매입업체</th>
+                            <th>지급금액</th>
+                            <th>결제수단</th>
+                            <th>메모</th>
+                            <th>삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesSettlementLogTbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 서브탭 3: 매입업체 등록 · 수정 관리 -->
+    <div id="salesSubSuppliers" class="ax-is-hidden">
+        <form id="supplierForm" onsubmit="saveAdminSupplier(event)" class="ax-admin-modal-section">
+            <input type="hidden" id="supEditId" value="">
+            <div class="ax-admin-modal-section-head">
+                <span id="supplierFormModeTitle" class="ax-admin-modal-section-title">신규 매입업체 등록</span>
+                <button type="button" onclick="resetAdminSupplierForm()" class="ax-btn ax-btn-secondary ax-btn-sm">새 업체 작성(초기화)</button>
+            </div>
+            <div class="ax-supplier-form-grid">
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="supName">매입업체명 *</label>
+                    <input type="text" id="supName" class="ax-input ax-input-compact" placeholder="예: 동대문 A도매" maxlength="80" required>
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="supContactName">담당자명</label>
+                    <input type="text" id="supContactName" class="ax-input ax-input-compact" placeholder="예: 김담당" maxlength="60">
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="supPhone">연락처</label>
+                    <input type="text" id="supPhone" class="ax-input ax-input-compact ax-num" placeholder="예: 010-1234-5678" maxlength="40">
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="supBankName">정산 은행명</label>
+                    <input type="text" id="supBankName" class="ax-input ax-input-compact" placeholder="예: 국민은행" maxlength="60">
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="supBankAccount">정산 계좌번호</label>
+                    <input type="text" id="supBankAccount" class="ax-input ax-input-compact ax-num" placeholder="예: 123456-01-789012" maxlength="80">
+                </div>
+                <div class="ax-field" style="margin-bottom:0;">
+                    <label class="ax-label" for="supBankHolder">예금주</label>
+                    <input type="text" id="supBankHolder" class="ax-input ax-input-compact" placeholder="예: 홍길동" maxlength="60">
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin-top:12px;">
+                <div style="flex:1; min-width:220px;">
+                    <label class="ax-label" for="supMemo">거래 메모 / 정산 조건</label>
+                    <input type="text" id="supMemo" class="ax-input ax-input-compact" placeholder="예: 매주 금요일 정산 / 반품 차감 조건" maxlength="300">
+                </div>
+                <button type="submit" id="btnSaveSupplier" class="ax-btn ax-btn-primary ax-btn-sm">매입업체 저장</button>
+            </div>
+        </form>
+
+        <div class="ax-admin-modal-section" style="background:#fff; margin-bottom:0;">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">등록된 매입업체 목록</span>
+                <span id="adminSuppliersListBadge" class="ax-badge ax-badge-neutral ax-num">0곳</span>
+            </div>
+            <div class="ax-table-wrap">
+                <table class="ax-table">
+                    <thead>
+                        <tr>
+                            <th>매입업체명</th>
+                            <th>담당자 · 연락처</th>
+                            <th>정산 계좌</th>
+                            <th>메모</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminSuppliersTbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
 <!-- 상품 등록 / 수정 Astryx Dialog 모달 -->
 <div class="ax-dialog-backdrop" id="adminProductModal" role="dialog" aria-modal="true" aria-labelledby="adminProductModalTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closeAdminProductModal)">
     <div class="ax-dialog-card ax-dialog-wide">
@@ -526,13 +820,24 @@
                     </div>
                     <div class="ax-field" style="margin-bottom:0;">
                         <label class="ax-label" for="apPrice">일반 판매가 *</label>
-                        <input type="number" id="apPrice" class="ax-input ax-num" min="0" placeholder="예: 59000" required>
+                        <input type="number" id="apPrice" class="ax-input ax-num" min="0" placeholder="예: 59000" required oninput="updateAdminProductMarginPreview()">
                     </div>
                     <div class="ax-field" style="margin-bottom:0;">
                         <label class="ax-label" for="apLivePrice">라이브 특가</label>
-                        <input type="number" id="apLivePrice" class="ax-input ax-num" min="0" placeholder="미입력 시 판매가 동일">
+                        <input type="number" id="apLivePrice" class="ax-input ax-num" min="0" placeholder="미입력 시 판매가 동일" oninput="updateAdminProductMarginPreview()">
                     </div>
                 </div>
+                <div class="ax-form-row-2" style="margin-top:12px;">
+                    <div class="ax-field" style="margin-bottom:0;">
+                        <label class="ax-label" for="apSupplierId">매입업체 (공급처)</label>
+                        <select id="apSupplierId" class="ax-select"></select>
+                    </div>
+                    <div class="ax-field" style="margin-bottom:0;">
+                        <label class="ax-label" for="apCostPrice">매입단가 (원가)</label>
+                        <input type="number" id="apCostPrice" class="ax-input ax-num" min="0" placeholder="예: 32000 (미입력 시 0원)" oninput="updateAdminProductMarginPreview()">
+                    </div>
+                </div>
+                <div id="apMarginPreview" class="ax-callout-indigo ax-num" style="margin-top:10px; font-size:0.8rem;"></div>
             </div>
 
             <!-- 2. 대표 이미지 & 핵심 사양 -->
@@ -661,7 +966,8 @@
      data-category-labels="{{ (category_labels or {}) | tojson | forceescape }}"
      data-policy-defaults="{{ (policy_defaults or {}) | tojson | forceescape }}"
      data-orders="{{ (orders or []) | tojson | forceescape }}"
-     data-banners="{{ (hero_banners or []) | tojson | forceescape }}"></div>
+     data-banners="{{ (hero_banners or []) | tojson | forceescape }}"
+     data-suppliers="{{ (suppliers or []) | tojson | forceescape }}"></div>
 <script>
     const __admBootEl = document.getElementById('adminMallBootstrap');
     let adminProducts = __admBootEl ? JSON.parse(__admBootEl.dataset.products || '[]') : [];
@@ -670,6 +976,9 @@
     let adminPolicyDefaults = __admBootEl ? JSON.parse(__admBootEl.dataset.policyDefaults || '{}') : {};
     let adminOrders = __admBootEl ? JSON.parse(__admBootEl.dataset.orders || '[]') : [];
     let adminBanners = __admBootEl ? JSON.parse(__admBootEl.dataset.banners || '[]') : [];
+    let adminSuppliers = __admBootEl ? JSON.parse(__admBootEl.dataset.suppliers || '[]') : [];
+    let adminSalesData = null;
+    let activeSalesSubtab = 'analysis';
     let activeOrderSubtab = 'ACTIVE';
     let activeClaimSubtab = 'ALL';
     let apDetailImages = [];
@@ -681,9 +990,9 @@
     const ALL_PAYMENT_STATUS_OPTIONS = ['입금대기', '입금완료', '환불대기', '환불완료'];
 
     function switchAdminTab(tabName) {
-        const tabs = ['products', 'categories', 'orders', 'claims', 'banners', 'store'];
-        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders', claims: 'adminTabClaims', banners: 'adminTabBanners', store: 'adminTabStore' };
-        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders', claims: 'adminPanelClaims', banners: 'adminPanelBanners', store: 'adminPanelStore' };
+        const tabs = ['products', 'categories', 'orders', 'claims', 'banners', 'sales', 'store'];
+        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders', claims: 'adminTabClaims', banners: 'adminTabBanners', sales: 'adminTabSales', store: 'adminTabStore' };
+        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders', claims: 'adminPanelClaims', banners: 'adminPanelBanners', sales: 'adminPanelSales', store: 'adminPanelStore' };
         tabs.forEach(t => {
             const btn = document.getElementById(tMap[t]);
             const panel = document.getElementById(pMap[t]);
@@ -691,6 +1000,9 @@
             if (btn) btn.classList.toggle('active', isSel);
             if (panel) panel.classList.toggle('ax-is-hidden', !isSel);
         });
+        if (tabName === 'sales') {
+            loadAdminSalesSummary();
+        }
     }
 
     function switchOrderSubtab(subtabKey) {
@@ -782,6 +1094,12 @@
             const imgHtml = p.image_url
                 ? `<img src="${window.mallEscapeHtml(p.image_url)}" alt="${window.mallEscapeHtml(p.name)}" style="width:54px; height:54px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
                 : `<div style="width:54px; height:54px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;"><svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></div>`;
+            const supChip = p.supplier_name
+                ? `<span class="ax-badge ax-badge-neutral" style="padding:1px 6px; font-size:0.6875rem;">매입: ${window.mallEscapeHtml(p.supplier_name)}</span>`
+                : '';
+            const costText = Number(p.cost_price || 0) > 0
+                ? ` · 원가 ${Number(p.cost_price).toLocaleString()}원`
+                : '';
             return `
                 <div class="ax-admin-prod-row">
                     <div class="ax-admin-prod-main">
@@ -790,11 +1108,12 @@
                             <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; flex-wrap:wrap;">
                                 <span class="ax-code-chip" style="padding:1px 6px; font-size:0.6875rem;">#${Number(p.num)}</span>
                                 <span class="ax-badge ax-badge-neutral" style="padding:1px 6px; font-size:0.6875rem;">${window.mallEscapeHtml(catName)}</span>
+                                ${supChip}
                                 ${hasDetail ? `<span class="ax-badge ax-badge-indigo" style="padding:1px 6px; font-size:0.6875rem;">상세이미지 ${dImgs}장</span>` : ''}
                             </div>
                             <div style="font-size:0.93rem; font-weight:700; color:var(--ax-text-primary);">${window.mallEscapeHtml(p.name)}</div>
                             <div class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">
-                                판매가 ${Number(p.price || 0).toLocaleString()}원 · <strong style="color:var(--ax-accent-primary);">LIVE가 ${Number(p.live_price || p.price || 0).toLocaleString()}원</strong> · 총 재고 ${Number(p.total_stock || 0)}개
+                                판매가 ${Number(p.price || 0).toLocaleString()}원 · <strong style="color:var(--ax-accent-primary);">LIVE가 ${Number(p.live_price || p.price || 0).toLocaleString()}원</strong>${costText} · 총 재고 ${Number(p.total_stock || 0)}개
                             </div>
                         </div>
                     </div>
@@ -1154,6 +1473,7 @@
         const titleEl = document.getElementById('adminProductModalTitle');
         const submitBtn = document.getElementById('btnApSaveSubmit');
         populateCategorySelects();
+        populateSupplierSelects();
 
         const tbody = document.getElementById('apOptionsTbody');
         if (tbody) tbody.innerHTML = '';
@@ -1186,6 +1506,9 @@
             document.getElementById('apConsumerPrice').value = prod.consumer_price || prod.price || 0;
             document.getElementById('apPrice').value = prod.price || 0;
             document.getElementById('apLivePrice').value = prod.live_price || prod.price || 0;
+            const supSel = document.getElementById('apSupplierId');
+            if (supSel) supSel.value = prod.supplier_id ? String(prod.supplier_id) : '';
+            document.getElementById('apCostPrice').value = prod.cost_price !== undefined && prod.cost_price !== null ? prod.cost_price : 0;
             document.getElementById('apImageUrl').value = prod.image_url || '';
             syncAdminMainImagePreview(prod.image_url || '');
             document.getElementById('apSpecs').value = prod.specs || '';
@@ -1210,6 +1533,9 @@
             document.getElementById('apConsumerPrice').value = '';
             document.getElementById('apPrice').value = '';
             document.getElementById('apLivePrice').value = '';
+            const supSel = document.getElementById('apSupplierId');
+            if (supSel) supSel.value = '';
+            document.getElementById('apCostPrice').value = '';
             document.getElementById('apImageUrl').value = '';
             syncAdminMainImagePreview('');
             document.getElementById('apSpecs').value = '';
@@ -1219,6 +1545,7 @@
             applyAdminPolicyDefaultsToForm();
             generateAdminOptionMatrix();
         }
+        updateAdminProductMarginPreview();
 
         if (modal) modal.classList.add('is-open');
     }
@@ -1257,6 +1584,9 @@
         const price = Math.max(0, Number(document.getElementById('apPrice')?.value || 0));
         const consPrice = Math.max(0, Number(document.getElementById('apConsumerPrice')?.value || 0)) || price;
         const livePrice = Math.max(0, Number(document.getElementById('apLivePrice')?.value || 0)) || price;
+        const costPrice = Math.max(0, Number(document.getElementById('apCostPrice')?.value || 0));
+        const rawSupVal = document.getElementById('apSupplierId')?.value || '';
+        const supplierId = rawSupVal ? Number(rawSupVal) : null;
         const payload = {
             num: Number(document.getElementById('apNum')?.value || 0),
             category: document.getElementById('apCategory')?.value || 'ETC',
@@ -1264,6 +1594,8 @@
             price: price,
             consumer_price: consPrice,
             live_price: livePrice,
+            cost_price: costPrice,
+            supplier_id: supplierId,
             image_url: document.getElementById('apImageUrl')?.value.trim() || '',
             specs: document.getElementById('apSpecs')?.value.trim() || '',
             detail_content: document.getElementById('apDetailContent')?.value.trim() || '',
@@ -1972,6 +2304,506 @@
         }
     }
 
+    function updateAdminProductMarginPreview() {
+        const previewEl = document.getElementById('apMarginPreview');
+        if (!previewEl) return;
+        const price = Math.max(0, Number(document.getElementById('apPrice')?.value || 0));
+        const livePrice = Math.max(0, Number(document.getElementById('apLivePrice')?.value || 0)) || price;
+        const cost = Math.max(0, Number(document.getElementById('apCostPrice')?.value || 0));
+        const profit = price - cost;
+        const marginPct = price > 0 ? ((profit / price) * 100).toFixed(1) : '0.0';
+        const liveProfit = livePrice - cost;
+        const livePct = livePrice > 0 ? ((liveProfit / livePrice) * 100).toFixed(1) : '0.0';
+        previewEl.innerText = `예상 마진 — 일반 판매가 기준: ${profit.toLocaleString()}원 (${marginPct}%) · LIVE 특가 기준: ${liveProfit.toLocaleString()}원 (${livePct}%)`;
+    }
+
+    function populateSupplierSelects() {
+        const list = Array.isArray(adminSuppliers) ? adminSuppliers : [];
+        const modalSel = document.getElementById('apSupplierId');
+        const filterSel = document.getElementById('salesSupplierFilter');
+        const settleSel = document.getElementById('settleSupplierId');
+
+        if (modalSel) {
+            const prev = modalSel.value;
+            modalSel.innerHTML = '<option value="">매입업체 미지정</option>' + list.map(s =>
+                `<option value="${Number(s.id)}">${window.mallEscapeHtml(s.name)}</option>`
+            ).join('');
+            if (prev && Array.from(modalSel.options).some(o => o.value === prev)) {
+                modalSel.value = prev;
+            }
+        }
+        if (filterSel) {
+            const prev = filterSel.value;
+            filterSel.innerHTML = '<option value="">전체 매입업체</option>' + list.map(s =>
+                `<option value="${Number(s.id)}">${window.mallEscapeHtml(s.name)}</option>`
+            ).join('');
+            if (prev && Array.from(filterSel.options).some(o => o.value === prev)) {
+                filterSel.value = prev;
+            }
+        }
+        if (settleSel) {
+            const prev = settleSel.value;
+            if (list.length === 0) {
+                settleSel.innerHTML = '<option value="">먼저 [매입업체 관리]에서 업체를 등록하세요</option>';
+            } else {
+                settleSel.innerHTML = '<option value="">매입업체 선택...</option>' + list.map(s =>
+                    `<option value="${Number(s.id)}">${window.mallEscapeHtml(s.name)}</option>`
+                ).join('');
+                if (prev && Array.from(settleSel.options).some(o => o.value === prev)) {
+                    settleSel.value = prev;
+                }
+            }
+        }
+        const cntEl = document.getElementById('adminSalesSupplierCount');
+        if (cntEl) cntEl.innerText = String(list.length);
+        renderAdminSuppliersTable();
+    }
+
+    function switchSalesSubtab(subtabKey) {
+        activeSalesSubtab = subtabKey || 'analysis';
+        const map = { analysis: 'salesSubAnalysis', settlement: 'salesSubSettlement', suppliers: 'salesSubSuppliers' };
+        document.querySelectorAll('#adminSalesSubtabs [data-sales-subtab]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.salesSubtab === activeSalesSubtab);
+        });
+        Object.keys(map).forEach(k => {
+            const el = document.getElementById(map[k]);
+            if (el) el.classList.toggle('ax-is-hidden', k !== activeSalesSubtab);
+        });
+    }
+
+    function _formatIsoLocalDate(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function applySalesDatePreset(preset) {
+        const startEl = document.getElementById('salesStartDate');
+        const endEl = document.getElementById('salesEndDate');
+        const now = new Date();
+        let startVal = '';
+        let endVal = '';
+        if (preset === 'today') {
+            startVal = _formatIsoLocalDate(now);
+            endVal = startVal;
+        } else if (preset === '7d') {
+            const past = new Date(now.getTime() - 6 * 86400000);
+            startVal = _formatIsoLocalDate(past);
+            endVal = _formatIsoLocalDate(now);
+        } else if (preset === 'month') {
+            const first = new Date(now.getFullYear(), now.getMonth(), 1);
+            startVal = _formatIsoLocalDate(first);
+            endVal = _formatIsoLocalDate(now);
+        }
+        if (startEl) startEl.value = startVal;
+        if (endEl) endEl.value = endVal;
+        document.querySelectorAll('.sales-preset-btn').forEach(btn => {
+            const active = btn.dataset.preset === preset;
+            btn.classList.toggle('ax-btn-charcoal', active);
+            btn.classList.toggle('ax-btn-secondary', !active);
+        });
+        loadAdminSalesSummary();
+    }
+
+    function onSalesCustomDateChange() {
+        document.querySelectorAll('.sales-preset-btn').forEach(btn => {
+            btn.classList.remove('ax-btn-charcoal');
+            btn.classList.add('ax-btn-secondary');
+        });
+    }
+
+    function _buildSalesQueryString() {
+        const qs = new URLSearchParams();
+        const sDate = document.getElementById('salesStartDate')?.value || '';
+        const eDate = document.getElementById('salesEndDate')?.value || '';
+        const supId = document.getElementById('salesSupplierFilter')?.value || '';
+        const incPending = Boolean(document.getElementById('salesIncludePending')?.checked);
+        if (sDate) qs.set('start_date', sDate);
+        if (eDate) qs.set('end_date', eDate);
+        if (supId) qs.set('supplier_id', supId);
+        qs.set('include_pending', incPending ? '1' : '0');
+        return qs.toString();
+    }
+
+    function downloadAdminSalesCsv() {
+        window.location.href = '/api/admin/sales/export.csv?' + _buildSalesQueryString();
+    }
+
+    async function loadAdminSalesSummary() {
+        try {
+            const res = await fetch('/api/admin/sales/summary?' + _buildSalesQueryString(), { cache: 'no-store' });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                showMallToast((data && data.message) || '매출 집계 조회 실패');
+                return;
+            }
+            adminSalesData = data;
+            if (Array.isArray(data.suppliers)) {
+                adminSuppliers = data.suppliers;
+                populateSupplierSelects();
+            }
+            renderAdminSalesDashboard(data);
+        } catch (err) {
+            showMallToast('매출 집계 조회 오류: ' + err.message);
+        }
+    }
+
+    function renderAdminSalesDashboard(data) {
+        const kpi = (data && data.kpi) || {};
+        const incPending = Boolean(data && data.filters && data.filters.include_pending);
+        const basisText = incPending ? '입금완료 + 입금대기 기준 (택배비 별도)' : '입금완료 기준 (택배비 별도)';
+        const basisPill = document.getElementById('salesBasisPill');
+        if (basisPill) basisPill.innerText = basisText;
+        const salesSubEl = document.getElementById('kpiSalesSub');
+        if (salesSubEl) salesSubEl.innerText = incPending ? '입금대기 포함 상품 대금 합계' : '입금완료 상품 대금 합계 (택배비 제외)';
+
+        const fmtWon = (v) => `${Number(v || 0).toLocaleString()}원`;
+        const salesEl = document.getElementById('kpiSalesAmount');
+        const costEl = document.getElementById('kpiPurchaseCost');
+        const profitEl = document.getElementById('kpiGrossProfit');
+        const marginEl = document.getElementById('kpiMarginRate');
+        const unpaidEl = document.getElementById('kpiTotalUnpaid');
+        const settledSubEl = document.getElementById('kpiTotalSettledSub');
+        const shipEl = document.getElementById('kpiShippingAmount');
+        const collectedSubEl = document.getElementById('kpiTotalCollectedSub');
+        const orderQtyEl = document.getElementById('kpiOrderQty');
+
+        const grossProfit = Number(kpi.gross_profit || 0);
+        const totalUnpaid = Number(kpi.total_unpaid || 0);
+
+        if (salesEl) salesEl.innerText = fmtWon(kpi.sales_amount);
+        if (costEl) costEl.innerText = fmtWon(kpi.purchase_cost);
+        if (profitEl) {
+            profitEl.innerText = fmtWon(grossProfit);
+            profitEl.classList.toggle('ax-sales-positive', grossProfit >= 0);
+            profitEl.classList.toggle('ax-sales-negative', grossProfit < 0);
+        }
+        if (marginEl) marginEl.innerText = `${Number(kpi.margin_rate || 0).toFixed(1)}%`;
+        if (unpaidEl) {
+            unpaidEl.innerText = fmtWon(totalUnpaid);
+            unpaidEl.classList.toggle('ax-sales-negative', totalUnpaid > 0);
+            unpaidEl.classList.toggle('ax-sales-positive', totalUnpaid <= 0);
+        }
+        if (settledSubEl) settledSubEl.innerText = `지급완료 ${fmtWon(kpi.total_settled)}`;
+        if (shipEl) shipEl.innerText = fmtWon(kpi.shipping_amount);
+        if (collectedSubEl) collectedSubEl.innerText = `실수령 합계(상품+택배비) ${fmtWon(kpi.total_collected)}`;
+        if (orderQtyEl) orderQtyEl.innerText = `${Number(kpi.order_count || 0)}건 · ${Number(kpi.sold_qty || 0)}개`;
+
+        const esc = window.mallEscapeHtml;
+        const productRows = Array.isArray(data.product_rows) ? data.product_rows : [];
+        const prodBadge = document.getElementById('salesProductRowsBadge');
+        if (prodBadge) prodBadge.innerText = `${productRows.length}개 상품`;
+        const prodTbody = document.getElementById('salesProductTbody');
+        if (prodTbody) {
+            if (productRows.length === 0) {
+                prodTbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--ax-text-muted); padding:24px;">선택한 조건에 해당하는 판매 내역이 없습니다.</td></tr>';
+            } else {
+                prodTbody.innerHTML = productRows.map(pr => {
+                    const gp = Number(pr.gross_profit || 0);
+                    return `
+                        <tr>
+                            <td><span class="ax-code-chip" style="padding:1px 6px;">#${Number(pr.product_num)}</span> <strong>${esc(pr.product_name)}</strong></td>
+                            <td>${esc(pr.supplier_name || '매입업체 미지정')}</td>
+                            <td class="ax-num">${Number(pr.sold_qty || 0).toLocaleString()}개</td>
+                            <td class="ax-num"><strong>${fmtWon(pr.sales_amount)}</strong></td>
+                            <td class="ax-num">${fmtWon(pr.purchase_cost)}</td>
+                            <td class="ax-num ${gp >= 0 ? 'ax-sales-positive' : 'ax-sales-negative'}"><strong>${fmtWon(gp)}</strong></td>
+                            <td class="ax-num">${Number(pr.margin_rate || 0).toFixed(1)}%</td>
+                        </tr>`;
+                }).join('');
+            }
+        }
+
+        const dailyRows = Array.isArray(data.daily_rows) ? data.daily_rows : [];
+        const dailyBadge = document.getElementById('salesDailyRowsBadge');
+        if (dailyBadge) dailyBadge.innerText = `${dailyRows.length}일`;
+        const dailyTbody = document.getElementById('salesDailyTbody');
+        if (dailyTbody) {
+            if (dailyRows.length === 0) {
+                dailyTbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--ax-text-muted); padding:24px;">일별 매출 데이터가 없습니다.</td></tr>';
+            } else {
+                dailyTbody.innerHTML = dailyRows.map(dr => {
+                    const gp = Number(dr.gross_profit || 0);
+                    return `
+                        <tr>
+                            <td class="ax-num"><strong>${esc(dr.date)}</strong></td>
+                            <td class="ax-num">${Number(dr.order_count || 0)}건</td>
+                            <td class="ax-num">${Number(dr.sold_qty || 0).toLocaleString()}개</td>
+                            <td class="ax-num"><strong>${fmtWon(dr.sales_amount)}</strong></td>
+                            <td class="ax-num">${fmtWon(dr.shipping_amount)}</td>
+                            <td class="ax-num">${fmtWon(dr.purchase_cost)}</td>
+                            <td class="ax-num ${gp >= 0 ? 'ax-sales-positive' : 'ax-sales-negative'}"><strong>${fmtWon(gp)}</strong></td>
+                            <td class="ax-num">${Number(dr.margin_rate || 0).toFixed(1)}%</td>
+                        </tr>`;
+                }).join('');
+            }
+        }
+
+        const supRows = Array.isArray(data.supplier_rows) ? data.supplier_rows : [];
+        const supTbody = document.getElementById('salesSupplierSettleTbody');
+        if (supTbody) {
+            if (supRows.length === 0) {
+                supTbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--ax-text-muted); padding:24px;">등록된 매입업체 또는 판매 정산 내역이 없습니다.</td></tr>';
+            } else {
+                supTbody.innerHTML = supRows.map(sr => {
+                    const unpaid = Number(sr.unpaid_amount || 0);
+                    const bankText = [sr.bank_name, sr.bank_account, sr.bank_holder].filter(Boolean).join(' ') || '-';
+                    const canPay = Boolean(sr.supplier_id);
+                    const prefillAmount = unpaid > 0 ? unpaid : Number(sr.purchase_cost || 0);
+                    return `
+                        <tr>
+                            <td><strong>${esc(sr.supplier_name)}</strong></td>
+                            <td class="ax-num" style="font-size:0.78rem; color:var(--ax-text-secondary);">${esc(bankText)}</td>
+                            <td class="ax-num">${Number(sr.sold_qty || 0).toLocaleString()}개</td>
+                            <td class="ax-num">${fmtWon(sr.sales_amount)}</td>
+                            <td class="ax-num"><strong>${fmtWon(sr.purchase_cost)}</strong></td>
+                            <td class="ax-num">${fmtWon(sr.settled_amount)}</td>
+                            <td class="ax-num ${unpaid > 0 ? 'ax-sales-negative' : 'ax-sales-positive'}"><strong>${fmtWon(unpaid)}</strong></td>
+                            <td>
+                                ${canPay
+                                    ? `<button type="button" data-sup-id="${Number(sr.supplier_id)}" data-prefill-amt="${prefillAmount}" onclick="prefillSupplierSettlement(Number(this.dataset.supId), Number(this.dataset.prefillAmt))" class="ax-btn ax-btn-secondary ax-btn-sm">지급 입력</button>`
+                                    : '<span style="font-size:0.75rem; color:var(--ax-text-muted);">미지정</span>'}
+                            </td>
+                        </tr>`;
+                }).join('');
+            }
+        }
+
+        const settleLogs = Array.isArray(data.settlements) ? data.settlements : [];
+        const logBadge = document.getElementById('salesSettlementLogBadge');
+        if (logBadge) logBadge.innerText = `${settleLogs.length}건`;
+        const logTbody = document.getElementById('salesSettlementLogTbody');
+        if (logTbody) {
+            if (settleLogs.length === 0) {
+                logTbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--ax-text-muted); padding:24px;">등록된 매입업체 지급(결제) 이력이 없습니다.</td></tr>';
+            } else {
+                logTbody.innerHTML = settleLogs.map(st => `
+                    <tr>
+                        <td class="ax-num">${esc(st.paid_at)}</td>
+                        <td><strong>${esc(st.supplier_name || '-')}</strong></td>
+                        <td class="ax-num"><strong>${fmtWon(st.amount)}</strong></td>
+                        <td><span class="ax-badge ax-badge-neutral">${esc(st.payment_method || '계좌이체')}</span></td>
+                        <td style="color:var(--ax-text-secondary);">${esc(st.memo || '-')}</td>
+                        <td><button type="button" data-settle-id="${Number(st.id)}" onclick="deleteSupplierSettlement(Number(this.dataset.settleId))" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button></td>
+                    </tr>`).join('');
+            }
+        }
+    }
+
+    function prefillSupplierSettlement(supplierId, suggestedAmount) {
+        const supSel = document.getElementById('settleSupplierId');
+        const amtEl = document.getElementById('settleAmount');
+        const dateEl = document.getElementById('settlePaidAt');
+        if (supSel) supSel.value = String(supplierId || '');
+        if (amtEl && suggestedAmount > 0) amtEl.value = String(suggestedAmount);
+        if (dateEl && !dateEl.value) dateEl.value = _formatIsoLocalDate(new Date());
+        if (amtEl) amtEl.focus();
+    }
+
+    async function submitSupplierSettlement(e) {
+        e.preventDefault();
+        const supId = Number(document.getElementById('settleSupplierId')?.value || 0);
+        const paidAt = document.getElementById('settlePaidAt')?.value || '';
+        const amount = Number(document.getElementById('settleAmount')?.value || 0);
+        const paymentMethod = document.getElementById('settleMethod')?.value || '계좌이체';
+        const memo = document.getElementById('settleMemo')?.value.trim() || '';
+        if (!supId) {
+            alert('지급 대상 매입업체를 선택해 주세요.');
+            return;
+        }
+        if (amount <= 0) {
+            alert('지급 금액은 1원 이상 입력해 주세요.');
+            return;
+        }
+        const btn = document.getElementById('btnSubmitSettlement');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/suppliers/settlements/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ supplier_id: supId, paid_at: paidAt, amount, payment_method: paymentMethod, memo })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '지급 내역 등록 실패');
+                return;
+            }
+            const amtEl = document.getElementById('settleAmount');
+            const memoEl = document.getElementById('settleMemo');
+            if (amtEl) amtEl.value = '';
+            if (memoEl) memoEl.value = '';
+            showMallToast('매입업체 지급 내역이 등록되었습니다.');
+            await loadAdminSalesSummary();
+        } catch (err) {
+            alert('지급 등록 오류: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function deleteSupplierSettlement(settlementId) {
+        if (!confirm('선택한 지급(결제) 이력을 삭제하시겠습니까?')) return;
+        try {
+            const res = await fetch('/api/admin/suppliers/settlements/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: settlementId })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '지급 이력 삭제 실패');
+                return;
+            }
+            showMallToast('지급 이력이 삭제되었습니다.');
+            await loadAdminSalesSummary();
+        } catch (err) {
+            alert('지급 이력 삭제 오류: ' + err.message);
+        }
+    }
+
+    function renderAdminSuppliersTable() {
+        const list = Array.isArray(adminSuppliers) ? adminSuppliers : [];
+        const badge = document.getElementById('adminSuppliersListBadge');
+        if (badge) badge.innerText = `${list.length}곳`;
+        const tbody = document.getElementById('adminSuppliersTbody');
+        if (!tbody) return;
+        const esc = window.mallEscapeHtml;
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--ax-text-muted); padding:24px;">등록된 매입업체가 없습니다. 위 양식에서 첫 매입업체를 등록하세요.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(s => {
+            const contact = [s.contact_name, s.phone].filter(Boolean).join(' · ') || '-';
+            const bank = [s.bank_name, s.bank_account, s.bank_holder].filter(Boolean).join(' ') || '-';
+            return `
+                <tr>
+                    <td><strong>${esc(s.name)}</strong></td>
+                    <td class="ax-num">${esc(contact)}</td>
+                    <td class="ax-num">${esc(bank)}</td>
+                    <td style="color:var(--ax-text-secondary);">${esc(s.memo || '-')}</td>
+                    <td>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" data-sup-id="${Number(s.id)}" onclick="editAdminSupplier(Number(this.dataset.supId))" class="ax-btn ax-btn-charcoal ax-btn-sm">수정</button>
+                            <button type="button" data-sup-id="${Number(s.id)}" onclick="deleteAdminSupplier(Number(this.dataset.supId))" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
+                        </div>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
+
+    function resetAdminSupplierForm() {
+        const titleEl = document.getElementById('supplierFormModeTitle');
+        if (titleEl) titleEl.innerText = '신규 매입업체 등록';
+        const btn = document.getElementById('btnSaveSupplier');
+        if (btn) btn.innerText = '매입업체 저장';
+        ['supEditId', 'supName', 'supContactName', 'supPhone', 'supBankName', 'supBankAccount', 'supBankHolder', 'supMemo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+    }
+
+    function editAdminSupplier(supId) {
+        const s = (adminSuppliers || []).find(item => Number(item.id) === Number(supId));
+        if (!s) return;
+        const titleEl = document.getElementById('supplierFormModeTitle');
+        if (titleEl) titleEl.innerText = `매입업체 수정: ${s.name}`;
+        const btn = document.getElementById('btnSaveSupplier');
+        if (btn) btn.innerText = '업체 정보 수정';
+        document.getElementById('supEditId').value = String(s.id);
+        document.getElementById('supName').value = s.name || '';
+        document.getElementById('supContactName').value = s.contact_name || '';
+        document.getElementById('supPhone').value = s.phone || '';
+        document.getElementById('supBankName').value = s.bank_name || '';
+        document.getElementById('supBankAccount').value = s.bank_account || '';
+        document.getElementById('supBankHolder').value = s.bank_holder || '';
+        document.getElementById('supMemo').value = s.memo || '';
+        document.getElementById('supName').focus();
+    }
+
+    async function saveAdminSupplier(e) {
+        e.preventDefault();
+        const editId = document.getElementById('supEditId')?.value || '';
+        const name = document.getElementById('supName')?.value.trim() || '';
+        if (!name) {
+            alert('매입업체명을 입력해 주세요.');
+            return;
+        }
+        const payload = {
+            id: editId ? Number(editId) : 0,
+            name,
+            contact_name: document.getElementById('supContactName')?.value.trim() || '',
+            phone: document.getElementById('supPhone')?.value.trim() || '',
+            bank_name: document.getElementById('supBankName')?.value.trim() || '',
+            bank_account: document.getElementById('supBankAccount')?.value.trim() || '',
+            bank_holder: document.getElementById('supBankHolder')?.value.trim() || '',
+            memo: document.getElementById('supMemo')?.value.trim() || '',
+            is_active: 1
+        };
+        const btn = document.getElementById('btnSaveSupplier');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/suppliers/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '매입업체 저장 실패');
+                return;
+            }
+            adminSuppliers = data.suppliers || [];
+            populateSupplierSelects();
+            resetAdminSupplierForm();
+            showMallToast(editId ? '매입업체 정보가 수정되었습니다.' : '새 매입업체가 등록되었습니다.');
+            if (adminSalesData) {
+                await loadAdminSalesSummary();
+            }
+        } catch (err) {
+            alert('매입업체 저장 오류: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function deleteAdminSupplier(supId) {
+        const s = (adminSuppliers || []).find(item => Number(item.id) === Number(supId));
+        if (!confirm(`[${s ? s.name : supId}] 매입업체를 삭제하시겠습니까?\n연결된 상품의 업체 정보는 미지정으로 변경되며, 기존 주문 스냅샷 기록은 유지됩니다.`)) {
+            return;
+        }
+        try {
+            const res = await fetch('/api/admin/suppliers/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: supId })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '매입업체 삭제 실패');
+                return;
+            }
+            adminSuppliers = data.suppliers || [];
+            adminProducts.forEach(p => {
+                if (Number(p.supplier_id) === Number(supId)) {
+                    p.supplier_id = null;
+                    p.supplier_name = '';
+                }
+            });
+            populateSupplierSelects();
+            renderAdminProductsList();
+            if (Number(document.getElementById('supEditId')?.value || 0) === Number(supId)) {
+                resetAdminSupplierForm();
+            }
+            showMallToast('매입업체가 삭제되었습니다.');
+            if (adminSalesData) {
+                await loadAdminSalesSummary();
+            }
+        } catch (err) {
+            alert('매입업체 삭제 오류: ' + err.message);
+        }
+    }
+
     document.addEventListener('keydown', (ev) => {
         if (ev.key === 'Escape') {
             closeAdminProductModal();
@@ -1985,6 +2817,11 @@
         }
         rebuildCategoryLabelsMap();
         populateCategorySelects();
+        populateSupplierSelects();
+        const settlePaidEl = document.getElementById('settlePaidAt');
+        if (settlePaidEl && !settlePaidEl.value) {
+            settlePaidEl.value = _formatIsoLocalDate(new Date());
+        }
         renderAdminCategoriesTable();
         renderAdminProductsList();
         renderAdminOrdersPanel();
