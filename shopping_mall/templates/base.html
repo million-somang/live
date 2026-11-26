@@ -5,10 +5,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}골라방 LIVE — 공식 온라인 스토어{% endblock %}</title>
+    {% block og_meta %}
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ store_info.brand_name or '골라방 LIVE' }}">
+    <meta property="og:title" content="{{ store_info.brand_name or '골라방 LIVE' }} — 공식 온라인 스토어">
+    <meta property="og:description" content="{{ store_info.brand_name or '골라방 LIVE' }} 공식 온라인 스토어에서 엄선된 상품을 만나보세요.">
+    <meta property="og:image" content="{{ og_default_image_url }}">
+    <meta property="og:url" content="{{ mall_abs_url(request.path) }}">
+    {% endblock %}
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261124e">
+    <link rel="stylesheet" href="/static/css/astryx_mall.css?v=20261126m5">
     {% block extra_head %}{% endblock %}
 </head>
 
@@ -119,13 +127,17 @@
                     <span class="ax-cart-badge" id="navCartBadge">0</span>
                 </a>
                 {% if current_mall_user %}
-                <a href="/orders" class="ax-util-btn ax-hide-mobile">
+                {% if active_nav == 'mypage' %}
+                <a href="/mypage" id="navMyPageLink" class="ax-util-btn ax-util-btn-active ax-nav-user-pill" title="마이페이지">
+                {% else %}
+                <a href="/mypage" id="navMyPageLink" class="ax-util-btn ax-nav-user-pill" title="마이페이지">
+                {% endif %}
                     <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="8" r="4" />
                         <path d="M20 21a8 8 0 0 0-16 0" />
                     </svg>
-                    <span>{{ current_mall_user.name }}님</span>
+                    <span class="ax-nav-user-name">{{ current_mall_user.name }}님</span>
                 </a>
                 {% if current_mall_user.role == 'ADMIN' %}
                 <a href="/admin" class="ax-util-btn ax-util-btn-indigo" title="쇼핑몰 관리자">
@@ -185,6 +197,7 @@
             <div id="instantBuyItemSummary" class="ax-surface-muted"
                 style="margin-bottom:12px; display:flex; gap:12px; align-items:center;">
             </div>
+            <div id="ibShippingGuide" class="ax-shipping-guide ax-is-hidden" aria-live="polite"></div>
             <div id="ibOptionQtyRow" class="ax-surface-muted"
                 style="display:none; grid-template-columns:1fr 96px; gap:10px; margin-bottom:14px; background:#fff;">
                 <div>
@@ -199,6 +212,15 @@
                 </div>
             </div>
             <form id="instantBuyForm" onsubmit="submitInstantBuyOrder(event)">
+                {% if current_mall_user %}
+                <div id="ibAddressBookBar" class="ax-address-picker-bar ax-is-hidden">
+                    <div class="ax-address-picker-head">
+                        <label class="ax-label" for="ibAddressBookSelect">저장된 배송지 불러오기</label>
+                        <a href="/mypage" class="ax-auth-link-accent">배송지 관리</a>
+                    </div>
+                    <select id="ibAddressBookSelect" class="ax-select ax-select-compact"></select>
+                </div>
+                {% endif %}
                 <div class="ax-form-row-2">
                     <div class="ax-field">
                         <label class="ax-label" for="ibBuyerName">수령인 성함 *</label>
@@ -212,7 +234,11 @@
                     </div>
                 </div>
                 <div class="ax-field">
-                    <label class="ax-label" for="ibAddress">배송지 주소 *</label>
+                    <label class="ax-label" for="ibZipcode">배송지 주소 *</label>
+                    <div class="ax-postcode-row">
+                        <input type="text" id="ibZipcode" name="zipcode" class="ax-input ax-num ax-postcode-input" maxlength="10" inputmode="numeric" placeholder="우편번호" value="{{ current_mall_user.zipcode if current_mall_user else '' }}">
+                        <button type="button" id="btnIbPostcode" class="ax-btn ax-btn-secondary ax-btn-sm" data-zip-id="ibZipcode" data-addr-id="ibAddress" data-detail-id="ibAddressDetail" onclick="openMallPostcodeSearch(this.dataset)">우편번호 검색</button>
+                    </div>
                     <input type="text" id="ibAddress" class="ax-input" placeholder="도로명 또는 지번 주소 입력"
                         value="{{ current_mall_user.address if current_mall_user else '' }}" required
                         style="margin-bottom:6px;">
@@ -232,22 +258,60 @@
                     <label class="ax-label" for="ibMemo">배송 요청사항</label>
                     <input type="text" id="ibMemo" class="ax-input" placeholder="예: 문 앞에 놓아주세요 (당일출고 요청)">
                 </div>
-                <div class="ax-field">
-                    <label class="ax-label" for="ibPaymentMethod">결제 수단 (계좌입금 전용)</label>
-                    <select id="ibPaymentMethod" class="ax-select" style="font-weight:700;">
-                        <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{
-                            store_info.bank_holder }})</option>
-                    </select>
-                    <div class="ax-bank-box" style="margin-top:8px;">
-                        <div>
-                            <div style="font-size:0.74rem; font-weight:700; color:var(--ax-warning);">입금 계좌 안내 (택배비
-                                4,000원 포함 금액 입금)</div>
-                            <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;"
-                                class="ax-num">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{
-                                    store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
+                <div class="ax-promo-box">
+                    <div class="ax-field">
+                        <label class="ax-label" for="ibCouponCode">쿠폰 / 프로모션 코드</label>
+                        <div class="ax-coupon-row">
+                            <input type="text" id="ibCouponCode" class="ax-input" maxlength="40" placeholder="쿠폰 코드 입력 (예: WELCOME3000)">
+                            <button type="button" id="btnIbApplyCoupon" class="ax-btn ax-btn-charcoal ax-btn-sm">적용</button>
+                            <button type="button" id="btnIbClearCoupon" class="ax-btn ax-btn-secondary ax-btn-sm ax-is-hidden">해제</button>
                         </div>
-                        <button type="button" onclick="copyMallBankAccount()"
-                            class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
+                        <div id="ibCouponMessage" class="ax-promo-feedback"></div>
+                    </div>
+                    <div id="ibPointsBox" class="ax-field ax-is-hidden">
+                        <label class="ax-label" for="ibPointsUsed">적립금(포인트) 사용 · 보유 <strong id="ibAvailablePoints" class="ax-num">0P</strong></label>
+                        <div class="ax-points-row">
+                            <input type="number" id="ibPointsUsed" class="ax-input ax-num" min="0" step="100" value="0" placeholder="사용할 포인트">
+                            <button type="button" id="btnIbUseAllPoints" class="ax-btn ax-btn-secondary ax-btn-sm">전액 사용</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="ibPaymentMethod">결제 수단</label>
+                    <select id="ibPaymentMethod" name="payment_method" class="ax-select">
+                        <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{ store_info.bank_holder }})</option>
+                        <option value="PORTONE_V2">포트원 V2 간편결제 / 카드</option>
+                        <option value="TOSS_PAYMENTS">토스페이먼츠 간편결제 / 카드</option>
+                    </select>
+                    <div id="ibBankExtras" class="ax-bank-extras-box">
+                        <div class="ax-bank-box">
+                            <div>
+                                <div id="ibBankShippingNotice" style="font-size:0.74rem; font-weight:700; color:var(--ax-warning);">입금 계좌 안내 (배송비 포함 금액 입금)</div>
+                                <div style="font-size:0.9rem; font-weight:800; color:var(--ax-text-primary); margin-top:2px;"
+                                    class="ax-num">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{
+                                        store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
+                            </div>
+                            <button type="button" onclick="copyMallBankAccount()"
+                                class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
+                        </div>
+                        <div class="ax-form-row-2 ax-mt-12">
+                            <div class="ax-field">
+                                <label class="ax-label" for="ibDepositorName">입금자명</label>
+                                <input type="text" id="ibDepositorName" name="depositor_name" class="ax-input" maxlength="60" placeholder="미입력 시 수령인 성함으로 확인">
+                            </div>
+                            <div class="ax-field">
+                                <label class="ax-label" for="ibCashReceiptType">현금영수증 신청</label>
+                                <select id="ibCashReceiptType" name="cash_receipt_type" class="ax-select">
+                                    <option value="NONE" selected>신청안함</option>
+                                    <option value="INCOME">소득공제 (휴대폰)</option>
+                                    <option value="EXPENSE">지출증빙 (사업자번호)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="ibCashReceiptNoWrap" class="ax-field ax-is-hidden">
+                            <label class="ax-label" for="ibCashReceiptNo">현금영수증 발급번호 *</label>
+                            <input type="text" id="ibCashReceiptNo" name="cash_receipt_no" class="ax-input ax-num" maxlength="32" placeholder="휴대폰 번호 또는 사업자등록번호 입력">
+                        </div>
                     </div>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:18px;">
@@ -262,6 +326,18 @@
 
     <div id="mallToastContainer" aria-live="polite"></div>
 
+    <!-- 최근 본 상품 플로팅 바 (데스크톱 좌측 하단 고정 / 모바일 푸터 상단 가로 스크롤) -->
+    <aside id="mallRecentViewedBar" class="ax-recent-bar ax-is-hidden" aria-label="최근 본 상품">
+        <div class="ax-recent-bar-head">
+            <span class="ax-recent-bar-title">최근 본 상품</span>
+            <div class="ax-recent-bar-actions">
+                <button type="button" id="btnToggleRecentBar" class="ax-recent-bar-btn" aria-label="최근 본 상품 접기">접기</button>
+                <button type="button" id="btnClearRecentBar" class="ax-recent-bar-btn" aria-label="최근 본 상품 비우기">비우기</button>
+            </div>
+        </div>
+        <div id="mallRecentViewedList" class="ax-recent-list"></div>
+    </aside>
+
     <footer class="ax-footer">
         <div class="ax-container">
             <div class="ax-footer-top">
@@ -273,6 +349,7 @@
                 <div class="ax-footer-links" aria-label="스토어 바로가기">
                     <a href="/">스토어 홈</a>
                     <a href="/orders">주문/배송 조회</a>
+                    <a href="/cs">고객센터 (Q&amp;A·공지·FAQ)</a>
                     <a href="/wishlist">찜목록</a>
                     <a href="/cart">장바구니</a>
                     <a href="/admin">스토어 어드민</a>
@@ -315,6 +392,7 @@
                     <div class="ax-footer-cs-hours">{{ store_info.cs_hours }}</div>
                     <div class="ax-footer-cs-actions">
                         <a href="/orders" class="ax-btn ax-btn-secondary ax-btn-sm">주문/배송 · 교환·반품 조회</a>
+                        <a href="/cs" class="ax-btn ax-btn-primary ax-btn-sm">고객센터 · 1:1 문의</a>
                         <a href="/policy/guide" class="ax-btn ax-btn-secondary ax-btn-sm">이용·배송 안내</a>
                     </div>
                 </div>
@@ -415,24 +493,215 @@
 
     <div id="mallBaseBootstrap" hidden
         data-logged-in="{{ (True if current_mall_user else False) | tojson | forceescape }}"
+        data-points-balance="{{ (current_mall_user.points_balance if current_mall_user and current_mall_user.points_balance is defined else 0) | int | tojson | forceescape }}"
+        data-point-earn-rate="{{ (store_info.point_earn_rate if store_info.point_earn_rate is defined and store_info.point_earn_rate is not none else 1) | tojson | forceescape }}"
         data-live-order-token="{{ (live_order_token or '') | tojson | forceescape }}"
         data-is-live="{{ (live_state.is_live if live_state else false) | tojson | forceescape }}"
         data-wishlist-nums="{{ (user_wishlist_nums or []) | tojson | forceescape }}"
-        data-bank-name="{{ (store_info.bank_name or '카카오뱅크') | tojson | forceescape }}"
-        data-bank-account="{{ (store_info.bank_account or '3333 233 094904') | tojson | forceescape }}"
-        data-bank-holder="{{ (store_info.bank_holder or '박창현') | tojson | forceescape }}"></div>
+        data-bank-name="{{ (store_info.bank_name or '') | tojson | forceescape }}"
+        data-bank-account="{{ (store_info.bank_account or '') | tojson | forceescape }}"
+        data-bank-holder="{{ (store_info.bank_holder or '') | tojson | forceescape }}"
+        data-shipping-fee="{{ (store_info.shipping_fee if store_info.shipping_fee is defined and store_info.shipping_fee is not none else 4000) | int | tojson | forceescape }}"
+        data-free-shipping-threshold="{{ (store_info.free_shipping_threshold if store_info.free_shipping_threshold is defined and store_info.free_shipping_threshold is not none else 0) | int | tojson | forceescape }}"></div>
 
     <script>
         const MALL_CART_KEY = 'gollabang_mall_cart_v1';
+        const MALL_CHECKOUT_ITEMS_KEY = 'gollabang_mall_checkout_items_v1';
+        const MALL_RECENT_KEY = 'gollabang_mall_recent_v1';
         const MALL_WISHLIST_KEY = 'golabang_mall_wishlist_v1';
         const __baseBootEl = document.getElementById('mallBaseBootstrap');
         window.__MALL_USER_LOGGED_IN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.loggedIn || 'false') : false;
+        window.__MALL_USER_POINTS__ = __baseBootEl ? Math.max(0, Number(JSON.parse(__baseBootEl.dataset.pointsBalance || '0')) || 0) : 0;
         window.__LIVE_ORDER_TOKEN__ = __baseBootEl ? JSON.parse(__baseBootEl.dataset.liveOrderToken || '""') : '';
         let __mallWishlistNums = __baseBootEl ? JSON.parse(__baseBootEl.dataset.wishlistNums || '[]') : [];
         const __mallBankInfo = {
-            name: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankName || '"카카오뱅크"') : '카카오뱅크',
-            account: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankAccount || '"3333 233 094904"') : '3333 233 094904',
-            holder: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankHolder || '"박창현"') : '박창현'
+            name: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankName || '""') : '',
+            account: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankAccount || '""') : '',
+            holder: __baseBootEl ? JSON.parse(__baseBootEl.dataset.bankHolder || '""') : ''
+        };
+        const __mallShippingConfig = {
+            shipping_fee: __baseBootEl ? Math.max(0, Number(JSON.parse(__baseBootEl.dataset.shippingFee || '4000')) || 0) : 4000,
+            free_shipping_threshold: __baseBootEl ? Math.max(0, Number(JSON.parse(__baseBootEl.dataset.freeShippingThreshold || '0')) || 0) : 0,
+            point_earn_rate: __baseBootEl ? Math.max(0, Number(JSON.parse(__baseBootEl.dataset.pointEarnRate || '1')) || 0) : 1
+        };
+        window.getMallShippingConfig = function () {
+            return {
+                shipping_fee: __mallShippingConfig.shipping_fee,
+                free_shipping_threshold: __mallShippingConfig.free_shipping_threshold
+            };
+        };
+        window.getMallPointEarnRate = function () {
+            return Math.max(0, Number(__mallShippingConfig.point_earn_rate) || 0);
+        };
+        window.updateMallStoreConfig = function (storeInfo) {
+            if (!storeInfo || typeof storeInfo !== 'object') return;
+            if (storeInfo.bank_name) __mallBankInfo.name = String(storeInfo.bank_name);
+            if (storeInfo.bank_account) __mallBankInfo.account = String(storeInfo.bank_account);
+            if (storeInfo.bank_holder) __mallBankInfo.holder = String(storeInfo.bank_holder);
+            if (storeInfo.shipping_fee !== undefined && storeInfo.shipping_fee !== null && String(storeInfo.shipping_fee).trim() !== '') {
+                const feeNum = Number(storeInfo.shipping_fee);
+                if (Number.isFinite(feeNum) && feeNum >= 0) {
+                    __mallShippingConfig.shipping_fee = Math.round(feeNum);
+                }
+            }
+            if (storeInfo.free_shipping_threshold !== undefined && storeInfo.free_shipping_threshold !== null && String(storeInfo.free_shipping_threshold).trim() !== '') {
+                const thNum = Number(storeInfo.free_shipping_threshold);
+                if (Number.isFinite(thNum) && thNum >= 0) {
+                    __mallShippingConfig.free_shipping_threshold = Math.round(thNum);
+                }
+            }
+            if (storeInfo.point_earn_rate !== undefined && storeInfo.point_earn_rate !== null && String(storeInfo.point_earn_rate).trim() !== '') {
+                const rateNum = Number(storeInfo.point_earn_rate);
+                if (Number.isFinite(rateNum) && rateNum >= 0 && rateNum <= 100) {
+                    __mallShippingConfig.point_earn_rate = rateNum;
+                }
+            }
+        };
+        window.calculateMallShippingFee = function (subtotal) {
+            const sub = Math.max(0, Math.round(Number(subtotal) || 0));
+            if (sub <= 0) return 0;
+            const fee = Math.max(0, Math.round(Number(__mallShippingConfig.shipping_fee) || 0));
+            const threshold = Math.max(0, Math.round(Number(__mallShippingConfig.free_shipping_threshold) || 0));
+            if (threshold > 0 && sub >= threshold) return 0;
+            return fee;
+        };
+        window.getMallShippingGuide = function (subtotal) {
+            const sub = Math.max(0, Math.round(Number(subtotal) || 0));
+            const baseFee = Math.max(0, Math.round(Number(__mallShippingConfig.shipping_fee) || 0));
+            const threshold = Math.max(0, Math.round(Number(__mallShippingConfig.free_shipping_threshold) || 0));
+            const shipFee = window.calculateMallShippingFee(sub);
+            const remaining = (sub > 0 && baseFee > 0 && threshold > 0 && sub < threshold) ? (threshold - sub) : 0;
+            return {
+                subtotal: sub,
+                shipping_fee: shipFee,
+                base_shipping_fee: baseFee,
+                free_shipping_threshold: threshold,
+                is_free: sub > 0 && shipFee === 0,
+                remaining_for_free: remaining
+            };
+        };
+        window.renderMallShippingGuideBox = function (el, subtotal) {
+            if (!el) return;
+            const guide = window.getMallShippingGuide(subtotal);
+            el.classList.remove('ax-callout-indigo', 'ax-callout-success', 'ax-is-hidden');
+            if (guide.subtotal <= 0) {
+                el.classList.add('ax-is-hidden');
+                el.innerHTML = '';
+                return;
+            }
+            if (guide.remaining_for_free > 0) {
+                el.classList.add('ax-callout-indigo');
+                el.innerHTML = `<strong>${guide.remaining_for_free.toLocaleString()}원</strong> 더 담으면 무료배송! <span class="ax-shipping-guide-sub">(${guide.free_shipping_threshold.toLocaleString()}원 이상 무료배송)</span>`;
+                return;
+            }
+            if (guide.is_free) {
+                el.classList.add('ax-callout-success');
+                const subTxt = (guide.base_shipping_fee > 0 && guide.free_shipping_threshold > 0)
+                    ? `<span class="ax-shipping-guide-sub">(${guide.free_shipping_threshold.toLocaleString()}원 이상 무료배송)</span>`
+                    : '';
+                el.innerHTML = `<strong>무료배송 적용 (0원)</strong>${subTxt}`;
+                return;
+            }
+            el.classList.add('ax-is-hidden');
+            el.innerHTML = '';
+        };
+        let __daumPostcodeLoadPromise = null;
+        function _ensureDaumPostcodeSdk() {
+            if (window.daum && typeof window.daum.Postcode === 'function') {
+                return Promise.resolve(true);
+            }
+            if (__daumPostcodeLoadPromise) return __daumPostcodeLoadPromise;
+            __daumPostcodeLoadPromise = new Promise((resolve) => {
+                let settled = false;
+                const done = (ok) => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(ok);
+                };
+                const existing = document.querySelector('script[data-mall-daum-postcode="1"]');
+                if (existing) {
+                    const checkTimer = setTimeout(() => done(Boolean(window.daum && typeof window.daum.Postcode === 'function')), 2500);
+                    existing.addEventListener('load', () => {
+                        clearTimeout(checkTimer);
+                        done(Boolean(window.daum && typeof window.daum.Postcode === 'function'));
+                    }, { once: true });
+                    existing.addEventListener('error', () => {
+                        clearTimeout(checkTimer);
+                        done(false);
+                    }, { once: true });
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = 'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+                script.async = true;
+                script.setAttribute('data-mall-daum-postcode', '1');
+                const timer = setTimeout(() => {
+                    done(Boolean(window.daum && typeof window.daum.Postcode === 'function'));
+                }, 2500);
+                script.onload = () => {
+                    clearTimeout(timer);
+                    done(Boolean(window.daum && typeof window.daum.Postcode === 'function'));
+                };
+                script.onerror = () => {
+                    clearTimeout(timer);
+                    done(false);
+                };
+                document.head.appendChild(script);
+            }).then((ok) => {
+                if (!ok) __daumPostcodeLoadPromise = null;
+                return ok;
+            });
+            return __daumPostcodeLoadPromise;
+        }
+        window.openMallPostcodeSearch = async function (opts) {
+            const cfg = opts || {};
+            const zipId = cfg.zipId || cfg.zipcodeId || '';
+            const addrId = cfg.addrId || cfg.addressId || '';
+            const detailId = cfg.detailId || '';
+            const zipEl = zipId ? document.getElementById(zipId) : null;
+            const addrEl = addrId ? document.getElementById(addrId) : null;
+            const detailEl = detailId ? document.getElementById(detailId) : null;
+            const sdkReady = await _ensureDaumPostcodeSdk();
+            if (!sdkReady || !(window.daum && typeof window.daum.Postcode === 'function')) {
+                showMallToast('우편번호 검색 서비스를 불러올 수 없습니다. 우편번호와 주소를 직접 입력해 주세요.');
+                if (zipEl) zipEl.focus();
+                else if (addrEl) addrEl.focus();
+                return false;
+            }
+            try {
+                new window.daum.Postcode({
+                    oncomplete: function (data) {
+                        const zonecode = String((data && data.zonecode) || '').trim();
+                        let addr = '';
+                        if (data && data.userSelectedType === 'R') {
+                            addr = data.roadAddress || data.address || '';
+                        } else if (data) {
+                            addr = data.jibunAddress || data.address || '';
+                        }
+                        if (data && data.userSelectedType === 'R') {
+                            const extras = [];
+                            if (data.bname && /[동|로|가]$/.test(data.bname)) extras.push(data.bname);
+                            if (data.buildingName && data.apartment === 'Y') extras.push(data.buildingName);
+                            if (extras.length > 0) addr += ` (${extras.join(', ')})`;
+                        }
+                        if (zipEl && zonecode) {
+                            zipEl.value = zonecode;
+                            zipEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        if (addrEl && addr) {
+                            addrEl.value = addr;
+                            addrEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        if (detailEl) detailEl.focus();
+                    }
+                }).open();
+                return true;
+            } catch (e) {
+                showMallToast('우편번호 검색 서비스를 불러올 수 없습니다. 우편번호와 주소를 직접 입력해 주세요.');
+                if (zipEl) zipEl.focus();
+                else if (addrEl) addrEl.focus();
+                return false;
+            }
         };
         let pendingInstantBuyItem = null;
 
@@ -576,9 +845,20 @@
         };
 
         window.mallEscapeHtml = function (text) {
-            const div = document.createElement('div');
-            div.textContent = text == null ? '' : String(text);
-            return div.innerHTML;
+            return String(text == null ? '' : text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        };
+
+        window.mallSafeImageUrl = function (url) {
+            const raw = String(url == null ? '' : url).trim();
+            if (!raw) return '';
+            if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+            if (/^https?:\/\//i.test(raw)) return raw;
+            return '';
         };
 
         function getMallCart() {
@@ -591,9 +871,12 @@
             }
         }
 
-        function saveMallCart(items) {
+        function saveMallCart(items, opts) {
             try {
                 localStorage.setItem(MALL_CART_KEY, JSON.stringify(items || []));
+                if (!(opts && opts.preserveCheckoutSelection)) {
+                    sessionStorage.removeItem(MALL_CHECKOUT_ITEMS_KEY);
+                }
             } catch (e) { }
             updateNavCartBadge();
         }
@@ -622,6 +905,7 @@
                 existing.price = Number(item.price || existing.price || 0);
                 existing.name = item.name || existing.name;
                 existing.image_url = item.image_url || existing.image_url;
+                existing.selected = true;
             } else {
                 cart.push({
                     num: Number(item.num),
@@ -631,12 +915,77 @@
                     image_url: item.image_url || '',
                     color: color,
                     size: size,
-                    quantity: qty
+                    quantity: qty,
+                    selected: true
                 });
             }
             saveMallCart(cart);
             showMallToast(`[${item.name} (${color}/${size}) ${qty}개] 장바구니에 담았습니다.`);
         }
+
+        window.getMallRecentProducts = function () {
+            try {
+                const raw = localStorage.getItem(MALL_RECENT_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                if (!Array.isArray(parsed)) return [];
+                return parsed.filter(it => it && Number(it.num) > 0).slice(0, 5);
+            } catch (e) {
+                return [];
+            }
+        };
+
+        window.recordMallRecentProduct = function (prod) {
+            if (!prod || !Number(prod.num)) return;
+            const num = Number(prod.num);
+            const entry = {
+                num: num,
+                name: String(prod.name || `상품 #${num}`),
+                price: Math.max(0, Number(prod.price || 0)),
+                image_url: window.mallSafeImageUrl ? window.mallSafeImageUrl(prod.image_url || '') : ''
+            };
+            const list = window.getMallRecentProducts().filter(it => Number(it.num) !== num);
+            list.unshift(entry);
+            try {
+                localStorage.setItem(MALL_RECENT_KEY, JSON.stringify(list.slice(0, 5)));
+            } catch (e) { }
+            window.renderMallRecentBar();
+        };
+
+        window.renderMallRecentBar = function () {
+            const bar = document.getElementById('mallRecentViewedBar');
+            const listEl = document.getElementById('mallRecentViewedList');
+            if (!bar || !listEl) return;
+            const p = window.location.pathname || '/';
+            if (p.startsWith('/admin') || p.startsWith('/live') || p.startsWith('/auth/') || p.startsWith('/checkout') || p.startsWith('/order-complete/')) {
+                bar.classList.add('ax-is-hidden');
+                listEl.innerHTML = '';
+                return;
+            }
+            const items = window.getMallRecentProducts();
+            if (!items || items.length === 0) {
+                bar.classList.add('ax-is-hidden');
+                listEl.innerHTML = '';
+                return;
+            }
+            const esc = window.mallEscapeHtml;
+            listEl.innerHTML = items.map(it => {
+                const safeNum = Number(it.num) || 0;
+                const safeImg = window.mallSafeImageUrl(it.image_url || '');
+                const thumbHtml = safeImg
+                    ? `<img src="${esc(safeImg)}" alt="" class="ax-recent-item-thumb">`
+                    : `<span class="ax-recent-item-thumb ax-recent-item-thumb-empty"><svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></span>`;
+                return `
+                    <a href="/product/${safeNum}" class="ax-recent-item">
+                        ${thumbHtml}
+                        <div class="ax-recent-item-info">
+                            <div class="ax-recent-item-name">${esc(it.name || '')}</div>
+                            <div class="ax-recent-item-price ax-num">${Number(it.price || 0).toLocaleString()}원</div>
+                        </div>
+                    </a>
+                `;
+            }).join('');
+            bar.classList.remove('ax-is-hidden');
+        };
 
         function showMallToast(msg) {
             const box = document.getElementById('mallToastContainer');
@@ -652,29 +1001,60 @@
             }, 2800);
         }
 
+        let __ibPromoState = { coupon_code: '', coupon_discount: 0, points_used: 0 };
+
+        function _computeIbEffectivePricing(subtotal) {
+            const sub = Math.max(0, Math.round(Number(subtotal) || 0));
+            const ship = window.calculateMallShippingFee(sub);
+            const cDisc = Math.min(sub, Math.max(0, Math.round(Number(__ibPromoState.coupon_discount) || 0)));
+            const maxPts = window.__MALL_USER_LOGGED_IN__
+                ? Math.min(window.__MALL_USER_POINTS__ || 0, Math.max(0, sub - cDisc))
+                : 0;
+            const rawPts = Math.max(0, Math.round(Number(__ibPromoState.points_used) || 0));
+            const ptsUsed = Math.min(maxPts, rawPts);
+            __ibPromoState.points_used = ptsUsed;
+            const total = Math.max(0, sub - cDisc - ptsUsed) + ship;
+            const rate = window.getMallPointEarnRate ? window.getMallPointEarnRate() : 1;
+            const earned = window.__MALL_USER_LOGGED_IN__ ? Math.floor(sub * rate / 100 + 1e-9) : 0;
+            return { sub, ship, cDisc, ptsUsed, total, earned, maxPts };
+        }
+
         function renderInstantBuySummary() {
             if (!pendingInstantBuyItem) return;
             const item = pendingInstantBuyItem;
             const sumEl = document.getElementById('instantBuyItemSummary');
             const subtotal = (Number(item.price) || 0) * (Number(item.quantity) || 1);
-            const ship = 4000;
-            const total = subtotal + ship;
-            const imgHtml = item.image_url
-                ? `<img src="${item.image_url}" alt="" style="width:60px; height:60px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
+            const p = _computeIbEffectivePricing(subtotal);
+            const shipText = p.ship === 0 ? '무료배송 0원' : `택배비 ${p.ship.toLocaleString()}원`;
+            const discParts = [];
+            if (p.cDisc > 0) discParts.push(`쿠폰 -${p.cDisc.toLocaleString()}원`);
+            if (p.ptsUsed > 0) discParts.push(`포인트 -${p.ptsUsed.toLocaleString()}P`);
+            const discTxt = discParts.length > 0 ? ` · ${discParts.join(' · ')}` : '';
+            const earnTxt = p.earned > 0 ? ` <span class="ax-promo-summary-earn">(배송완료 시 +${p.earned.toLocaleString()}P 적립)</span>` : '';
+            const safeImg = window.mallSafeImageUrl(item.image_url);
+            const safeNum = Number(item.num) || 0;
+            const safeQty = Number(item.quantity) || 1;
+            const imgHtml = safeImg
+                ? `<img src="${window.mallEscapeHtml(safeImg)}" alt="" style="width:60px; height:60px; border-radius:10px; object-fit:cover; border:1px solid var(--ax-border-subtle); flex-shrink:0;">`
                 : `<div style="width:60px; height:60px; border-radius:10px; background:var(--ax-surface-tertiary); border:1px solid var(--ax-border-subtle); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted); flex-shrink:0;"><svg class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>`;
             if (sumEl) {
                 sumEl.innerHTML = `
                     ${imgHtml}
-                    <div style="flex:1; min-width:0;">
+                    <div style="flex:1; min-width:0; overflow-wrap:anywhere;">
                         <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-                            <span class="ax-code-chip">#${item.num}</span>
+                            <span class="ax-code-chip">#${safeNum}</span>
                             <span style="font-size:0.75rem; font-weight:700; color:var(--ax-accent-primary);">바로구매 상품</span>
                         </div>
-                        <div style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary);">${item.name}</div>
-                        <div style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">옵션: <strong>${item.color} / ${item.size}</strong> · 수량: <strong class="ax-num">${item.quantity}개</strong></div>
-                        <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-accent-primary); margin-top:4px;">총 결제금액: ${total.toLocaleString()}원 <span style="font-size:0.75rem; color:var(--ax-text-secondary); font-weight:600;">(상품 ${subtotal.toLocaleString()}원 + 택배비 4,000원)</span></div>
+                        <div style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary);">${window.mallEscapeHtml(item.name)}</div>
+                        <div style="font-size:0.8rem; color:var(--ax-text-secondary); margin-top:2px;">옵션: <strong>${window.mallEscapeHtml(item.color)} / ${window.mallEscapeHtml(item.size)}</strong> · 수량: <strong class="ax-num">${safeQty}개</strong></div>
+                        <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-accent-primary); margin-top:4px;">총 결제금액: ${p.total.toLocaleString()}원 <span style="font-size:0.75rem; color:var(--ax-text-secondary); font-weight:600;">(상품 ${p.sub.toLocaleString()}원${discTxt} + ${shipText})</span>${earnTxt}</div>
                     </div>
                 `;
+            }
+            window.renderMallShippingGuideBox(document.getElementById('ibShippingGuide'), p.sub);
+            const bankNoticeEl = document.getElementById('ibBankShippingNotice');
+            if (bankNoticeEl) {
+                bankNoticeEl.innerText = `입금 계좌 안내 (${p.ship === 0 ? '무료배송 적용' : `택배비 ${p.ship.toLocaleString()}원 포함`} 금액 입금)`;
             }
         }
 
@@ -725,7 +1105,7 @@
                 if (prodRow && prodSel && __instantBuyCatalogCache__.length > 1) {
                     prodSel.innerHTML = __instantBuyCatalogCache__.map((p, idx) => {
                         const pr = Number(p.price || 0);
-                        return `<option value="${idx}">#${p.num}번 ${p.name} (${pr.toLocaleString()}원)</option>`;
+                        return `<option value="${idx}">#${Number(p.num) || 0}번 ${window.mallEscapeHtml(p.name)} (${pr.toLocaleString()}원)</option>`;
                     }).join('');
                     prodRow.style.display = 'block';
                 }
@@ -768,8 +1148,64 @@
             }, 'MALL');
         }
 
+        let __ibSavedAddresses = [];
+        async function loadInstantBuyAddresses() {
+            if (!window.__MALL_USER_LOGGED_IN__) return;
+            const bar = document.getElementById('ibAddressBookBar');
+            const sel = document.getElementById('ibAddressBookSelect');
+            if (!bar || !sel) return;
+            try {
+                const res = await fetch('/api/mypage/addresses');
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok' || !Array.isArray(data.addresses) || data.addresses.length === 0) {
+                    bar.classList.add('ax-is-hidden');
+                    return;
+                }
+                __ibSavedAddresses = data.addresses;
+                sel.innerHTML = '<option value="">저장된 배송지 선택...</option>' + __ibSavedAddresses.map((a) => {
+                    const defTag = a.is_default ? '[기본] ' : '';
+                    const zipTxt = a.zipcode ? `[${a.zipcode}] ` : '';
+                    return `<option value="${Number(a.id)}">${window.mallEscapeHtml(defTag + (a.label || '배송지') + ' - ' + zipTxt + a.address)}</option>`;
+                }).join('');
+                bar.classList.remove('ax-is-hidden');
+                if (!sel.dataset.boundChange) {
+                    sel.dataset.boundChange = '1';
+                    sel.addEventListener('change', () => {
+                        const chosen = __ibSavedAddresses.find((x) => Number(x.id) === Number(sel.value));
+                        if (!chosen) return;
+                        const nmEl = document.getElementById('ibBuyerName');
+                        const phEl = document.getElementById('ibBuyerPhone');
+                        const zpEl = document.getElementById('ibZipcode');
+                        const adEl = document.getElementById('ibAddress');
+                        const dtEl = document.getElementById('ibAddressDetail');
+                        if (nmEl && chosen.recipient_name) nmEl.value = chosen.recipient_name;
+                        if (phEl && chosen.recipient_phone) phEl.value = chosen.recipient_phone;
+                        if (zpEl) zpEl.value = chosen.zipcode || '';
+                        if (adEl && chosen.address) adEl.value = chosen.address;
+                        if (dtEl) dtEl.value = chosen.address_detail || '';
+                    });
+                }
+            } catch (e) {}
+        }
+
         function openInstantBuyModal(item, sourcePage = 'LIVE') {
             pendingInstantBuyItem = Object.assign({}, item, { source_page: sourcePage });
+            __ibPromoState = { coupon_code: '', coupon_discount: 0, points_used: 0 };
+            const ibCInp = document.getElementById('ibCouponCode');
+            const ibCClear = document.getElementById('btnIbClearCoupon');
+            const ibCMsg = document.getElementById('ibCouponMessage');
+            const ibPtsBox = document.getElementById('ibPointsBox');
+            const ibPtsInp = document.getElementById('ibPointsUsed');
+            const ibAvailPts = document.getElementById('ibAvailablePoints');
+            if (ibCInp) ibCInp.value = '';
+            if (ibCClear) ibCClear.classList.add('ax-is-hidden');
+            if (ibCMsg) {
+                ibCMsg.textContent = '';
+                ibCMsg.className = 'ax-promo-feedback';
+            }
+            if (ibPtsInp) ibPtsInp.value = '0';
+            if (ibAvailPts) ibAvailPts.textContent = `${(window.__MALL_USER_POINTS__ || 0).toLocaleString()}P`;
+            if (ibPtsBox) ibPtsBox.classList.toggle('ax-is-hidden', !window.__MALL_USER_LOGGED_IN__);
             const optRow = document.getElementById('ibOptionQtyRow');
             const selEl = document.getElementById('ibOptionSelect');
             const qtyEl = document.getElementById('ibQtyInput');
@@ -780,19 +1216,26 @@
                 pendingInstantBuyItem.options = opts;
                 selEl.innerHTML = opts.map((o, idx) => {
                     const isSelected = (o.color === item.color && o.size === item.size);
-                    const disabled = Number(o.stock) <= 0 ? 'disabled' : '';
-                    const stockTxt = Number(o.stock) <= 0 ? ' - 품절' : ` (잔여 ${o.stock}개)`;
-                    return `<option value="${idx}" ${isSelected ? 'selected' : ''} ${disabled}>${o.color} / ${o.size}${stockTxt}</option>`;
+                    const optStock = Number(o.stock) || 0;
+                    const disabled = optStock <= 0 ? 'disabled' : '';
+                    const stockTxt = optStock <= 0 ? ' - 품절' : ` (잔여 ${optStock}개)`;
+                    return `<option value="${idx}" ${isSelected ? 'selected' : ''} ${disabled}>${window.mallEscapeHtml(o.color)} / ${window.mallEscapeHtml(o.size)}${stockTxt}</option>`;
                 }).join('');
                 qtyEl.value = String(Math.max(1, Number(item.quantity) || 1));
                 optRow.style.display = 'grid';
             }
             renderInstantBuySummary();
             try {
-                if (!window.__MALL_USER_LOGGED_IN__) {
+                if (window.__MALL_USER_LOGGED_IN__) {
+                    loadInstantBuyAddresses();
+                } else {
                     const savedBuyer = JSON.parse(localStorage.getItem('mall_last_buyer_v1') || '{}');
                     if (savedBuyer.name) document.getElementById('ibBuyerName').value = savedBuyer.name;
                     if (savedBuyer.phone) document.getElementById('ibBuyerPhone').value = savedBuyer.phone;
+                    if (savedBuyer.zipcode) {
+                        const zipEl = document.getElementById('ibZipcode');
+                        if (zipEl) zipEl.value = savedBuyer.zipcode;
+                    }
                     if (savedBuyer.address) document.getElementById('ibAddress').value = savedBuyer.address;
                     if (savedBuyer.address_detail) document.getElementById('ibAddressDetail').value = savedBuyer.address_detail;
                 }
@@ -850,12 +1293,22 @@
             const btn = document.getElementById('ibSubmitBtn');
             const buyer_name = document.getElementById('ibBuyerName').value.trim();
             const buyer_phone = document.getElementById('ibBuyerPhone').value.trim();
+            const zipcode = (document.getElementById('ibZipcode')?.value || '').trim();
             const address = document.getElementById('ibAddress').value.trim();
             const address_detail = document.getElementById('ibAddressDetail').value.trim();
             const delivery_memo = document.getElementById('ibMemo').value.trim();
             const payment_method = document.getElementById('ibPaymentMethod').value;
+            const depositor_name = (document.getElementById('ibDepositorName')?.value || '').trim();
+            const cash_receipt_type = (document.getElementById('ibCashReceiptType')?.value || 'NONE').trim();
+            const cash_receipt_no = (document.getElementById('ibCashReceiptNo')?.value || '').trim();
             const guestPwEl = document.getElementById('ibGuestPassword');
             const guest_password = guestPwEl ? guestPwEl.value.trim() : '';
+
+            if (payment_method === 'BANK' && cash_receipt_type !== 'NONE' && !cash_receipt_no) {
+                alert('현금영수증 발급번호를 입력해 주세요.');
+                document.getElementById('ibCashReceiptNo')?.focus();
+                return;
+            }
 
             if (!window.__MALL_USER_LOGGED_IN__ && guest_password.length < 4) {
                 alert('비회원 주문 조회 시 사용할 비밀번호를 4자 이상 입력해 주세요.');
@@ -865,7 +1318,7 @@
 
             try {
                 localStorage.setItem('mall_last_buyer_v1', JSON.stringify({
-                    name: buyer_name, phone: buyer_phone, address: address, address_detail: address_detail
+                    name: buyer_name, phone: buyer_phone, zipcode: zipcode, address: address, address_detail: address_detail
                 }));
             } catch (err) { }
 
@@ -880,11 +1333,17 @@
                     body: JSON.stringify({
                         buyer_name,
                         buyer_phone,
+                        zipcode,
                         address,
                         address_detail,
                         delivery_memo,
                         payment_method,
+                        depositor_name: payment_method === 'BANK' ? depositor_name : '',
+                        cash_receipt_type: payment_method === 'BANK' ? cash_receipt_type : 'NONE',
+                        cash_receipt_no: payment_method === 'BANK' && cash_receipt_type !== 'NONE' ? cash_receipt_no : '',
                         guest_password,
+                        coupon_code: __ibPromoState.coupon_code || '',
+                        points_used: window.__MALL_USER_LOGGED_IN__ ? Math.max(0, Number(__ibPromoState.points_used) || 0) : 0,
                         live_order_token: window.__LIVE_ORDER_TOKEN__ || '',
                         source_page: pendingInstantBuyItem.source_page || 'LIVE',
                         items: [{
@@ -911,12 +1370,13 @@
                         }));
                     }
                 } catch (e) { }
-                showMallToast(`주문 완료! 주문번호 [${data.order.order_code}] · 총 ${data.order.total_amount.toLocaleString()}원 (카카오뱅크 3333 233 094904 박창현)`);
+                showMallToast(`주문 완료! 주문번호 [${data.order.order_code}] · 총 ${data.order.total_amount.toLocaleString()}원 (${__mallBankInfo.name} ${__mallBankInfo.account} ${__mallBankInfo.holder})`);
                 if (typeof onLiveOrderCompleted === 'function') {
                     onLiveOrderCompleted(data.order);
                 } else if (orderSrc !== 'LIVE') {
+                    const nextUrl = data.redirect_url || ('/order-complete/' + encodeURIComponent(data.order.order_code));
                     setTimeout(() => {
-                        window.location.href = '/orders';
+                        window.location.href = nextUrl;
                     }, 900);
                 }
             } catch (err) {
@@ -978,6 +1438,23 @@
 
         document.addEventListener('DOMContentLoaded', async () => {
             updateNavCartBadge();
+            window.renderMallRecentBar();
+            const recentToggleBtn = document.getElementById('btnToggleRecentBar');
+            if (recentToggleBtn) {
+                recentToggleBtn.addEventListener('click', () => {
+                    const bar = document.getElementById('mallRecentViewedBar');
+                    if (!bar) return;
+                    const collapsed = bar.classList.toggle('is-collapsed');
+                    recentToggleBtn.textContent = collapsed ? '펼치기' : '접기';
+                });
+            }
+            const recentClearBtn = document.getElementById('btnClearRecentBar');
+            if (recentClearBtn) {
+                recentClearBtn.addEventListener('click', () => {
+                    try { localStorage.removeItem(MALL_RECENT_KEY); } catch (e) { }
+                    window.renderMallRecentBar();
+                });
+            }
             if (window.__MALL_USER_LOGGED_IN__) {
                 const guestNums = _getGuestWishlistNums();
                 if (guestNums.length > 0) {
@@ -1013,6 +1490,11 @@
                     es.addEventListener('live_state', (ev) => {
                         try { window.__mallApplyLiteState(JSON.parse(ev.data)); } catch (e) { }
                     });
+                    const _closeMallEs = () => {
+                        try { es.close(); } catch (e) { }
+                    };
+                    window.addEventListener('pagehide', _closeMallEs);
+                    window.addEventListener('beforeunload', _closeMallEs);
                 } catch (e) { }
             }
         });
@@ -1062,8 +1544,9 @@
                     return;
                 }
                 const listHtml = items.map((it, idx) => {
-                    const thumb = it.image_url
-                        ? `<img src="${esc(it.image_url)}" alt="" class="ax-search-suggest-thumb">`
+                    const safeImg = window.mallSafeImageUrl(it.image_url);
+                    const thumb = safeImg
+                        ? `<img src="${esc(safeImg)}" alt="" class="ax-search-suggest-thumb">`
                         : `<span class="ax-search-suggest-thumb ax-search-suggest-thumb-empty"><svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></span>`;
                     const discBadge = Number(it.discount_rate) > 0
                         ? `<span class="ax-discount-pct ax-num" style="font-size:0.74rem;">${Number(it.discount_rate)}%</span>`
@@ -1203,6 +1686,112 @@
                 }
             });
         }
+
+        (function initInstantBuyBankExtras() {
+            const pmSel = document.getElementById('ibPaymentMethod');
+            const bankExtras = document.getElementById('ibBankExtras');
+            const crSel = document.getElementById('ibCashReceiptType');
+            const crNoWrap = document.getElementById('ibCashReceiptNoWrap');
+            const crNoInput = document.getElementById('ibCashReceiptNo');
+            function syncIbPayUi() {
+                const isBank = !pmSel || pmSel.value === 'BANK';
+                if (bankExtras) bankExtras.classList.toggle('ax-is-hidden', !isBank);
+                const needsCrNo = isBank && crSel && crSel.value !== 'NONE';
+                if (crNoWrap) crNoWrap.classList.toggle('ax-is-hidden', !needsCrNo);
+                if (crNoInput) crNoInput.required = Boolean(needsCrNo);
+            }
+            if (pmSel) pmSel.addEventListener('change', syncIbPayUi);
+            if (crSel) crSel.addEventListener('change', syncIbPayUi);
+            syncIbPayUi();
+
+            const ibApplyBtn = document.getElementById('btnIbApplyCoupon');
+            const ibClearBtn = document.getElementById('btnIbClearCoupon');
+            const ibCouponInp = document.getElementById('ibCouponCode');
+            const ibCouponMsg = document.getElementById('ibCouponMessage');
+            const ibPtsInp = document.getElementById('ibPointsUsed');
+            const ibUseAllBtn = document.getElementById('btnIbUseAllPoints');
+
+            async function applyIbCoupon() {
+                if (!pendingInstantBuyItem) return;
+                const code = (ibCouponInp?.value || '').trim().toUpperCase();
+                if (!code) {
+                    if (ibCouponMsg) {
+                        ibCouponMsg.textContent = '쿠폰 코드를 입력해 주세요.';
+                        ibCouponMsg.className = 'ax-promo-feedback is-err';
+                    }
+                    return;
+                }
+                const sub = (Number(pendingInstantBuyItem.price) || 0) * (Number(pendingInstantBuyItem.quantity) || 1);
+                try {
+                    const res = await fetch('/api/coupons/validate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            code,
+                            subtotal: sub,
+                            source_page: pendingInstantBuyItem.source_page || 'LIVE'
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.valid) {
+                        __ibPromoState.coupon_code = '';
+                        __ibPromoState.coupon_discount = 0;
+                        if (ibClearBtn) ibClearBtn.classList.add('ax-is-hidden');
+                        if (ibCouponMsg) {
+                            ibCouponMsg.textContent = (data && data.message) || '사용할 수 없는 쿠폰입니다.';
+                            ibCouponMsg.className = 'ax-promo-feedback is-err';
+                        }
+                        renderInstantBuySummary();
+                        return;
+                    }
+                    __ibPromoState.coupon_code = data.coupon ? data.coupon.code : code;
+                    __ibPromoState.coupon_discount = Number(data.discount_amount || 0);
+                    if (ibCouponInp) ibCouponInp.value = __ibPromoState.coupon_code;
+                    if (ibClearBtn) ibClearBtn.classList.remove('ax-is-hidden');
+                    if (ibCouponMsg) {
+                        ibCouponMsg.textContent = `적용 완료 (-${__ibPromoState.coupon_discount.toLocaleString()}원)`;
+                        ibCouponMsg.className = 'ax-promo-feedback is-ok';
+                    }
+                    renderInstantBuySummary();
+                } catch (err) {
+                    if (ibCouponMsg) {
+                        ibCouponMsg.textContent = '쿠폰 검증 요청 중 오류가 발생했습니다.';
+                        ibCouponMsg.className = 'ax-promo-feedback is-err';
+                    }
+                }
+            }
+
+            if (ibApplyBtn) ibApplyBtn.addEventListener('click', applyIbCoupon);
+            if (ibClearBtn) {
+                ibClearBtn.addEventListener('click', () => {
+                    __ibPromoState.coupon_code = '';
+                    __ibPromoState.coupon_discount = 0;
+                    if (ibCouponInp) ibCouponInp.value = '';
+                    ibClearBtn.classList.add('ax-is-hidden');
+                    if (ibCouponMsg) {
+                        ibCouponMsg.textContent = '';
+                        ibCouponMsg.className = 'ax-promo-feedback';
+                    }
+                    renderInstantBuySummary();
+                });
+            }
+            if (ibPtsInp) {
+                ibPtsInp.addEventListener('input', () => {
+                    __ibPromoState.points_used = Math.max(0, Math.floor(Number(ibPtsInp.value) || 0));
+                    renderInstantBuySummary();
+                });
+            }
+            if (ibUseAllBtn) {
+                ibUseAllBtn.addEventListener('click', () => {
+                    if (!pendingInstantBuyItem) return;
+                    const sub = (Number(pendingInstantBuyItem.price) || 0) * (Number(pendingInstantBuyItem.quantity) || 1);
+                    const maxP = Math.min(window.__MALL_USER_POINTS__ || 0, Math.max(0, sub - (__ibPromoState.coupon_discount || 0)));
+                    __ibPromoState.points_used = maxP;
+                    if (ibPtsInp) ibPtsInp.value = String(maxP);
+                    renderInstantBuySummary();
+                });
+            }
+        })();
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>

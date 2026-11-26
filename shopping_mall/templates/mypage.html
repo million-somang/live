@@ -1,0 +1,692 @@
+{% extends "base.html" %}
+{% block title %}마이페이지 — 골라방 LIVE{% endblock %}
+
+{% block content %}
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">MY PAGE</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">{{ current_mall_user.name }}님의 마이페이지</h1>
+        </div>
+        <p class="ax-page-sub">회원 정보, 다중 배송지 주소록, 비밀번호 및 계정 관리를 한 곳에서 처리할 수 있습니다.</p>
+    </div>
+    <div class="ax-toolbar-actions">
+        <a href="/orders" class="ax-btn ax-btn-charcoal">주문 / 배송 내역</a>
+        <a href="/wishlist" class="ax-btn ax-btn-secondary">찜목록</a>
+    </div>
+</div>
+
+<div class="ax-mypage-summary-strip">
+    <article class="ax-kpi-card ax-sales-kpi-card">
+        <span class="ax-sales-kpi-label">회원 이메일</span>
+        <strong class="ax-sales-kpi-sub">{{ current_mall_user.email }}</strong>
+        <span class="ax-badge ax-badge-indigo">{{ current_mall_user.role }}</span>
+    </article>
+    <article class="ax-kpi-card ax-sales-kpi-card">
+        <span class="ax-sales-kpi-label">누적 주문 건수</span>
+        <strong class="ax-sales-kpi-value ax-num">{{ order_count }}건</strong>
+        <a href="/orders" class="ax-auth-link-accent">주문/배송 상세 보기</a>
+    </article>
+    <article class="ax-kpi-card ax-sales-kpi-card">
+        <span class="ax-sales-kpi-label">등록된 배송지</span>
+        <strong id="mypageAddressCountKpi" class="ax-sales-kpi-value ax-num">{{ (addresses or [])|length }}곳</strong>
+        <span class="ax-sales-kpi-sub">주문서 · 바로구매에서 바로 선택 가능</span>
+    </article>
+    <article class="ax-kpi-card ax-sales-kpi-card">
+        <span class="ax-sales-kpi-label">보유 적립금(포인트)</span>
+        <strong id="mypagePointsBalanceKpi" class="ax-sales-kpi-value ax-num">{{ "{:,}".format((current_mall_user.points_balance or 0)|int) }}P</strong>
+        <span class="ax-sales-kpi-sub">결제 시 1P = 1원 즉시 사용 가능</span>
+    </article>
+</div>
+
+<div class="ax-admin-tab-bar">
+    <nav id="mypageTabBar" class="ax-segmented-bar" aria-label="마이페이지 메뉴">
+        <button type="button" id="mypageTabProfile" class="ax-tab-btn active" data-mypage-tab="profile">내 정보 · 기본 배송지</button>
+        <button type="button" id="mypageTabAddresses" class="ax-tab-btn" data-mypage-tab="addresses">배송지 주소록</button>
+        <button type="button" id="mypageTabCoupons" class="ax-tab-btn" data-mypage-tab="coupons">보유 쿠폰</button>
+        <button type="button" id="mypageTabPoints" class="ax-tab-btn" data-mypage-tab="points">포인트 내역</button>
+        <button type="button" id="mypageTabPassword" class="ax-tab-btn" data-mypage-tab="password">비밀번호 변경</button>
+        <button type="button" id="mypageTabWithdraw" class="ax-tab-btn" data-mypage-tab="withdraw">회원 탈퇴</button>
+    </nav>
+</div>
+
+<!-- 1. 내 정보 & 기본 배송지 -->
+<section id="mypagePanelProfile" class="ax-card ax-card-pad">
+    <div class="ax-order-subbar">
+        <div>
+            <h2 class="ax-section-title">내 정보 및 기본 배송지 수정</h2>
+            <p class="ax-page-sub">주문서 작성 및 바로구매 시 자동으로 불러오는 기본 연락처·배송지 정보입니다.</p>
+        </div>
+    </div>
+    <form id="mypageProfileForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ax-form-row-2">
+            <div class="ax-field">
+                <label class="ax-label" for="mpEmail">이메일 (로그인 ID)</label>
+                <input type="email" id="mpEmail" class="ax-input" value="{{ current_mall_user.email }}" disabled>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="mpName">성함 *</label>
+                <input type="text" id="mpName" name="name" class="ax-input" required maxlength="60" value="{{ current_mall_user.name }}">
+            </div>
+        </div>
+        <div class="ax-field">
+            <label class="ax-label" for="mpPhone">연락처 (휴대폰) *</label>
+            <input type="tel" id="mpPhone" name="phone" class="ax-input ax-num" required maxlength="30" value="{{ current_mall_user.phone }}">
+        </div>
+        <div class="ax-field">
+            <label class="ax-label" for="mpZipcode">기본 배송지 주소</label>
+            <div class="ax-postcode-row">
+                <input type="text" id="mpZipcode" name="zipcode" class="ax-input ax-num ax-postcode-input" maxlength="10" inputmode="numeric" placeholder="우편번호" value="{{ current_mall_user.zipcode }}">
+                <button type="button" id="btnMpProfilePostcode" class="ax-btn ax-btn-secondary ax-btn-sm" data-zip-id="mpZipcode" data-addr-id="mpAddress" data-detail-id="mpAddressDetail">우편번호 검색</button>
+            </div>
+            <input type="text" id="mpAddress" name="address" class="ax-input ax-mb-10" maxlength="200" placeholder="도로명 또는 지번 주소" value="{{ current_mall_user.address }}">
+            <input type="text" id="mpAddressDetail" name="address_detail" class="ax-input" maxlength="200" placeholder="상세 주소 (동/호수)" value="{{ current_mall_user.address_detail }}">
+        </div>
+        <div class="ax-dialog-actions">
+            <button type="submit" id="btnSaveMyProfile" class="ax-btn ax-btn-primary">내 정보 저장</button>
+        </div>
+    </form>
+</section>
+
+<!-- 2. 다중 배송지 주소록 -->
+<section id="mypagePanelAddresses" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <h2 class="ax-section-title">배송지 주소록 관리</h2>
+            <p class="ax-page-sub">집, 회사, 가족 등 여러 배송지를 저장하고 기본 배송지를 지정할 수 있습니다.</p>
+        </div>
+        <button type="button" id="btnResetAddressForm" class="ax-btn ax-btn-secondary ax-btn-sm">새 배송지 입력 초기화</button>
+    </div>
+
+    <form id="mypageAddressForm" class="ax-admin-modal-section ax-mb-18">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" id="addrEditId" value="">
+        <div class="ax-admin-modal-section-head">
+            <span id="addrFormModeTitle" class="ax-admin-modal-section-title">새 배송지 추가</span>
+        </div>
+        <div class="ax-form-row-3">
+            <div class="ax-field">
+                <label class="ax-label" for="addrLabel">배송지 별칭</label>
+                <input type="text" id="addrLabel" class="ax-input" maxlength="40" placeholder="예: 우리집, 회사">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="addrRecipientName">수령인 성함 *</label>
+                <input type="text" id="addrRecipientName" class="ax-input" maxlength="60" required placeholder="예: 홍길동">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="addrRecipientPhone">수령인 연락처 *</label>
+                <input type="tel" id="addrRecipientPhone" class="ax-input ax-num" maxlength="30" required placeholder="010-1234-5678">
+            </div>
+        </div>
+        <div class="ax-field">
+            <label class="ax-label" for="addrZipcode">주소 *</label>
+            <div class="ax-postcode-row">
+                <input type="text" id="addrZipcode" class="ax-input ax-num ax-postcode-input" maxlength="10" inputmode="numeric" placeholder="우편번호">
+                <button type="button" id="btnAddrPostcode" class="ax-btn ax-btn-secondary ax-btn-sm" data-zip-id="addrZipcode" data-addr-id="addrRoad" data-detail-id="addrDetail">우편번호 검색</button>
+            </div>
+            <input type="text" id="addrRoad" class="ax-input ax-mb-10" maxlength="200" required placeholder="도로명 또는 지번 주소">
+            <input type="text" id="addrDetail" class="ax-input" maxlength="200" placeholder="상세 주소">
+        </div>
+        <div class="ax-field">
+            <label class="ax-inline-check-label">
+                <input type="checkbox" id="addrIsDefault">
+                <span>기본 배송지로 설정</span>
+            </label>
+        </div>
+        <div class="ax-dialog-actions">
+            <button type="submit" id="btnSaveAddress" class="ax-btn ax-btn-primary">배송지 저장</button>
+        </div>
+    </form>
+
+    <div id="mypageAddressList" class="ax-address-grid"></div>
+</section>
+
+<!-- 2-2. 보유 쿠폰함 -->
+<section id="mypagePanelCoupons" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <h2 class="ax-section-title">내 보유 쿠폰</h2>
+            <p class="ax-page-sub">신규 가입 웰컴 쿠폰 및 발급받은 할인 쿠폰 현황을 확인할 수 있습니다.</p>
+        </div>
+        <button type="button" id="btnRefreshMyCoupons" class="ax-btn ax-btn-secondary ax-btn-sm">새로고침</button>
+    </div>
+    <div id="mypageCouponsList" class="ax-coupon-grid"></div>
+</section>
+
+<!-- 2-3. 포인트 적립/사용 내역 -->
+<section id="mypagePanelPoints" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <h2 class="ax-section-title">적립금(포인트) 내역</h2>
+            <p class="ax-page-sub">현재 잔액 <strong id="mypagePointsPanelBal" class="ax-num">{{ "{:,}".format((current_mall_user.points_balance or 0)|int) }}P</strong> · 배송완료 시 구매 적립금이 자동 지급됩니다.</p>
+        </div>
+        <button type="button" id="btnRefreshMyPoints" class="ax-btn ax-btn-secondary ax-btn-sm">새로고침</button>
+    </div>
+    <div class="ax-table-wrap">
+        <table class="ax-table">
+            <thead>
+                <tr>
+                    <th>일시</th>
+                    <th>구분 / 내용</th>
+                    <th>관련 주문</th>
+                    <th>변동</th>
+                    <th>잔액</th>
+                </tr>
+            </thead>
+            <tbody id="mypagePointsTbody"></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 3. 비밀번호 변경 -->
+<section id="mypagePanelPassword" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <h2 class="ax-section-title">비밀번호 변경</h2>
+            <p class="ax-page-sub">영문(또는 한글)과 숫자를 포함하여 최소 8자 이상으로 설정해 주세요.</p>
+        </div>
+    </div>
+    <form id="mypagePasswordForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ax-field">
+            <label class="ax-label" for="mpCurPassword">현재 비밀번호 *</label>
+            <input type="password" id="mpCurPassword" class="ax-input" required placeholder="현재 비밀번호 입력">
+        </div>
+        <div class="ax-form-row-2">
+            <div class="ax-field">
+                <label class="ax-label" for="mpNewPassword">새 비밀번호 *</label>
+                <input type="password" id="mpNewPassword" class="ax-input" required minlength="8" placeholder="문자+숫자 포함 8자 이상">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="mpConfirmPassword">새 비밀번호 확인 *</label>
+                <input type="password" id="mpConfirmPassword" class="ax-input" required minlength="8" placeholder="새 비밀번호 다시 입력">
+            </div>
+        </div>
+        <div class="ax-dialog-actions">
+            <button type="submit" id="btnChangeMyPassword" class="ax-btn ax-btn-charcoal">비밀번호 변경하기</button>
+        </div>
+    </form>
+</section>
+
+<!-- 4. 회원 탈퇴 -->
+<section id="mypagePanelWithdraw" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <h2 class="ax-section-title">회원 탈퇴 안내</h2>
+            <p class="ax-page-sub">탈퇴 전 전자상거래 법정 보존 기준 및 개인정보 파기 규정을 확인해 주세요.</p>
+        </div>
+    </div>
+
+    <div class="ax-callout-warning ax-mb-16">
+        <strong>이용약관 제4조 및 개인정보처리방침에 따른 안내</strong>
+        <ul class="ax-mt-12">
+            <li>회원 탈퇴 즉시 이름·연락처·배송지 주소록·찜목록·비밀번호 재설정 기록 등 개인정보가 파기되며 재로그인이 불가능합니다.</li>
+            <li>단, 「전자상거래 등에서의 소비자보호에 관한 법률」에 따라 <strong>계약/청약철회 및 대금결제·재화공급 기록(주문 내역)은 5년간 보존</strong>됩니다.</li>
+            <li>자세한 내용은 <a href="/policy/terms" target="_blank" rel="noopener noreferrer" class="ax-auth-link-accent">이용약관</a> 및 <a href="/policy/privacy" target="_blank" rel="noopener noreferrer" class="ax-auth-link-accent">개인정보처리방침</a>에서 확인하실 수 있습니다.</li>
+        </ul>
+    </div>
+
+    {% if current_mall_user.role == 'ADMIN' %}
+    <div class="ax-callout-danger">
+        관리자(ADMIN) 계정은 보안 정책상 마이페이지에서 직접 탈퇴할 수 없습니다.
+    </div>
+    {% else %}
+    <form id="mypageWithdrawForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ax-field">
+            <label class="ax-label" for="mpWithdrawPassword">본인 확인 비밀번호 *</label>
+            <input type="password" id="mpWithdrawPassword" class="ax-input" required placeholder="현재 비밀번호를 입력하세요">
+        </div>
+        <div class="ax-field">
+            <label class="ax-inline-check-label">
+                <input type="checkbox" id="mpWithdrawAgree" required>
+                <span>위 탈퇴 안내 및 주문 기록 5년 법정 보존 규정을 확인하였으며, 탈퇴에 동의합니다.</span>
+            </label>
+        </div>
+        <div class="ax-dialog-actions">
+            <button type="submit" id="btnWithdrawAccount" class="ax-btn ax-btn-danger-soft">회원 탈퇴 진행</button>
+        </div>
+    </form>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<div id="mallMyPageBootstrap" hidden
+     data-addresses="{{ (addresses or []) | tojson | forceescape }}"
+     data-user="{{ current_mall_user | tojson | forceescape }}"></div>
+<script>
+    (function initMallMyPage() {
+        const bootEl = document.getElementById('mallMyPageBootstrap');
+        let mpAddresses = bootEl ? JSON.parse(bootEl.dataset.addresses || '[]') : [];
+        let mpUser = bootEl ? JSON.parse(bootEl.dataset.user || '{}') : {};
+        const esc = window.mallEscapeHtml || ((s) => String(s || ''));
+
+        function switchMyPageTab(tabKey) {
+            const keys = ['profile', 'addresses', 'coupons', 'points', 'password', 'withdraw'];
+            const panelMap = {
+                profile: 'mypagePanelProfile',
+                addresses: 'mypagePanelAddresses',
+                coupons: 'mypagePanelCoupons',
+                points: 'mypagePanelPoints',
+                password: 'mypagePanelPassword',
+                withdraw: 'mypagePanelWithdraw'
+            };
+            document.querySelectorAll('#mypageTabBar [data-mypage-tab]').forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.mypageTab === tabKey);
+            });
+            keys.forEach((k) => {
+                const panel = document.getElementById(panelMap[k]);
+                if (panel) panel.classList.toggle('ax-is-hidden', k !== tabKey);
+            });
+            if (tabKey === 'coupons') loadMyCoupons();
+            if (tabKey === 'points') loadMyPoints();
+        }
+
+        async function loadMyCoupons() {
+            const box = document.getElementById('mypageCouponsList');
+            if (!box) return;
+            try {
+                const res = await fetch('/api/mypage/coupons', { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    box.innerHTML = '<div class="ax-detail-empty-box">쿠폰 목록을 불러오지 못했습니다.</div>';
+                    return;
+                }
+                const items = Array.isArray(data.coupons) ? data.coupons : [];
+                if (items.length === 0) {
+                    box.innerHTML = '<div class="ax-detail-empty-box">보유 중인 쿠폰이 없습니다.</div>';
+                    return;
+                }
+                box.innerHTML = items.map((c) => {
+                    const isAvail = String(c.status || '').toUpperCase() === 'AVAILABLE';
+                    const badge = isAvail
+                        ? '<span class="ax-badge ax-badge-success">사용가능</span>'
+                        : '<span class="ax-badge ax-badge-neutral">사용완료</span>';
+                    const benefit = c.discount_type === 'PERCENT'
+                        ? `${Number(c.discount_value || 0)}% 할인`
+                        : `${Number(c.discount_value || 0).toLocaleString()}원 할인`;
+                    const minTxt = Number(c.min_order_amount || 0) > 0
+                        ? `${Number(c.min_order_amount).toLocaleString()}원 이상 주문 시`
+                        : '최소 주문 금액 제한 없음';
+                    const scopeBadge = c.live_only ? '<span class="ax-badge ax-badge-live">라이브 전용</span>' : '';
+                    const periodTxt = (c.start_at || c.end_at)
+                        ? `기간: ${esc(c.start_at || '상시')} ~ ${esc(c.end_at || '상시')}`
+                        : '상시 사용 가능';
+                    return `
+                        <article class="ax-coupon-card ${isAvail ? '' : 'is-used'}">
+                            <div class="ax-coupon-card-head">
+                                <span class="ax-code-chip">${esc(c.code)}</span>
+                                <div class="ax-order-complete-code-row">${scopeBadge}${badge}</div>
+                            </div>
+                            <div class="ax-coupon-benefit ax-num">${benefit}</div>
+                            <strong>${esc(c.name)}</strong>
+                            <div class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary);">${minTxt}</div>
+                            <div class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">${periodTxt}</div>
+                        </article>
+                    `;
+                }).join('');
+            } catch (e) {
+                box.innerHTML = '<div class="ax-detail-empty-box">쿠폰 목록을 불러오는 중 오류가 발생했습니다.</div>';
+            }
+        }
+
+        async function loadMyPoints() {
+            const tbody = document.getElementById('mypagePointsTbody');
+            const kpiEl = document.getElementById('mypagePointsBalanceKpi');
+            const panelBal = document.getElementById('mypagePointsPanelBal');
+            if (!tbody) return;
+            try {
+                const res = await fetch('/api/mypage/points', { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    tbody.innerHTML = '<tr><td colspan="5">포인트 내역을 불러오지 못했습니다.</td></tr>';
+                    return;
+                }
+                const bal = Number(data.balance || 0);
+                if (kpiEl) kpiEl.textContent = `${bal.toLocaleString()}P`;
+                if (panelBal) panelBal.textContent = `${bal.toLocaleString()}P`;
+                const logs = Array.isArray(data.logs) ? data.logs : [];
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--ax-text-muted);">아직 적립금 변동 내역이 없습니다.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = logs.map((l) => {
+                    const delta = Number(l.delta || 0);
+                    const deltaCls = delta >= 0 ? 'ax-point-ledger-delta-plus' : 'ax-point-ledger-delta-minus';
+                    const deltaStr = `${delta >= 0 ? '+' : ''}${delta.toLocaleString()}P`;
+                    return `
+                        <tr>
+                            <td class="ax-num">${esc(l.created_at || '')}</td>
+                            <td>${esc(l.description || l.reason || '')}</td>
+                            <td>${l.order_code ? `<span class="ax-code-chip">${esc(l.order_code)}</span>` : '-'}</td>
+                            <td class="ax-num ${deltaCls}">${deltaStr}</td>
+                            <td class="ax-num">${Number(l.balance_after || 0).toLocaleString()}P</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5">포인트 내역 조회 중 오류가 발생했습니다.</td></tr>';
+            }
+        }
+
+        function syncProfileAddressFieldsFromUser(u) {
+            if (!u) return;
+            const zEl = document.getElementById('mpZipcode');
+            const aEl = document.getElementById('mpAddress');
+            const dEl = document.getElementById('mpAddressDetail');
+            if (zEl) zEl.value = u.zipcode || '';
+            if (aEl) aEl.value = u.address || '';
+            if (dEl) dEl.value = u.address_detail || '';
+        }
+
+        function resetAddressForm() {
+            const editEl = document.getElementById('addrEditId');
+            const titleEl = document.getElementById('addrFormModeTitle');
+            const btnEl = document.getElementById('btnSaveAddress');
+            if (editEl) editEl.value = '';
+            if (titleEl) titleEl.textContent = '새 배송지 추가';
+            if (btnEl) btnEl.textContent = '배송지 저장';
+            const lbl = document.getElementById('addrLabel');
+            const nm = document.getElementById('addrRecipientName');
+            const ph = document.getElementById('addrRecipientPhone');
+            const zp = document.getElementById('addrZipcode');
+            const rd = document.getElementById('addrRoad');
+            const dt = document.getElementById('addrDetail');
+            const df = document.getElementById('addrIsDefault');
+            if (lbl) lbl.value = '';
+            if (nm) nm.value = mpUser.name || '';
+            if (ph) ph.value = mpUser.phone || '';
+            if (zp) zp.value = '';
+            if (rd) rd.value = '';
+            if (dt) dt.value = '';
+            if (df) df.checked = false;
+        }
+
+        function editAddress(addrId) {
+            const target = mpAddresses.find((a) => Number(a.id) === Number(addrId));
+            if (!target) return;
+            document.getElementById('addrEditId').value = String(target.id);
+            document.getElementById('addrFormModeTitle').textContent = `배송지 수정 (${target.label || '배송지'})`;
+            document.getElementById('btnSaveAddress').textContent = '수정 내용 저장';
+            document.getElementById('addrLabel').value = target.label || '';
+            document.getElementById('addrRecipientName').value = target.recipient_name || '';
+            document.getElementById('addrRecipientPhone').value = target.recipient_phone || '';
+            document.getElementById('addrZipcode').value = target.zipcode || '';
+            document.getElementById('addrRoad').value = target.address || '';
+            document.getElementById('addrDetail').value = target.address_detail || '';
+            document.getElementById('addrIsDefault').checked = Boolean(target.is_default);
+            document.getElementById('addrLabel').focus();
+        }
+
+        function renderAddressList() {
+            const listEl = document.getElementById('mypageAddressList');
+            const kpiEl = document.getElementById('mypageAddressCountKpi');
+            if (kpiEl) kpiEl.textContent = `${mpAddresses.length}곳`;
+            if (!listEl) return;
+
+            if (!Array.isArray(mpAddresses) || mpAddresses.length === 0) {
+                listEl.innerHTML = '<div class="ax-detail-empty-box">저장된 배송지가 없습니다. 위 양식에서 첫 배송지를 등록해 보세요.</div>';
+                return;
+            }
+
+            listEl.innerHTML = mpAddresses.map((a) => {
+                const aid = Number(a.id);
+                const defBadge = a.is_default
+                    ? '<span class="ax-badge ax-badge-indigo">기본 배송지</span>'
+                    : '';
+                const setDefBtn = a.is_default
+                    ? ''
+                    : `<button type="button" class="ax-btn ax-btn-secondary ax-btn-sm" data-addr-action="default" data-addr-id="${aid}">기본 배송지 지정</button>`;
+                return `
+                    <article class="ax-address-card ${a.is_default ? 'is-default' : ''}" data-address-card-id="${aid}">
+                        <div class="ax-address-card-head">
+                            <strong>${esc(a.label || '배송지')}</strong>
+                            ${defBadge}
+                        </div>
+                        <div class="ax-num"><strong>${esc(a.recipient_name)}</strong> · ${esc(a.recipient_phone)}</div>
+                        <div>${a.zipcode ? `<span class="ax-code-chip">[${esc(a.zipcode)}]</span> ` : ''}${esc(a.address)} ${esc(a.address_detail || '')}</div>
+                        <div class="ax-address-card-actions">
+                            ${setDefBtn}
+                            <button type="button" class="ax-btn ax-btn-charcoal ax-btn-sm" data-addr-action="edit" data-addr-id="${aid}">수정</button>
+                            <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm" data-addr-action="delete" data-addr-id="${aid}">삭제</button>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        async function handleAddressAction(action, addrId) {
+            if (action === 'edit') {
+                editAddress(addrId);
+                return;
+            }
+            if (action === 'default') {
+                const res = await fetch('/api/mypage/addresses/default', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: addrId })
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    showMallToast((data && data.message) || '기본 배송지 설정에 실패했습니다.');
+                    return;
+                }
+                mpAddresses = data.addresses || [];
+                const def = mpAddresses.find((x) => x.is_default);
+                if (def) {
+                    mpUser.zipcode = def.zipcode || '';
+                    mpUser.address = def.address || '';
+                    mpUser.address_detail = def.address_detail || '';
+                    syncProfileAddressFieldsFromUser(mpUser);
+                }
+                renderAddressList();
+                showMallToast('기본 배송지가 변경되었습니다.');
+                return;
+            }
+            if (action === 'delete') {
+                if (!confirm('선택한 배송지를 삭제하시겠습니까?')) return;
+                const res = await fetch('/api/mypage/addresses/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: addrId })
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    showMallToast((data && data.message) || '배송지 삭제에 실패했습니다.');
+                    return;
+                }
+                mpAddresses = data.addresses || [];
+                const def = mpAddresses.find((x) => x.is_default);
+                mpUser.zipcode = def ? (def.zipcode || '') : '';
+                mpUser.address = def ? (def.address || '') : '';
+                mpUser.address_detail = def ? (def.address_detail || '') : '';
+                syncProfileAddressFieldsFromUser(mpUser);
+                renderAddressList();
+                if (Number(document.getElementById('addrEditId')?.value || 0) === Number(addrId)) {
+                    resetAddressForm();
+                }
+                showMallToast('배송지가 삭제되었습니다.');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('#mypageTabBar [data-mypage-tab]').forEach((btn) => {
+                btn.addEventListener('click', () => switchMyPageTab(btn.dataset.mypageTab));
+            });
+            document.getElementById('btnMpProfilePostcode')?.addEventListener('click', function () {
+                if (typeof window.openMallPostcodeSearch === 'function') window.openMallPostcodeSearch(this.dataset);
+            });
+            document.getElementById('btnAddrPostcode')?.addEventListener('click', function () {
+                if (typeof window.openMallPostcodeSearch === 'function') window.openMallPostcodeSearch(this.dataset);
+            });
+            document.getElementById('btnResetAddressForm')?.addEventListener('click', resetAddressForm);
+            document.getElementById('btnRefreshMyCoupons')?.addEventListener('click', loadMyCoupons);
+            document.getElementById('btnRefreshMyPoints')?.addEventListener('click', loadMyPoints);
+
+            document.getElementById('mypageAddressList')?.addEventListener('click', (ev) => {
+                const btn = ev.target.closest('button[data-addr-action]');
+                if (!btn) return;
+                handleAddressAction(btn.dataset.addrAction, Number(btn.dataset.addrId));
+            });
+
+            document.getElementById('mypageProfileForm')?.addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                const btn = document.getElementById('btnSaveMyProfile');
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/mypage/profile', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: document.getElementById('mpName')?.value.trim() || '',
+                            phone: document.getElementById('mpPhone')?.value.trim() || '',
+                            zipcode: document.getElementById('mpZipcode')?.value.trim() || '',
+                            address: document.getElementById('mpAddress')?.value.trim() || '',
+                            address_detail: document.getElementById('mpAddressDetail')?.value.trim() || ''
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        alert((data && data.message) || '내 정보 저장에 실패했습니다.');
+                        return;
+                    }
+                    if (data.user) mpUser = data.user;
+                    if (Array.isArray(data.addresses)) {
+                        mpAddresses = data.addresses;
+                        renderAddressList();
+                    }
+                    showMallToast('회원 정보 및 기본 배송지가 저장되었습니다.');
+                } catch (err) {
+                    alert('저장 중 오류가 발생했습니다: ' + err.message);
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+
+            document.getElementById('mypageAddressForm')?.addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                const btn = document.getElementById('btnSaveAddress');
+                if (btn) btn.disabled = true;
+                try {
+                    const rawId = document.getElementById('addrEditId')?.value || '';
+                    const res = await fetch('/api/mypage/addresses/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: rawId ? Number(rawId) : null,
+                            label: document.getElementById('addrLabel')?.value.trim() || '배송지',
+                            recipient_name: document.getElementById('addrRecipientName')?.value.trim() || '',
+                            recipient_phone: document.getElementById('addrRecipientPhone')?.value.trim() || '',
+                            zipcode: document.getElementById('addrZipcode')?.value.trim() || '',
+                            address: document.getElementById('addrRoad')?.value.trim() || '',
+                            address_detail: document.getElementById('addrDetail')?.value.trim() || '',
+                            is_default: Boolean(document.getElementById('addrIsDefault')?.checked)
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        alert((data && data.message) || '배송지 저장에 실패했습니다.');
+                        return;
+                    }
+                    mpAddresses = data.addresses || [];
+                    const def = mpAddresses.find((x) => x.is_default);
+                    if (def) {
+                        mpUser.zipcode = def.zipcode || '';
+                        mpUser.address = def.address || '';
+                        mpUser.address_detail = def.address_detail || '';
+                        syncProfileAddressFieldsFromUser(mpUser);
+                    }
+                    renderAddressList();
+                    resetAddressForm();
+                    showMallToast('배송지가 저장되었습니다.');
+                } catch (err) {
+                    alert('배송지 저장 중 오류가 발생했습니다: ' + err.message);
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+
+            document.getElementById('mypagePasswordForm')?.addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                const curPw = document.getElementById('mpCurPassword')?.value || '';
+                const newPw = document.getElementById('mpNewPassword')?.value || '';
+                const cfmPw = document.getElementById('mpConfirmPassword')?.value || '';
+                if (newPw !== cfmPw) {
+                    alert('새 비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+                    return;
+                }
+                const btn = document.getElementById('btnChangeMyPassword');
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/mypage/password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            current_password: curPw,
+                            new_password: newPw,
+                            confirm_password: cfmPw
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        alert((data && data.message) || '비밀번호 변경에 실패했습니다.');
+                        return;
+                    }
+                    document.getElementById('mpCurPassword').value = '';
+                    document.getElementById('mpNewPassword').value = '';
+                    document.getElementById('mpConfirmPassword').value = '';
+                    showMallToast('비밀번호가 변경되었습니다.');
+                    setTimeout(() => window.location.reload(), 600);
+                } catch (err) {
+                    alert('비밀번호 변경 오류: ' + err.message);
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+
+            document.getElementById('mypageWithdrawForm')?.addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                const agreeEl = document.getElementById('mpWithdrawAgree');
+                const pwEl = document.getElementById('mpWithdrawPassword');
+                if (!agreeEl || !agreeEl.checked) {
+                    alert('탈퇴 안내 및 주문 기록 보존 규정 동의에 체크해 주세요.');
+                    return;
+                }
+                const pw = pwEl ? pwEl.value : '';
+                if (!pw) {
+                    alert('현재 비밀번호를 입력해 주세요.');
+                    return;
+                }
+                if (!confirm('정말로 회원 탈퇴를 진행하시겠습니까? 탈퇴 후에는 동일 계정으로 로그인할 수 없습니다.')) return;
+                const btn = document.getElementById('btnWithdrawAccount');
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/mypage/withdraw', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: pw })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        alert((data && data.message) || '회원 탈퇴 처리에 실패했습니다.');
+                        return;
+                    }
+                    showMallToast('회원 탈퇴가 완료되었습니다.');
+                    setTimeout(() => {
+                        window.location.href = data.redirect || '/';
+                    }, 500);
+                } catch (err) {
+                    alert('회원 탈퇴 처리 중 오류: ' + err.message);
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+
+            resetAddressForm();
+            renderAddressList();
+        });
+    })();
+</script>
+{% endblock %}

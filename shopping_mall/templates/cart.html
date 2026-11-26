@@ -12,7 +12,9 @@
 </div>
 
 <div class="ax-split-layout">
-    <div id="cartItemsContainer" class="ax-card ax-card-pad">
+    <div class="ax-cart-main-col">
+        <div id="cartRevalidateAlert" class="ax-callout-warning ax-mb-12 ax-is-hidden" role="status" aria-live="polite"></div>
+        <div id="cartItemsContainer" class="ax-card ax-card-pad"></div>
     </div>
 
     <div class="ax-card ax-card-pad ax-sticky-panel">
@@ -24,23 +26,27 @@
         </div>
         <div
             style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.89rem; color:var(--ax-text-secondary);">
-            <span>택배비용 (필수 추가)</span>
-            <strong id="cartShippingText" class="ax-num" style="color:var(--ax-text-primary);">4,000원</strong>
+            <span>배송비</span>
+            <strong id="cartShippingText" class="ax-num" style="color:var(--ax-text-primary);">0원</strong>
         </div>
+        <div id="cartShippingGuide" class="ax-shipping-guide ax-is-hidden" aria-live="polite"></div>
         <div
             style="border-top:1px solid var(--ax-border-subtle); padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
             <span style="font-size:0.95rem; font-weight:800; color:var(--ax-text-primary);">총 결제 금액</span>
             <span id="cartTotalText" class="ax-num"
                 style="font-size:1.45rem; font-weight:800; color:var(--ax-accent-primary);">0원</span>
         </div>
-        <a href="/checkout" id="btnGoCheckout" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block">
-            <span>전체 상품 주문하기 (비회원/회원)</span>
+        <button type="button" id="btnGoCheckout" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block">
+            <span id="btnGoCheckoutLabel">선택 상품 주문하기 (0건)</span>
             <svg class="ax-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <path d="M5 12h14" />
                 <path d="m12 5 7 7-7 7" />
             </svg>
-        </a>
+        </button>
+        <button type="button" id="btnGoCheckoutAll" class="ax-btn ax-btn-outline-charcoal ax-btn-block ax-mt-12">
+            전체 상품 주문하기
+        </button>
         {% if not current_mall_user %}
         <div class="ax-callout-success" style="margin-top:12px; text-align:center;">
             회원가입·로그인 없이 비회원으로도 바로 주문 가능합니다.
@@ -52,9 +58,46 @@
 
 {% block extra_scripts %}
 <script>
+    const __cartOptionsCache = {};
+    let __cartValidationItems = [];
+
+    function _cartSkuKey(num, color, size) {
+        return `${Number(num)}||${String(color || '-').trim() || '-'}||${String(size || '-').trim() || '-'}`;
+    }
+
+    function _getValidationForCartItem(item, idx) {
+        if (!Array.isArray(__cartValidationItems) || __cartValidationItems.length === 0) return null;
+        if (__cartValidationItems[idx] && Number(__cartValidationItems[idx].num) === Number(item.num)) {
+            return __cartValidationItems[idx];
+        }
+        return __cartValidationItems.find(v => Number(v.num) === Number(item.num) && String(v.color || '-') === String(item.color || '-') && String(v.size || '-') === String(item.size || '-')) || null;
+    }
+
+    function _renderCartAlert(payload) {
+        const alertEl = document.getElementById('cartRevalidateAlert');
+        if (!alertEl) return;
+        const msgs = [];
+        if (payload && Array.isArray(payload.errors) && payload.errors.length > 0) {
+            payload.errors.forEach(m => {
+                if (m && !msgs.includes(m)) msgs.push(m);
+            });
+        }
+        if (msgs.length === 0) {
+            alertEl.innerHTML = '';
+            alertEl.classList.add('ax-is-hidden');
+            return;
+        }
+        const esc = window.mallEscapeHtml;
+        alertEl.innerHTML = `<strong>장바구니 상품 확인 안내</strong><ul style="margin:6px 0 0 18px; padding:0;">${msgs.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`;
+        alertEl.classList.remove('ax-is-hidden');
+    }
+
     function renderCartPage() {
         const cart = getMallCart();
         const box = document.getElementById('cartItemsContainer');
+        const goBtn = document.getElementById('btnGoCheckout');
+        const goBtnLabel = document.getElementById('btnGoCheckoutLabel');
+        const goAllBtn = document.getElementById('btnGoCheckoutAll');
         if (!box) return;
         if (cart.length === 0) {
             box.innerHTML = `
@@ -70,60 +113,345 @@
             document.getElementById('cartSubtotalText').innerText = '0원';
             document.getElementById('cartShippingText').innerText = '0원';
             document.getElementById('cartTotalText').innerText = '0원';
+            window.renderMallShippingGuideBox(document.getElementById('cartShippingGuide'), 0);
+            if (goBtn) goBtn.disabled = true;
+            if (goBtnLabel) goBtnLabel.innerText = '선택 상품 주문하기 (0건)';
+            if (goAllBtn) goAllBtn.disabled = true;
+            _renderCartAlert(null);
             return;
         }
 
+        const esc = window.mallEscapeHtml;
+        let selectedCount = 0;
         let subtotal = 0;
-        box.innerHTML = cart.map((item, idx) => {
-            const line = (Number(item.price) || 0) * (Number(item.quantity) || 1);
-            subtotal += line;
+
+        const rowsHtml = cart.map((item, idx) => {
+            const isSelected = item.selected !== false;
+            if (isSelected) selectedCount += 1;
+            const unitPrice = Number(item.price) || 0;
+            const safeQty = Math.max(1, Number(item.quantity) || 1);
+            const line = unitPrice * safeQty;
+            if (isSelected) subtotal += line;
+
+            const safeImg = window.mallSafeImageUrl(item.image_url);
+            const safeNum = Number(item.num) || 0;
+            const v = _getValidationForCartItem(item, idx);
+            const isSoldOut = Boolean(v && v.sold_out);
+            const isInsufficient = Boolean(v && v.insufficient_stock);
+            const isPriceChanged = Boolean(v && v.price_changed);
+            const maxStock = v && v.option_exists ? Math.max(1, Number(v.stock) || 0) : 99;
+
+            const availOpts = (__cartOptionsCache[safeNum] && __cartOptionsCache[safeNum].length > 0)
+                ? __cartOptionsCache[safeNum]
+                : (v && Array.isArray(v.available_options) && v.available_options.length > 0)
+                    ? v.available_options
+                    : [{ color: item.color || '-', size: item.size || '-', stock: 1 }];
+
+            const curOptKey = `${String(item.color || '-').trim() || '-'}||${String(item.size || '-').trim() || '-'}`;
+            let hasCurOptionInList = false;
+            const optOptionsHtml = availOpts.map(opt => {
+                const oc = String(opt.color || '-').trim() || '-';
+                const os = String(opt.size || '-').trim() || '-';
+                const oStk = Math.max(0, Number(opt.stock) || 0);
+                const key = `${oc}||${os}`;
+                const isCur = (key === curOptKey);
+                if (isCur) hasCurOptionInList = true;
+                const disAttr = (!isCur && oStk <= 0) ? 'disabled' : '';
+                const selAttr = isCur ? 'selected' : '';
+                const stkLabel = oStk <= 0 ? ' - 품절' : ` (잔여 ${oStk}개)`;
+                return `<option value="${esc(key)}" ${selAttr} ${disAttr}>${esc(oc)} / ${esc(os)}${stkLabel}</option>`;
+            }).join('') + (!hasCurOptionInList
+                ? `<option value="${esc(curOptKey)}" selected>${esc(item.color || '-')} / ${esc(item.size || '-')} (선택됨)</option>`
+                : '');
+
+            let statusBadge = '';
+            if (isSoldOut) {
+                statusBadge = '<span class="ax-badge ax-badge-live">품절</span>';
+            } else if (isInsufficient) {
+                statusBadge = `<span class="ax-badge ax-badge-warning">재고 부족 (최대 ${maxStock}개)</span>`;
+            } else if (isPriceChanged) {
+                statusBadge = '<span class="ax-badge ax-badge-indigo">가격 변동</span>';
+            }
+
             return `
-                <div class="ax-cart-row">
-                    ${item.image_url
-                    ? `<img src="${item.image_url}" alt="" class="ax-cart-row-thumb">`
+                <div class="ax-cart-row ${isSoldOut || isInsufficient ? 'is-blocked' : ''}" data-cart-idx="${idx}">
+                    <label class="ax-cart-row-check-wrap">
+                        <input type="checkbox" class="ax-cart-item-check" data-cart-idx="${idx}" aria-label="${esc(item.name || '상품')} 선택" ${isSelected ? 'checked' : ''}>
+                    </label>
+                    ${safeImg
+                    ? `<img src="${esc(safeImg)}" alt="" class="ax-cart-row-thumb">`
                     : `<div class="ax-cart-row-thumb ax-cart-row-thumb-empty"><svg class="ax-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/></svg></div>`}
                     <div class="ax-cart-row-info">
-                        <div style="margin-bottom:4px;">
-                            <span class="ax-code-chip">#${item.num}번 상품</span>
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+                            <span class="ax-code-chip">#${safeNum}번 상품</span>
+                            ${statusBadge}
                         </div>
-                        <div style="font-size:0.96rem; font-weight:800; color:var(--ax-text-primary); word-break:break-word;">${item.name}</div>
-                        <div style="font-size:0.82rem; color:var(--ax-text-secondary); margin-top:2px;">옵션: ${item.color} / ${item.size}</div>
-                        <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-top:4px;">${line.toLocaleString()}원</div>
+                        <div style="font-size:0.96rem; font-weight:800; color:var(--ax-text-primary); word-break:break-word;">${esc(item.name)}</div>
+                        <div class="ax-cart-option-row">
+                            <select class="ax-select ax-select-compact js-cart-option-select" data-cart-idx="${idx}" aria-label="옵션 변경">
+                                ${optOptionsHtml}
+                            </select>
+                        </div>
+                        <div class="ax-num" style="font-size:0.94rem; font-weight:800; color:var(--ax-text-primary); margin-top:6px;">${line.toLocaleString()}원 <span style="font-size:0.78rem; font-weight:600; color:var(--ax-text-secondary);">(개당 ${unitPrice.toLocaleString()}원)</span></div>
                     </div>
                     <div class="ax-cart-row-controls">
                         <div class="ax-qty-stepper">
-                            <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, -1)" aria-label="수량 감소">−</button>
-                            <span class="ax-num" style="min-width:30px; text-align:center; font-weight:700; font-size:0.875rem;">${item.quantity}</span>
-                            <button type="button" class="ax-qty-btn" onclick="updateCartItemQty(${idx}, 1)" aria-label="수량 증가">+</button>
+                            <button type="button" class="ax-qty-btn js-cart-qty-btn" data-cart-idx="${idx}" data-delta="-1" aria-label="수량 감소">−</button>
+                            <span class="ax-num" style="min-width:30px; text-align:center; font-weight:700; font-size:0.875rem;">${safeQty}</span>
+                            <button type="button" class="ax-qty-btn js-cart-qty-btn" data-cart-idx="${idx}" data-delta="1" aria-label="수량 증가">+</button>
                         </div>
-                        <button type="button" onclick="removeCartItem(${idx})" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
+                        <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-cart-remove-btn" data-cart-idx="${idx}">삭제</button>
                     </div>
                 </div>
             `;
         }).join('');
 
-        const shipping = 4000;
+        const allSelected = (selectedCount > 0 && selectedCount === cart.length);
+        box.innerHTML = `
+            <div class="ax-cart-select-bar">
+                <label class="ax-inline-check-label">
+                    <input type="checkbox" id="cartSelectAllCheckbox" ${allSelected ? 'checked' : ''}>
+                    <span>전체 선택 (<span id="cartSelectedCountText" class="ax-num">${selectedCount}</span>/<span id="cartTotalCountText" class="ax-num">${cart.length}</span>)</span>
+                </label>
+                <button type="button" id="btnDeleteSelectedCart" class="ax-btn ax-btn-secondary ax-btn-sm" ${selectedCount === 0 ? 'disabled' : ''}>선택 삭제</button>
+            </div>
+            ${rowsHtml}
+        `;
+
+        const shipping = selectedCount > 0 ? window.calculateMallShippingFee(subtotal) : 0;
         const total = subtotal + shipping;
         document.getElementById('cartSubtotalText').innerText = `${subtotal.toLocaleString()}원`;
-        document.getElementById('cartShippingText').innerText = `${shipping.toLocaleString()}원`;
+        document.getElementById('cartShippingText').innerText = selectedCount === 0
+            ? '0원'
+            : (shipping === 0 ? '무료배송 (0원)' : `${shipping.toLocaleString()}원`);
         document.getElementById('cartTotalText').innerText = `${total.toLocaleString()}원`;
+        window.renderMallShippingGuideBox(document.getElementById('cartShippingGuide'), subtotal);
+
+        if (goBtn) goBtn.disabled = (selectedCount === 0);
+        if (goBtnLabel) goBtnLabel.innerText = `선택 상품 주문하기 (${selectedCount}건)`;
+        if (goAllBtn) goAllBtn.disabled = (cart.length === 0);
     }
 
     function updateCartItemQty(idx, delta) {
         const cart = getMallCart();
         if (!cart[idx]) return;
-        cart[idx].quantity = Math.max(1, Math.min(99, (Number(cart[idx].quantity) || 1) + delta));
-        saveMallCart(cart);
+        const v = _getValidationForCartItem(cart[idx], idx);
+        const maxQty = (v && v.option_exists && Number(v.stock) > 0) ? Math.min(99, Number(v.stock)) : 99;
+        cart[idx].quantity = Math.max(1, Math.min(maxQty, (Number(cart[idx].quantity) || 1) + delta));
+        saveMallCart(cart, { preserveCheckoutSelection: true });
         renderCartPage();
+        revalidateCart({ silent: true });
     }
 
     function removeCartItem(idx) {
         const cart = getMallCart();
         cart.splice(idx, 1);
-        saveMallCart(cart);
+        saveMallCart(cart, { preserveCheckoutSelection: true });
         renderCartPage();
+        revalidateCart({ silent: true });
     }
 
-    document.addEventListener('DOMContentLoaded', renderCartPage);
+    function changeCartItemOption(idx, valStr) {
+        const cart = getMallCart();
+        const curItem = cart[idx];
+        if (!curItem || !valStr) return;
+        const parts = String(valStr).split('||');
+        const nextColor = (parts[0] || '-').trim() || '-';
+        const nextSize = (parts[1] || '-').trim() || '-';
+        if (curItem.color === nextColor && curItem.size === nextSize) return;
+
+        const dupIdx = cart.findIndex((it, i) => i !== idx && Number(it.num) === Number(curItem.num) && String(it.color || '-') === nextColor && String(it.size || '-') === nextSize);
+        if (dupIdx >= 0) {
+            cart[dupIdx].quantity = Math.min(99, (Number(cart[dupIdx].quantity) || 1) + (Number(curItem.quantity) || 1));
+            cart[dupIdx].selected = (cart[dupIdx].selected !== false) || (curItem.selected !== false);
+            cart.splice(idx, 1);
+        } else {
+            curItem.color = nextColor;
+            curItem.size = nextSize;
+        }
+        saveMallCart(cart, { preserveCheckoutSelection: true });
+        renderCartPage();
+        revalidateCart({ silent: true });
+    }
+
+    async function revalidateCart(opts) {
+        const cart = getMallCart();
+        if (cart.length === 0) {
+            __cartValidationItems = [];
+            _renderCartAlert(null);
+            return null;
+        }
+        try {
+            const res = await fetch('/api/cart/revalidate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: cart, source_page: 'CART_CHECKOUT' })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !Array.isArray(data.items)) {
+                return null;
+            }
+            __cartValidationItems = data.items;
+            let mutated = false;
+            data.items.forEach((srv, idx) => {
+                if (Number(srv.num) > 0 && Array.isArray(srv.available_options)) {
+                    __cartOptionsCache[Number(srv.num)] = srv.available_options;
+                }
+                if (cart[idx] && Number(cart[idx].num) === Number(srv.num) && srv.exists) {
+                    const srvPrice = Number(srv.unit_price ?? srv.price ?? 0);
+                    if (Number(cart[idx].price || 0) !== srvPrice) {
+                        cart[idx].price = srvPrice;
+                        mutated = true;
+                    }
+                    if (srv.name && cart[idx].name !== srv.name) {
+                        cart[idx].name = srv.name;
+                        mutated = true;
+                    }
+                }
+            });
+            if (mutated) {
+                saveMallCart(cart, { preserveCheckoutSelection: true });
+            }
+            _renderCartAlert(data);
+            renderCartPage();
+            return data;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function proceedCartCheckout(orderAll) {
+        let cart = getMallCart();
+        if (cart.length === 0) {
+            showMallToast('장바구니가 비어 있습니다.');
+            return;
+        }
+        if (orderAll) {
+            cart.forEach(it => { it.selected = true; });
+            saveMallCart(cart, { preserveCheckoutSelection: true });
+            renderCartPage();
+        }
+        const targetItems = orderAll ? cart : cart.filter(it => it.selected !== false);
+        if (targetItems.length === 0) {
+            showMallToast('주문할 상품을 1개 이상 선택해 주세요.');
+            return;
+        }
+
+        const goBtn = document.getElementById('btnGoCheckout');
+        const goAllBtn = document.getElementById('btnGoCheckoutAll');
+        if (goBtn) goBtn.disabled = true;
+        if (goAllBtn) goAllBtn.disabled = true;
+
+        try {
+            const res = await fetch('/api/cart/revalidate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: targetItems, source_page: 'CART_CHECKOUT' })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '장바구니 상품 확인 중 오류가 발생했습니다.');
+                return;
+            }
+            if (Array.isArray(data.items)) {
+                let priceUpdated = false;
+                data.items.forEach((srv, idx) => {
+                    const orig = targetItems[idx];
+                    if (!orig || !srv.exists) return;
+                    const srvPrice = Number(srv.unit_price ?? srv.price ?? 0);
+                    if (Number(orig.price || 0) !== srvPrice) {
+                        orig.price = srvPrice;
+                        priceUpdated = true;
+                    }
+                    const cartMatch = cart.find(c => Number(c.num) === Number(orig.num) && String(c.color || '-') === String(orig.color || '-') && String(c.size || '-') === String(orig.size || '-'));
+                    if (cartMatch) {
+                        cartMatch.price = srvPrice;
+                        if (srv.name) cartMatch.name = srv.name;
+                    }
+                });
+                if (priceUpdated) {
+                    saveMallCart(cart, { preserveCheckoutSelection: true });
+                }
+            }
+            _renderCartAlert(data);
+
+            if (data.has_blocked) {
+                await revalidateCart({ silent: false });
+                alert((data.errors && data.errors[0]) || '품절 또는 재고 부족 상품이 포함되어 있어 주문을 진행할 수 없습니다.');
+                return;
+            }
+            if (data.price_changed) {
+                await revalidateCart({ silent: false });
+                alert('일부 상품의 가격이 변동되어 최신 가격으로 업데이트되었습니다. 금액을 확인하신 후 다시 주문해 주세요.');
+                return;
+            }
+
+            try {
+                sessionStorage.setItem(MALL_CHECKOUT_ITEMS_KEY, JSON.stringify(targetItems));
+            } catch (e) { }
+            window.location.href = '/checkout';
+        } catch (err) {
+            alert('장바구니 확인 중 네트워크 오류가 발생했습니다: ' + err.message);
+        } finally {
+            renderCartPage();
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('cartItemsContainer');
+        if (container) {
+            container.addEventListener('change', (ev) => {
+                const selAll = ev.target.closest('#cartSelectAllCheckbox');
+                if (selAll) {
+                    const cart = getMallCart();
+                    const checked = Boolean(selAll.checked);
+                    cart.forEach(it => { it.selected = checked; });
+                    saveMallCart(cart, { preserveCheckoutSelection: true });
+                    renderCartPage();
+                    return;
+                }
+                const itemChk = ev.target.closest('.ax-cart-item-check');
+                if (itemChk) {
+                    const idx = Number(itemChk.dataset.cartIdx);
+                    const cart = getMallCart();
+                    if (cart[idx]) {
+                        cart[idx].selected = Boolean(itemChk.checked);
+                        saveMallCart(cart, { preserveCheckoutSelection: true });
+                        renderCartPage();
+                    }
+                    return;
+                }
+                const optSel = ev.target.closest('.js-cart-option-select');
+                if (optSel) {
+                    changeCartItemOption(Number(optSel.dataset.cartIdx), optSel.value);
+                }
+            });
+
+            container.addEventListener('click', (ev) => {
+                const delSelBtn = ev.target.closest('#btnDeleteSelectedCart');
+                if (delSelBtn) {
+                    const cart = getMallCart().filter(it => it.selected === false);
+                    saveMallCart(cart, { preserveCheckoutSelection: true });
+                    renderCartPage();
+                    revalidateCart({ silent: true });
+                    return;
+                }
+                const qtyBtn = ev.target.closest('.js-cart-qty-btn');
+                if (qtyBtn) {
+                    updateCartItemQty(Number(qtyBtn.dataset.cartIdx), Number(qtyBtn.dataset.delta));
+                    return;
+                }
+                const remBtn = ev.target.closest('.js-cart-remove-btn');
+                if (remBtn) {
+                    removeCartItem(Number(remBtn.dataset.cartIdx));
+                }
+            });
+        }
+        document.getElementById('btnGoCheckout')?.addEventListener('click', () => proceedCartCheckout(false));
+        document.getElementById('btnGoCheckoutAll')?.addEventListener('click', () => proceedCartCheckout(true));
+
+        renderCartPage();
+        revalidateCart({ silent: true });
+    });
 </script>
 {% endblock %}

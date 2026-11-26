@@ -45,9 +45,15 @@
         </button>
     </form>
 
-    <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--ax-border-subtle); text-align:center; font-size:0.86rem; color:var(--ax-text-secondary);">
-        아직 쇼핑몰 회원이 아니신가요?
-        <a href="/auth/register?next={{ next_url or '/' }}" style="color:var(--ax-accent-primary); font-weight:700; margin-left:6px;">회원가입하기</a>
+    <div class="ax-auth-links-row">
+        <div>
+            비밀번호를 잊으셨나요?
+            <a href="/auth/forgot-password" id="linkForgotPassword" class="ax-auth-link-accent">비밀번호 찾기</a>
+        </div>
+        <div>
+            아직 쇼핑몰 회원이 아니신가요?
+            <a href="/auth/register?next={{ next_url or '/' }}" class="ax-auth-link-accent">회원가입하기</a>
+        </div>
     </div>
 </div>
 {% endblock %}

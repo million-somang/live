@@ -66,6 +66,28 @@
         <button type="button" id="adminTabSales" class="ax-tab-btn" data-tab="sales" onclick="switchAdminTab(this.dataset.tab)">
             <span>매출 관리</span>
         </button>
+        <button type="button" id="adminTabMembers" class="ax-tab-btn" data-tab="members" onclick="switchAdminTab(this.dataset.tab)">
+            <span>회원 관리</span>
+            <span class="ax-num">(<span id="adminTabMembersCount">{{ member_count if member_count is defined else 0 }}</span>)</span>
+        </button>
+        <button type="button" id="adminTabCs" class="ax-tab-btn" data-tab="cs">
+            <span>고객센터 · Q&amp;A</span>
+        </button>
+        <button type="button" id="adminTabReviews" class="ax-tab-btn" data-tab="reviews">
+            <span>리뷰 관리</span>
+        </button>
+        <button type="button" id="adminTabPromos" class="ax-tab-btn" data-tab="promos">
+            <span>쿠폰 · 프로모션</span>
+        </button>
+        <button type="button" id="adminTabRestock" class="ax-tab-btn" data-tab="restock">
+            <span>재입고 알림</span>
+        </button>
+        <button type="button" id="adminTabNotifications" class="ax-tab-btn" data-tab="notifications">
+            <span>알림 로그</span>
+        </button>
+        <button type="button" id="adminTabOps" class="ax-tab-btn" data-tab="ops">
+            <span>운영 · 백업 · 감사로그</span>
+        </button>
         <button type="button" id="adminTabStore" class="ax-tab-btn" data-tab="store" onclick="switchAdminTab(this.dataset.tab)">
             <span>스토어 설정</span>
         </button>
@@ -181,13 +203,19 @@
             <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 웹 주문 내역</h2>
             <span id="adminOrdersVisibleBadge" class="ax-badge ax-badge-indigo ax-num">0건</span>
         </div>
-        <div class="ax-toolbar-search">
-            <div class="ax-search-wrap">
-                <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="adminOrderSearchInput" class="ax-input ax-input-search ax-input-compact" placeholder="주문번호, 수령인, 연락처, 상품명 검색..." oninput="renderAdminOrdersPanel()">
+        <div class="ax-admin-orders-tools">
+            <a href="/api/admin/orders/export-shipping.csv" id="btnExportShippingCsv" class="ax-btn ax-btn-secondary ax-btn-sm">발송용 CSV 다운로드</a>
+            <input type="file" id="adminTrackingCsvInput" accept=".csv,text/csv" class="ax-is-hidden">
+            <button type="button" id="btnImportTrackingCsv" class="ax-btn ax-btn-charcoal ax-btn-sm">송장 일괄 업로드</button>
+            <div class="ax-toolbar-search">
+                <div class="ax-search-wrap">
+                    <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="text" id="adminOrderSearchInput" class="ax-input ax-input-search ax-input-compact" placeholder="주문번호, 수령인, 연락처, 상품명 검색..." oninput="renderAdminOrdersPanel()">
+                </div>
             </div>
         </div>
     </div>
+    <div id="adminTrackingImportResult" class="ax-admin-tracking-result ax-is-hidden" aria-live="polite"></div>
 
     <div style="margin-bottom:14px;">
         <nav id="adminOrderSubtabs" class="ax-segmented-bar" aria-label="주문 상태별 분류">
@@ -371,6 +399,40 @@
                     <input type="text" id="asEscrowNotice" class="ax-input" value="{{ store_info.escrow_notice }}" required>
                 </div>
             </div>
+        </div>
+
+        <div class="ax-admin-modal-section">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">3. 배송비 및 무료배송 기준 설정</span>
+            </div>
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="asShippingFee">기본 배송비 (원) *</label>
+                    <input type="number" id="asShippingFee" class="ax-input ax-num" min="0" max="100000" step="100" value="{{ store_info.shipping_fee if store_info.shipping_fee is defined and store_info.shipping_fee is not none else 4000 }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asFreeShippingThreshold">무료배송 기준 금액 (원, 0 입력 시 무료배송 미적용)</label>
+                    <input type="number" id="asFreeShippingThreshold" class="ax-input ax-num" min="0" max="10000000" step="1000" value="{{ store_info.free_shipping_threshold if store_info.free_shipping_threshold is defined and store_info.free_shipping_threshold is not none else 0 }}" required>
+                </div>
+            </div>
+            <div style="font-size:0.78rem; color:var(--ax-text-secondary);">기본 배송비를 0원으로 설정하면 전 상품 무료배송, 무료배송 기준 금액을 50,000원으로 설정하면 50,000원 이상 구매 시 배송비 0원이 적용됩니다.</div>
+        </div>
+
+        <div class="ax-admin-modal-section">
+            <div class="ax-admin-modal-section-head">
+                <span class="ax-admin-modal-section-title">4. 적립금(포인트) 및 주문 운영 정책</span>
+            </div>
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="asPointEarnRate">구매 적립률 (%, 0~100)</label>
+                    <input type="number" id="asPointEarnRate" class="ax-input ax-num" min="0" max="100" step="0.1" value="{{ store_info.point_earn_rate if store_info.point_earn_rate is defined and store_info.point_earn_rate is not none else 1 }}" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="asUnpaidCancelHours">미입금 자동취소 시간 (시간, 0=비활성)</label>
+                    <input type="number" id="asUnpaidCancelHours" class="ax-input ax-num" min="0" max="8760" step="1" value="{{ store_info.unpaid_cancel_hours if store_info.unpaid_cancel_hours is defined and store_info.unpaid_cancel_hours is not none else 72 }}" required>
+                </div>
+            </div>
+            <div style="font-size:0.78rem; color:var(--ax-text-secondary);">회원 주문이 배송완료 상태가 되면 상품 금액 기준으로 적립률만큼 포인트가 1회 자동 지급됩니다.</div>
         </div>
 
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -778,6 +840,495 @@
     </div>
 </section>
 
+<!-- 8. 쇼핑몰 회원 관리 패널 (F9) -->
+<section id="adminPanelMembers" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div class="ax-page-title-row">
+                <h2 class="ax-section-title">쇼핑몰 가입 회원 관리</h2>
+                <span id="adminMembersTotalBadge" class="ax-badge ax-badge-indigo ax-num">0명</span>
+            </div>
+            <p class="ax-page-sub">가입 회원의 유효 주문 수·누적 구매액(취소/환불 제외)을 조회하고 계정 활성·정지 상태를 관리합니다.</p>
+        </div>
+        <button type="button" id="btnRefreshAdminMembers" class="ax-btn ax-btn-charcoal ax-btn-sm">새로고침</button>
+    </div>
+
+    <div class="ax-member-filter-bar">
+        <div class="ax-member-filter-controls">
+            <select id="adminMemberStatusFilter" class="ax-select ax-select-compact" aria-label="회원 상태 필터">
+                <option value="ALL">전체 상태</option>
+                <option value="ACTIVE">활성 회원</option>
+                <option value="SUSPENDED">정지 회원</option>
+                <option value="WITHDRAWN">탈퇴 회원</option>
+            </select>
+            <div class="ax-search-wrap">
+                <svg class="ax-icon-sm ax-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" id="adminMemberSearchInput" class="ax-input ax-input-search ax-input-compact" placeholder="이메일, 이름, 연락처 검색...">
+            </div>
+        </div>
+    </div>
+
+    <div class="ax-table-wrap">
+        <table class="ax-table">
+            <thead>
+                <tr>
+                    <th>회원 ID / 이메일</th>
+                    <th>이름 / 연락처</th>
+                    <th>권한</th>
+                    <th>계정 상태</th>
+                    <th>유효 주문 수</th>
+                    <th>누적 구매액</th>
+                    <th>가입일 / 최근 로그인</th>
+                    <th>관리</th>
+                </tr>
+            </thead>
+            <tbody id="adminMembersTbody"></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 9. 고객센터 · Q&A 관리 패널 (F11) -->
+<section id="adminPanelCs" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div class="ax-page-title-row">
+                <h2 class="ax-section-title">고객센터 · 상품 Q&amp;A · 공지 · FAQ 관리</h2>
+            </div>
+            <p class="ax-page-sub">상품 Q&amp;A(비밀글 포함) 답변/삭제, 1:1 문의 답변, 공지사항 및 FAQ를 관리합니다.</p>
+        </div>
+        <button type="button" id="btnRefreshAdminCs" class="ax-btn ax-btn-charcoal ax-btn-sm">새로고침</button>
+    </div>
+
+    <nav id="adminCsSubtabs" class="ax-segmented-bar ax-cs-subtabs" aria-label="고객센터 관리 세부 탭">
+        <button type="button" class="ax-tab-btn active js-admin-cs-subtab" data-cs-subtab="qna">상품 Q&amp;A</button>
+        <button type="button" class="ax-tab-btn js-admin-cs-subtab" data-cs-subtab="inquiries">1:1 문의</button>
+        <button type="button" class="ax-tab-btn js-admin-cs-subtab" data-cs-subtab="notices">공지사항</button>
+        <button type="button" class="ax-tab-btn js-admin-cs-subtab" data-cs-subtab="faqs">FAQ</button>
+    </nav>
+
+    <!-- 9-1. 상품 Q&A 관리 -->
+    <div id="adminCsSubQna">
+        <div class="ax-admin-notify-filters">
+            <select id="adminQnaStatusFilter" class="ax-select ax-select-compact" aria-label="Q&A 답변 상태 필터">
+                <option value="ALL">전체 Q&amp;A</option>
+                <option value="WAITING">답변대기</option>
+                <option value="ANSWERED">답변완료</option>
+            </select>
+        </div>
+        <div id="adminQnaList" class="ax-cs-list"></div>
+    </div>
+
+    <!-- 9-2. 1:1 문의 관리 -->
+    <div id="adminCsSubInquiries" class="ax-is-hidden">
+        <div class="ax-admin-notify-filters">
+            <select id="adminInquiryStatusFilter" class="ax-select ax-select-compact" aria-label="1:1 문의 상태 필터">
+                <option value="ALL">전체 문의</option>
+                <option value="접수대기">접수대기</option>
+                <option value="처리중">처리중</option>
+                <option value="답변완료">답변완료</option>
+            </select>
+        </div>
+        <div id="adminInquiriesList" class="ax-cs-list"></div>
+    </div>
+
+    <!-- 9-3. 공지사항 관리 -->
+    <div id="adminCsSubNotices" class="ax-is-hidden">
+        <form id="adminNoticeForm" class="ax-admin-cs-form-box">
+            <input type="hidden" id="adminNoticeId" value="0">
+            <div class="ax-field">
+                <label class="ax-label" for="adminNoticeTitle">공지 제목 *</label>
+                <input type="text" id="adminNoticeTitle" class="ax-input" maxlength="160" required placeholder="공지사항 제목 입력">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="adminNoticeContent">공지 내용 *</label>
+                <textarea id="adminNoticeContent" class="ax-input" rows="3" maxlength="5000" required placeholder="공지 본문 입력"></textarea>
+            </div>
+            <div class="ax-qna-compose-foot">
+                <label class="ax-qna-secret-label" for="adminNoticePinned">
+                    <input type="checkbox" id="adminNoticePinned" value="1">
+                    <span>상단 중요 공지로 고정</span>
+                </label>
+                <div class="ax-order-complete-code-row">
+                    <button type="button" id="btnAdminNoticeReset" class="ax-btn ax-btn-secondary ax-btn-sm">초기화</button>
+                    <button type="submit" id="btnAdminNoticeSave" class="ax-btn ax-btn-primary ax-btn-sm">공지사항 저장</button>
+                </div>
+            </div>
+        </form>
+        <div class="ax-table-wrap">
+            <table class="ax-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>제목</th>
+                        <th>고정</th>
+                        <th>등록일</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody id="adminNoticesTbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 9-4. FAQ 관리 -->
+    <div id="adminCsSubFaqs" class="ax-is-hidden">
+        <form id="adminFaqForm" class="ax-admin-cs-form-box">
+            <input type="hidden" id="adminFaqId" value="0">
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="adminFaqCategory">FAQ 카테고리 *</label>
+                    <select id="adminFaqCategory" class="ax-select">
+                        <option value="주문/결제">주문/결제</option>
+                        <option value="배송">배송</option>
+                        <option value="취소/교환/반품">취소/교환/반품</option>
+                        <option value="회원/기타">회원/기타</option>
+                    </select>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="adminFaqSortOrder">정렬 순서</label>
+                    <input type="number" id="adminFaqSortOrder" class="ax-input ax-num" value="10" min="0" max="9999">
+                </div>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="adminFaqQuestion">질문 *</label>
+                <input type="text" id="adminFaqQuestion" class="ax-input" maxlength="300" required placeholder="자주 묻는 질문 입력">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="adminFaqAnswer">답변 *</label>
+                <textarea id="adminFaqAnswer" class="ax-input" rows="3" maxlength="3000" required placeholder="FAQ 답변 입력"></textarea>
+            </div>
+            <div class="ax-qna-compose-foot">
+                <label class="ax-qna-secret-label" for="adminFaqActive">
+                    <input type="checkbox" id="adminFaqActive" value="1" checked>
+                    <span>고객센터에 공개</span>
+                </label>
+                <div class="ax-order-complete-code-row">
+                    <button type="button" id="btnAdminFaqReset" class="ax-btn ax-btn-secondary ax-btn-sm">초기화</button>
+                    <button type="submit" id="btnAdminFaqSave" class="ax-btn ax-btn-primary ax-btn-sm">FAQ 저장</button>
+                </div>
+            </div>
+        </form>
+        <div class="ax-table-wrap">
+            <table class="ax-table">
+                <thead>
+                    <tr>
+                        <th>순서</th>
+                        <th>카테고리</th>
+                        <th>질문</th>
+                        <th>상태</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody id="adminFaqsTbody"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- 10. 다채널 알림 발송 로그 패널 (F12) -->
+<section id="adminPanelNotifications" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div class="ax-page-title-row">
+                <h2 class="ax-section-title">다채널 알림 발송 로그</h2>
+                <span id="adminNotificationsTotalBadge" class="ax-badge ax-badge-indigo ax-num">0건</span>
+            </div>
+            <p class="ax-page-sub">주문 접수·입금 확인·출고·교환/반품 및 비밀번호 재설정 알림 발송·폴백 로그를 조회합니다.</p>
+        </div>
+        <button type="button" id="btnRefreshAdminNotifications" class="ax-btn ax-btn-charcoal ax-btn-sm">새로고침</button>
+    </div>
+
+    <div class="ax-admin-notify-filters">
+        <select id="adminNotifyEventFilter" class="ax-select ax-select-compact" aria-label="이벤트 유형 필터">
+            <option value="ALL">전체 이벤트</option>
+            <option value="ORDER_CREATED">ORDER_CREATED</option>
+            <option value="PAYMENT_CONFIRMED">PAYMENT_CONFIRMED</option>
+            <option value="ORDER_SHIPPED">ORDER_SHIPPED</option>
+            <option value="CLAIM_REQUESTED">CLAIM_REQUESTED</option>
+            <option value="ORDER_AUTO_CANCELLED">ORDER_AUTO_CANCELLED</option>
+            <option value="PASSWORD_RESET">PASSWORD_RESET</option>
+            <option value="RESTOCK_ALERT">RESTOCK_ALERT</option>
+        </select>
+        <select id="adminNotifyChannelFilter" class="ax-select ax-select-compact" aria-label="채널 필터">
+            <option value="ALL">전체 채널</option>
+            <option value="EMAIL">EMAIL</option>
+            <option value="TELEGRAM">TELEGRAM</option>
+            <option value="KAKAO_ALIMTALK">KAKAO_ALIMTALK</option>
+            <option value="SMS">SMS</option>
+        </select>
+        <select id="adminNotifyStatusFilter" class="ax-select ax-select-compact" aria-label="발송 상태 필터">
+            <option value="ALL">전체 상태</option>
+            <option value="SENT">SENT</option>
+            <option value="LOGGED_ONLY">LOGGED_ONLY</option>
+            <option value="FAILED">FAILED</option>
+        </select>
+        <input type="text" id="adminNotifySearchInput" class="ax-input ax-input-compact" placeholder="주문번호·수신자·내용 검색...">
+    </div>
+
+    <div class="ax-table-wrap">
+        <table class="ax-table">
+            <thead>
+                <tr>
+                    <th>ID / 일시</th>
+                    <th>이벤트</th>
+                    <th>채널</th>
+                    <th>수신자</th>
+                    <th>참조코드</th>
+                    <th>제목 / 내용</th>
+                    <th>상태</th>
+                </tr>
+            </thead>
+            <tbody id="adminNotificationsTbody"></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 11. 리뷰 관리 패널 (F13) -->
+<section id="adminPanelReviews" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-admin-subbar">
+        <div>
+            <h2 class="ax-section-title">상품 리뷰 관리 (포토 리뷰 · 숨김 · 판매자 답글)</h2>
+            <p class="ax-page-sub">고객 후기를 검토하고 숨김/노출 전환, 판매자 답글 작성, 부적절한 리뷰 삭제를 처리합니다.</p>
+        </div>
+        <div class="ax-toolbar-search">
+            <select id="adminReviewVisFilter" class="ax-select ax-select-compact" aria-label="리뷰 노출 상태 필터">
+                <option value="ALL">전체 리뷰</option>
+                <option value="VISIBLE">노출중</option>
+                <option value="HIDDEN">숨김</option>
+            </select>
+            <input type="text" id="adminReviewSearchInput" class="ax-input ax-input-compact" placeholder="작성자·내용·상품명 검색...">
+            <button type="button" id="btnRefreshAdminReviews" class="ax-btn ax-btn-secondary ax-btn-sm">새로고침</button>
+        </div>
+    </div>
+    <div id="adminReviewsList" class="ax-review-list"></div>
+</section>
+
+<!-- 12. 쿠폰 · 프로모션 관리 패널 (F14) -->
+<section id="adminPanelPromos" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-admin-subbar">
+        <div>
+            <h2 class="ax-section-title">쿠폰 · 라이브 할인 코드 관리</h2>
+            <p class="ax-page-sub">신규 가입 웰컴 쿠폰 및 라이브 전용 할인 코드를 생성·수정·비활성화할 수 있습니다.</p>
+        </div>
+        <button type="button" id="btnAdminCouponReset" class="ax-btn ax-btn-secondary ax-btn-sm">새 쿠폰 입력 초기화</button>
+    </div>
+
+    <form id="adminCouponForm" class="ax-admin-cs-form-box">
+        <input type="hidden" id="acCouponId" value="0">
+        <div class="ax-admin-coupon-grid">
+            <div class="ax-field">
+                <label class="ax-label" for="acCode">쿠폰 코드 *</label>
+                <input type="text" id="acCode" class="ax-input" maxlength="40" required placeholder="예: LIVE10">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acName">쿠폰명 *</label>
+                <input type="text" id="acName" class="ax-input" maxlength="120" required placeholder="예: 라이브 특가 10% 할인">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acDiscountType">할인 유형 *</label>
+                <select id="acDiscountType" class="ax-select">
+                    <option value="FIXED">정액 할인 (원)</option>
+                    <option value="PERCENT">정률 할인 (%)</option>
+                </select>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acDiscountValue">할인 값 (원 또는 %) *</label>
+                <input type="number" id="acDiscountValue" class="ax-input ax-num" min="1" required placeholder="예: 3000 또는 10">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acMaxDiscount">최대 할인 한도 (원, 0=무제한)</label>
+                <input type="number" id="acMaxDiscount" class="ax-input ax-num" min="0" value="0">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acMinOrder">최소 주문 금액 (원)</label>
+                <input type="number" id="acMinOrder" class="ax-input ax-num" min="0" value="0">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acUsageLimit">총 사용 한도 (0=무제한)</label>
+                <input type="number" id="acUsageLimit" class="ax-input ax-num" min="0" value="0">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acStartAt">시작일 (선택, YYYY-MM-DD)</label>
+                <input type="text" id="acStartAt" class="ax-input ax-num" placeholder="2026-01-01">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="acEndAt">종료일 (선택, YYYY-MM-DD)</label>
+                <input type="text" id="acEndAt" class="ax-input ax-num" placeholder="2026-12-31">
+            </div>
+        </div>
+        <div class="ax-review-actions">
+            <label class="ax-inline-check-label">
+                <input type="checkbox" id="acLiveOnly">
+                <span>라이브 방송(/live) 전용</span>
+            </label>
+            <label class="ax-inline-check-label">
+                <input type="checkbox" id="acWelcomeAuto">
+                <span>신규 가입 자동 발급(웰컴)</span>
+            </label>
+            <label class="ax-inline-check-label">
+                <input type="checkbox" id="acIsActive" checked>
+                <span>활성화</span>
+            </label>
+            <button type="submit" id="btnAdminCouponSave" class="ax-btn ax-btn-primary ax-btn-sm">쿠폰 저장</button>
+        </div>
+    </form>
+
+    <div class="ax-table-wrap">
+        <table class="ax-table">
+            <thead>
+                <tr>
+                    <th>코드</th>
+                    <th>쿠폰명</th>
+                    <th>혜택</th>
+                    <th>최소주문</th>
+                    <th>사용/한도</th>
+                    <th>속성</th>
+                    <th>상태</th>
+                    <th>관리</th>
+                </tr>
+            </thead>
+            <tbody id="adminCouponsTbody"></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 13. 재입고 알림 신청 현황 패널 (F16) -->
+<section id="adminPanelRestock" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div class="ax-page-title-row">
+                <h2 class="ax-section-title">품절 옵션 재입고 알림 신청 내역</h2>
+                <span id="adminRestockTotalBadge" class="ax-badge ax-badge-indigo ax-num">0건</span>
+            </div>
+            <p class="ax-page-sub">품절 상품 옵션의 재입고 알림 신청 목록 및 재고 복구 시 자동 발송(NOTIFIED) 현황을 조회합니다.</p>
+        </div>
+        <button type="button" id="btnRefreshAdminRestock" class="ax-btn ax-btn-charcoal ax-btn-sm">새로고침</button>
+    </div>
+
+    <div class="ax-admin-notify-filters">
+        <select id="adminRestockStatusFilter" class="ax-select ax-select-compact" aria-label="재입고 알림 상태 필터">
+            <option value="ALL">전체 상태</option>
+            <option value="PENDING">대기중 (PENDING)</option>
+            <option value="NOTIFIED">발송완료 (NOTIFIED)</option>
+        </select>
+        <input type="text" id="adminRestockSearchInput" class="ax-input ax-input-compact" placeholder="상품번호·상품명·옵션·연락처 검색...">
+    </div>
+
+    <div class="ax-table-wrap">
+        <table class="ax-table">
+            <thead>
+                <tr>
+                    <th>ID / 신청일시</th>
+                    <th>상품</th>
+                    <th>옵션</th>
+                    <th>채널</th>
+                    <th>수신 연락처</th>
+                    <th>상태 / 발송일시</th>
+                </tr>
+            </thead>
+            <tbody id="adminRestockTbody"></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- 14. 운영 자동화 · DB 백업 · 감사 로그 패널 (F18) -->
+<section id="adminPanelOps" class="ax-card ax-card-pad ax-is-hidden">
+    <div class="ax-order-subbar">
+        <div>
+            <div class="ax-page-title-row">
+                <h2 class="ax-section-title">운영 자동화 · DB 백업 · 관리자 감사 로그</h2>
+                <span id="adminOpsSchedulerBadge" class="ax-badge ax-badge-indigo">스케줄러 상태 확인중</span>
+            </div>
+            <p class="ax-page-sub">미입금 주문 자동 취소 및 재고·쿠폰·적립금 복구 실행, SQLite 온라인 백업 생성·다운로드, 관리자 작업 감사 로그를 관리합니다.</p>
+        </div>
+        <button type="button" id="btnRefreshAdminOps" class="ax-btn ax-btn-charcoal ax-btn-sm">새로고침</button>
+    </div>
+
+    <!-- 섹션 1: 미입금 주문 자동 취소 수동 실행 -->
+    <div class="ax-admin-modal-section">
+        <div class="ax-admin-modal-section-head">
+            <div>
+                <span class="ax-admin-modal-section-title">1. 미입금 주문 자동 취소 및 유지보수 실행</span>
+                <p class="ax-ops-helper-text">스토어 설정의 미입금 자동취소 시간(현재 <strong id="adminOpsCancelHoursText" class="ax-num">-</strong>시간)을 경과한 입금대기 주문을 즉시 취소하고 재고·쿠폰·적립금을 복구합니다.</p>
+            </div>
+            <button type="button" id="btnRunMaintenanceNow" class="ax-btn ax-btn-primary ax-btn-sm">미입금 자동취소 즉시 실행</button>
+        </div>
+        <div id="adminOpsMaintenanceResult" class="ax-callout-indigo ax-is-hidden" aria-live="polite"></div>
+    </div>
+
+    <!-- 섹션 2: SQLite 온라인 DB 백업 생성 및 다운로드 -->
+    <div class="ax-admin-modal-section">
+        <div class="ax-admin-modal-section-head">
+            <div>
+                <span class="ax-admin-modal-section-title">2. 데이터베이스(SQLite) 온라인 백업</span>
+                <p class="ax-ops-helper-text">서비스 중단 없이 안전한 SQLite Online Backup API 스냅샷을 생성하고 파일로 다운로드합니다.</p>
+            </div>
+            <div class="ax-toolbar-actions">
+                <span id="adminBackupsCountBadge" class="ax-badge ax-badge-neutral ax-num">0건</span>
+                <button type="button" id="btnCreateDbBackup" class="ax-btn ax-btn-charcoal ax-btn-sm">수동 DB 백업 생성</button>
+            </div>
+        </div>
+        <div class="ax-table-wrap">
+            <table class="ax-table">
+                <thead>
+                    <tr>
+                        <th>백업 파일명</th>
+                        <th>파일 크기</th>
+                        <th>생성 일시</th>
+                        <th>다운로드</th>
+                    </tr>
+                </thead>
+                <tbody id="adminBackupsTbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 섹션 3: 관리자 작업 감사 로그 (필터 + 페이지네이션) -->
+    <div class="ax-admin-modal-section ax-ops-section-last">
+        <div class="ax-admin-modal-section-head">
+            <div>
+                <span class="ax-admin-modal-section-title">3. 관리자 작업 감사 로그</span>
+                <p class="ax-ops-helper-text">상품·주문·회원·CS·리뷰·쿠폰·스토어·백업·유지보수 등 모든 관리자 변경 이력이 기록됩니다.</p>
+            </div>
+            <span id="adminAuditTotalBadge" class="ax-badge ax-badge-indigo ax-num">0건</span>
+        </div>
+
+        <div class="ax-admin-notify-filters">
+            <select id="adminAuditActionFilter" class="ax-select ax-select-compact" aria-label="감사 작업 유형 필터">
+                <option value="ALL">전체 작업</option>
+                <option value="PRODUCT">상품 (PRODUCT)</option>
+                <option value="ORDER">주문/배송 (ORDER)</option>
+                <option value="USER">회원 (USER)</option>
+                <option value="STORE">스토어 설정 (STORE)</option>
+                <option value="COUPON">쿠폰 (COUPON)</option>
+                <option value="CS">CS · Q&amp;A · 공지/FAQ</option>
+                <option value="REVIEW">리뷰 (REVIEW)</option>
+                <option value="SYSTEM">백업 · 자동취소 (SYSTEM)</option>
+            </select>
+            <input type="text" id="adminAuditSearchInput" class="ax-input ax-input-compact" placeholder="관리자 이메일, 대상 ID, 상세내용 검색...">
+            <button type="button" id="btnAdminAuditSearch" class="ax-btn ax-btn-secondary ax-btn-sm">조회</button>
+        </div>
+
+        <div class="ax-table-wrap">
+            <table class="ax-table">
+                <thead>
+                    <tr>
+                        <th>ID / 일시</th>
+                        <th>관리자</th>
+                        <th>작업</th>
+                        <th>대상</th>
+                        <th>상세 내역</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody id="adminAuditLogsTbody"></tbody>
+            </table>
+        </div>
+
+        <nav id="adminAuditPagination" class="ax-pagination" aria-label="감사 로그 페이지네이션"></nav>
+    </div>
+</section>
+
 <!-- 상품 등록 / 수정 Astryx Dialog 모달 -->
 <div class="ax-dialog-backdrop" id="adminProductModal" role="dialog" aria-modal="true" aria-labelledby="adminProductModalTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closeAdminProductModal)">
     <div class="ax-dialog-card ax-dialog-wide">
@@ -967,7 +1518,9 @@
      data-policy-defaults="{{ (policy_defaults or {}) | tojson | forceescape }}"
      data-orders="{{ (orders or []) | tojson | forceescape }}"
      data-banners="{{ (hero_banners or []) | tojson | forceescape }}"
-     data-suppliers="{{ (suppliers or []) | tojson | forceescape }}"></div>
+     data-suppliers="{{ (suppliers or []) | tojson | forceescape }}"
+     data-carriers="{{ (carrier_catalog or []) | tojson | forceescape }}"
+     data-current-user-id="{{ (current_mall_user.id if current_mall_user else 0) | tojson | forceescape }}"></div>
 <script>
     const __admBootEl = document.getElementById('adminMallBootstrap');
     let adminProducts = __admBootEl ? JSON.parse(__admBootEl.dataset.products || '[]') : [];
@@ -977,6 +1530,9 @@
     let adminOrders = __admBootEl ? JSON.parse(__admBootEl.dataset.orders || '[]') : [];
     let adminBanners = __admBootEl ? JSON.parse(__admBootEl.dataset.banners || '[]') : [];
     let adminSuppliers = __admBootEl ? JSON.parse(__admBootEl.dataset.suppliers || '[]') : [];
+    const adminCarriers = __admBootEl ? JSON.parse(__admBootEl.dataset.carriers || '[]') : [];
+    const adminCurrentUserId = __admBootEl ? Number(JSON.parse(__admBootEl.dataset.currentUserId || '0')) : 0;
+    let adminMembers = [];
     let adminSalesData = null;
     let activeSalesSubtab = 'analysis';
     let activeOrderSubtab = 'ACTIVE';
@@ -990,9 +1546,9 @@
     const ALL_PAYMENT_STATUS_OPTIONS = ['입금대기', '입금완료', '환불대기', '환불완료'];
 
     function switchAdminTab(tabName) {
-        const tabs = ['products', 'categories', 'orders', 'claims', 'banners', 'sales', 'store'];
-        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders', claims: 'adminTabClaims', banners: 'adminTabBanners', sales: 'adminTabSales', store: 'adminTabStore' };
-        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders', claims: 'adminPanelClaims', banners: 'adminPanelBanners', sales: 'adminPanelSales', store: 'adminPanelStore' };
+        const tabs = ['products', 'categories', 'orders', 'claims', 'banners', 'sales', 'members', 'cs', 'reviews', 'promos', 'restock', 'notifications', 'ops', 'store'];
+        const tMap = { products: 'adminTabProducts', categories: 'adminTabCategories', orders: 'adminTabOrders', claims: 'adminTabClaims', banners: 'adminTabBanners', sales: 'adminTabSales', members: 'adminTabMembers', cs: 'adminTabCs', reviews: 'adminTabReviews', promos: 'adminTabPromos', restock: 'adminTabRestock', notifications: 'adminTabNotifications', ops: 'adminTabOps', store: 'adminTabStore' };
+        const pMap = { products: 'adminPanelProducts', categories: 'adminPanelCategories', orders: 'adminPanelOrders', claims: 'adminPanelClaims', banners: 'adminPanelBanners', sales: 'adminPanelSales', members: 'adminPanelMembers', cs: 'adminPanelCs', reviews: 'adminPanelReviews', promos: 'adminPanelPromos', restock: 'adminPanelRestock', notifications: 'adminPanelNotifications', ops: 'adminPanelOps', store: 'adminPanelStore' };
         tabs.forEach(t => {
             const btn = document.getElementById(tMap[t]);
             const panel = document.getElementById(pMap[t]);
@@ -1002,6 +1558,20 @@
         });
         if (tabName === 'sales') {
             loadAdminSalesSummary();
+        } else if (tabName === 'members') {
+            loadAdminUsers();
+        } else if (tabName === 'cs') {
+            loadAdminCsData();
+        } else if (tabName === 'reviews') {
+            loadAdminReviews();
+        } else if (tabName === 'promos') {
+            loadAdminCoupons();
+        } else if (tabName === 'restock') {
+            loadAdminRestockAlerts();
+        } else if (tabName === 'notifications') {
+            loadAdminNotificationLogs();
+        } else if (tabName === 'ops') {
+            loadAdminOpsPanel();
         }
     }
 
@@ -1721,9 +2291,20 @@
         const oid = Number(ord.id);
         const itemList = Array.isArray(ord.order_items) ? ord.order_items : (Array.isArray(ord.items) ? ord.items : []);
         const safeTotal = Number(ord.total_amount || 0);
-        const safeShip = ord.shipping_fee !== null && ord.shipping_fee !== undefined ? Number(ord.shipping_fee) : 4000;
+        const cfgShipFee = Number((window.getMallShippingConfig ? window.getMallShippingConfig().shipping_fee : 0) || 0);
+        const safeShip = ord.shipping_fee !== null && ord.shipping_fee !== undefined ? Number(ord.shipping_fee) : cfgShipFee;
         const rawSub = Number(ord.subtotal_amount || 0);
-        const safeSub = rawSub > 0 ? rawSub : Math.max(0, safeTotal - safeShip);
+        const cDisc = Number(ord.coupon_discount || 0);
+        const ptsUsed = Number(ord.points_used || 0);
+        const ptsEarn = Number(ord.points_earned || 0);
+        const safeSub = rawSub > 0 ? rawSub : Math.max(0, safeTotal - safeShip + cDisc + ptsUsed);
+        const promoSummaryParts = [];
+        if (cDisc > 0) promoSummaryParts.push(`쿠폰(${window.mallEscapeHtml(ord.coupon_code || '')}) -${cDisc.toLocaleString()}원`);
+        if (ptsUsed > 0) promoSummaryParts.push(`포인트 -${ptsUsed.toLocaleString()}P`);
+        if (ptsEarn > 0) promoSummaryParts.push(`적립 +${ptsEarn.toLocaleString()}P`);
+        const promoLineHtml = promoSummaryParts.length > 0
+            ? `<div style="font-size:0.72rem; color:var(--ax-accent-primary); font-weight:700;">${promoSummaryParts.join(' · ')}</div>`
+            : '';
         const srcUp = String(ord.source_page || 'MALL').toUpperCase();
         const srcBadge = srcUp === 'CART_CHECKOUT'
             ? '<span class="ax-badge ax-badge-info">장바구니</span>'
@@ -1771,16 +2352,18 @@
             `<option value="${window.mallEscapeHtml(ost)}"${ordStatus === ost ? ' selected' : ''}>${window.mallEscapeHtml(ost)}</option>`
         ).join('');
 
+        const claimReasonSummaryHtml = ord.claim_reason
+            ? `<div class="ax-claim-reason-summary"><strong>사유/메모:</strong> ${window.mallEscapeHtml(ord.claim_reason)}</div>`
+            : '';
         const claimMemoHtml = isClaimView
             ? `
+                ${claimReasonSummaryHtml}
                 <div class="ax-claim-memo-row">
                     <label class="ax-label" for="claimReasonInput_${oid}" style="margin:0; white-space:nowrap;">사유/메모</label>
                     <input type="text" id="claimReasonInput_${oid}" class="ax-input ax-input-compact ax-claim-memo-input" value="${window.mallEscapeHtml(ord.claim_reason || '')}" placeholder="환불·교환 사유 또는 관리자 처리 메모 입력...">
                     <button type="button" data-order-id="${oid}" onclick="saveOrderClaimReason(Number(this.dataset.orderId))" class="ax-btn ax-btn-secondary ax-btn-sm">메모 저장</button>
                 </div>`
-            : (ord.claim_reason
-                ? `<div style="margin-bottom:8px; font-size:0.78rem; color:var(--ax-text-secondary);"><strong>사유/메모:</strong> ${window.mallEscapeHtml(ord.claim_reason)}</div>`
-                : '');
+            : claimReasonSummaryHtml;
 
         let quickBtnsHtml = '';
         if (isClaimView) {
@@ -1797,6 +2380,44 @@
             `;
         }
 
+        const curCarrierCode = String(ord.carrier_code || '');
+        const curCarrierName = String(ord.carrier_name || '').trim();
+        const curTrackingNo = String(ord.tracking_number || '');
+        const curTrackingUrl = String(ord.tracking_url || '');
+        const safeTrackUrl = curTrackingUrl.startsWith('https://') ? curTrackingUrl : '';
+        const defaultMarkShipped = (ordStatus === '결제대기' || ordStatus === '상품준비중');
+        const carrierOptionsHtml = ['<option value="">택배사 선택...</option>'].concat(
+            (adminCarriers || []).map(c =>
+                `<option value="${window.mallEscapeHtml(c.code)}"${curCarrierCode === c.code ? ' selected' : ''}>${window.mallEscapeHtml(c.name)}</option>`
+            )
+        ).join('');
+        const trackingChipHtml = curTrackingNo
+            ? `<span class="ax-admin-tracking-chip">${curCarrierName ? `<span class="ax-badge ax-badge-indigo">${window.mallEscapeHtml(curCarrierName)}</span>` : ''}<span class="ax-code-chip">${window.mallEscapeHtml(curTrackingNo)}</span></span>`
+            : '';
+        const trackingLinkHtml = safeTrackUrl
+            ? `<a href="${window.mallEscapeHtml(safeTrackUrl)}" target="_blank" rel="noopener noreferrer" class="ax-btn ax-btn-secondary ax-btn-sm">추적 링크</a>`
+            : '';
+        const shippedInfoHtml = ord.shipped_at
+            ? `<span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-secondary);">출고: ${window.mallEscapeHtml(ord.shipped_at)}</span>`
+            : '';
+        const trackingSectionHtml = (!isClaimView && ordStatus !== '주문취소')
+            ? `
+                <div class="ax-admin-tracking-row">
+                    <select id="orderCarrier_${oid}" class="ax-select ax-select-compact ax-admin-tracking-select" aria-label="택배사 선택">
+                        ${carrierOptionsHtml}
+                    </select>
+                    <input type="text" id="orderTracking_${oid}" class="ax-input ax-input-compact ax-num ax-admin-tracking-input" value="${window.mallEscapeHtml(curTrackingNo)}" placeholder="운송장 번호 입력 (- 포함 영숫자)">
+                    <label class="ax-admin-tracking-check">
+                        <input type="checkbox" id="orderMarkShipped_${oid}" ${defaultMarkShipped ? 'checked' : ''}>
+                        <span>배송중 전환</span>
+                    </label>
+                    <button type="button" data-order-id="${oid}" onclick="saveAdminOrderTracking(Number(this.dataset.orderId))" class="ax-btn ax-btn-primary ax-btn-sm">송장 저장</button>
+                    ${trackingChipHtml}
+                    ${trackingLinkHtml}
+                    ${shippedInfoHtml}
+                </div>`
+            : '';
+
         return `
             <div class="ax-admin-order-card" data-order-card-id="${oid}">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
@@ -1812,11 +2433,12 @@
                     <div style="text-align:right; margin-left:auto;" class="ax-num">
                         <strong style="font-size:0.98rem; color:var(--ax-accent-primary);">${safeTotal.toLocaleString()}원</strong>
                         <div style="font-size:0.72rem; color:var(--ax-text-secondary);">상품 ${safeSub.toLocaleString()}원 + 택배 ${safeShip.toLocaleString()}원</div>
+                        ${promoLineHtml}
                     </div>
                 </div>
 
                 <div style="color:var(--ax-text-secondary); margin-bottom:8px; font-size:0.81rem;">
-                    <strong style="color:var(--ax-text-primary);">배송지:</strong> ${window.mallEscapeHtml(ord.address || '')} ${window.mallEscapeHtml(ord.address_detail || '')}
+                    <strong style="color:var(--ax-text-primary);">배송지:</strong> ${ord.zipcode ? `<span class="ax-code-chip">[${window.mallEscapeHtml(ord.zipcode)}]</span> ` : ''}${window.mallEscapeHtml(ord.address || '')} ${window.mallEscapeHtml(ord.address_detail || '')}
                     ${ord.delivery_memo ? `<div style="margin-top:3px; color:var(--ax-accent-primary); font-weight:600;">배송메모: ${window.mallEscapeHtml(ord.delivery_memo)}</div>` : ''}
                 </div>
                 ${claimTsHtml}
@@ -1828,6 +2450,7 @@
                     ${itemsHtml}
                 </div>
 
+                ${trackingSectionHtml}
                 ${claimMemoHtml}
 
                 <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -2033,6 +2656,34 @@
     async function saveAdminStoreInfo(e) {
         e.preventDefault();
         const btn = document.getElementById('btnSaveAdminStoreInfo');
+        const rawFee = document.getElementById('asShippingFee')?.value;
+        const rawThreshold = document.getElementById('asFreeShippingThreshold')?.value;
+        const rawEarnRate = document.getElementById('asPointEarnRate')?.value;
+        const rawUnpaidHrs = document.getElementById('asUnpaidCancelHours')?.value;
+        const shippingFee = Number(rawFee);
+        const freeThreshold = Number(rawThreshold);
+        const pointEarnRate = Number(rawEarnRate);
+        const unpaidCancelHours = Number(rawUnpaidHrs);
+        if (!Number.isFinite(shippingFee) || !Number.isInteger(shippingFee) || shippingFee < 0 || shippingFee > 1000000) {
+            alert('기본 배송비는 0 이상의 정수로 입력해 주세요.');
+            document.getElementById('asShippingFee')?.focus();
+            return;
+        }
+        if (!Number.isFinite(freeThreshold) || !Number.isInteger(freeThreshold) || freeThreshold < 0 || freeThreshold > 100000000) {
+            alert('무료배송 기준 금액은 0 이상의 정수로 입력해 주세요.');
+            document.getElementById('asFreeShippingThreshold')?.focus();
+            return;
+        }
+        if (!Number.isFinite(pointEarnRate) || pointEarnRate < 0 || pointEarnRate > 100) {
+            alert('구매 적립률은 0~100 사이의 숫자로 입력해 주세요.');
+            document.getElementById('asPointEarnRate')?.focus();
+            return;
+        }
+        if (!Number.isFinite(unpaidCancelHours) || !Number.isInteger(unpaidCancelHours) || unpaidCancelHours < 0 || unpaidCancelHours > 8760) {
+            alert('미입금 자동취소 시간은 0~8760 사이의 정수로 입력해 주세요.');
+            document.getElementById('asUnpaidCancelHours')?.focus();
+            return;
+        }
         const payload = {
             brand_name: document.getElementById('asBrandName')?.value.trim() || '',
             company_name: document.getElementById('asCompanyName')?.value.trim() || '',
@@ -2049,7 +2700,11 @@
             bank_account: document.getElementById('asBankAccount')?.value.trim() || '',
             bank_holder: document.getElementById('asBankHolder')?.value.trim() || '',
             effective_date: document.getElementById('asEffectiveDate')?.value.trim() || '',
-            escrow_notice: document.getElementById('asEscrowNotice')?.value.trim() || ''
+            escrow_notice: document.getElementById('asEscrowNotice')?.value.trim() || '',
+            shipping_fee: shippingFee,
+            free_shipping_threshold: freeThreshold,
+            point_earn_rate: pointEarnRate,
+            unpaid_cancel_hours: unpaidCancelHours
         };
         if (btn) btn.disabled = true;
         try {
@@ -2060,11 +2715,22 @@
             });
             const data = await res.json();
             if (res.ok && data.status === 'ok') {
+                if (data.store_info) {
+                    const feeInput = document.getElementById('asShippingFee');
+                    const thInput = document.getElementById('asFreeShippingThreshold');
+                    const erInput = document.getElementById('asPointEarnRate');
+                    const uhInput = document.getElementById('asUnpaidCancelHours');
+                    if (feeInput && data.store_info.shipping_fee !== undefined) feeInput.value = String(data.store_info.shipping_fee);
+                    if (thInput && data.store_info.free_shipping_threshold !== undefined) thInput.value = String(data.store_info.free_shipping_threshold);
+                    if (erInput && data.store_info.point_earn_rate !== undefined) erInput.value = String(data.store_info.point_earn_rate);
+                    if (uhInput && data.store_info.unpaid_cancel_hours !== undefined) uhInput.value = String(data.store_info.unpaid_cancel_hours);
+                    window.updateMallStoreConfig?.(data.store_info);
+                }
                 const hint = document.getElementById('adminStoreSaveHint');
                 if (hint) {
-                    hint.textContent = `저장 완료 (${new Date().toLocaleTimeString('ko-KR')}) — 푸터 및 약관 페이지에 반영되었습니다.`;
+                    hint.textContent = `저장 완료 (${new Date().toLocaleTimeString('ko-KR')}) — 푸터, 배송비 계산 및 약관 페이지에 반영되었습니다.`;
                 }
-                showMallToast('스토어 · 사업자 정보가 저장되었습니다.');
+                showMallToast('스토어 · 배송비 설정이 저장되었습니다.');
             } else {
                 alert((data && data.message) || '스토어 정보 저장 실패');
             }
@@ -2804,6 +3470,845 @@
         }
     }
 
+    async function saveAdminOrderTracking(orderId) {
+        const carrierCode = document.getElementById(`orderCarrier_${orderId}`)?.value || '';
+        const trackingNumber = document.getElementById(`orderTracking_${orderId}`)?.value.trim() || '';
+        const markShipped = Boolean(document.getElementById(`orderMarkShipped_${orderId}`)?.checked);
+        try {
+            const res = await fetch('/api/admin/orders/tracking', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_id: orderId,
+                    carrier_code: carrierCode,
+                    tracking_number: trackingNumber,
+                    mark_shipped: markShipped
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !data.order) {
+                alert((data && data.message) || '운송장 저장에 실패했습니다.');
+                return;
+            }
+            const idx = adminOrders.findIndex(o => Number(o.id) === Number(data.order.id));
+            if (idx >= 0) adminOrders[idx] = data.order;
+            else adminOrders.unshift(data.order);
+            renderAdminOrdersPanel();
+            showMallToast('운송장 정보가 저장되었습니다.');
+        } catch (err) {
+            alert('운송장 저장 오류: ' + err.message);
+        }
+    }
+
+    async function uploadTrackingCsvFile(file) {
+        if (!file) return;
+        const resultBox = document.getElementById('adminTrackingImportResult');
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+            const res = await fetch('/api/admin/orders/import-tracking', {
+                method: 'POST',
+                body: fd
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                if (resultBox) {
+                    resultBox.classList.remove('ax-is-hidden');
+                    resultBox.innerHTML = `<strong>송장 일괄 업로드 실패:</strong> ${window.mallEscapeHtml((data && data.message) || '업로드 실패')}`;
+                }
+                alert((data && data.message) || '송장 일괄 업로드에 실패했습니다.');
+                return;
+            }
+            (data.updated_orders || []).forEach(uOrd => {
+                const idx = adminOrders.findIndex(o => Number(o.id) === Number(uOrd.id));
+                if (idx >= 0) adminOrders[idx] = uOrd;
+                else adminOrders.unshift(uOrd);
+            });
+            renderAdminOrdersPanel();
+            if (resultBox) {
+                const errs = Array.isArray(data.errors) ? data.errors : [];
+                const errHtml = errs.length > 0
+                    ? `<ul class="ax-admin-tracking-errors">${errs.map(er =>
+                        `<li>행 ${Number(er.row || 0)} (${window.mallEscapeHtml(er.order_code || '-')}): ${window.mallEscapeHtml(er.error || '')}</li>`
+                    ).join('')}</ul>`
+                    : '';
+                resultBox.classList.remove('ax-is-hidden');
+                resultBox.innerHTML = `<strong class="ax-num">송장 일괄 업로드 완료: 총 ${Number(data.total_rows || 0)}건 중 ${Number(data.updated_count || 0)}건 반영 · 실패 ${Number(data.error_count || 0)}건</strong>${errHtml}`;
+            }
+            showMallToast(`송장 ${Number(data.updated_count || 0)}건이 일괄 반영되었습니다.`);
+        } catch (err) {
+            alert('송장 일괄 업로드 오류: ' + err.message);
+        }
+    }
+
+    async function loadAdminUsers() {
+        const q = String(document.getElementById('adminMemberSearchInput')?.value || '').trim();
+        const statusFilter = String(document.getElementById('adminMemberStatusFilter')?.value || 'ALL');
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (statusFilter) params.set('status', statusFilter);
+        try {
+            const res = await fetch('/api/admin/users?' + params.toString());
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                showMallToast((data && data.message) || '회원 목록 조회 실패');
+                return;
+            }
+            adminMembers = Array.isArray(data.users) ? data.users : [];
+            renderAdminMembersTable();
+        } catch (err) {
+            showMallToast('회원 목록 조회 오류: ' + err.message);
+        }
+    }
+
+    function renderAdminMembersTable() {
+        const tbody = document.getElementById('adminMembersTbody');
+        const badge = document.getElementById('adminMembersTotalBadge');
+        const tabCnt = document.getElementById('adminTabMembersCount');
+        const rows = Array.isArray(adminMembers) ? adminMembers : [];
+        if (badge) badge.textContent = `${rows.length}명`;
+        if (tabCnt && !String(document.getElementById('adminMemberSearchInput')?.value || '').trim() && (document.getElementById('adminMemberStatusFilter')?.value || 'ALL') === 'ALL') {
+            tabCnt.textContent = String(rows.length);
+        }
+        if (!tbody) return;
+        const esc = window.mallEscapeHtml;
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--ax-text-muted); padding:24px;">조건에 해당하는 회원이 없습니다.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(u => {
+            const uid = Number(u.id);
+            const st = String(u.account_status || (u.is_active ? 'ACTIVE' : 'SUSPENDED'));
+            let statusBadge = '<span class="ax-badge ax-badge-success">활성</span>';
+            if (st === 'WITHDRAWN') {
+                statusBadge = `<span class="ax-badge ax-badge-neutral">탈퇴 (${esc(u.withdrawn_at || '')})</span>`;
+            } else if (st === 'SUSPENDED') {
+                statusBadge = '<span class="ax-badge ax-badge-live">정지</span>';
+            }
+            const roleBadge = u.role === 'ADMIN'
+                ? '<span class="ax-badge ax-badge-indigo">ADMIN</span>'
+                : '<span class="ax-badge ax-badge-neutral">MEMBER</span>';
+
+            let actionHtml = '<span style="font-size:0.76rem; color:var(--ax-text-muted);">변경 불가</span>';
+            if (st !== 'WITHDRAWN' && uid !== adminCurrentUserId) {
+                const nextActive = u.is_active ? 0 : 1;
+                const btnLabel = u.is_active ? '계정 정지' : '활성화';
+                const btnCls = u.is_active ? 'ax-btn ax-btn-danger-soft ax-btn-sm' : 'ax-btn ax-btn-primary ax-btn-sm';
+                actionHtml = `<button type="button" class="${btnCls} js-admin-user-status-btn" data-user-id="${uid}" data-next-active="${nextActive}">${btnLabel}</button>`;
+            } else if (uid === adminCurrentUserId) {
+                actionHtml = '<span class="ax-badge ax-badge-neutral">현재 관리자</span>';
+            }
+
+            return `
+                <tr data-member-row-id="${uid}">
+                    <td>
+                        <div class="ax-num"><span class="ax-code-chip">#${uid}</span></div>
+                        <div style="font-weight:700; margin-top:4px;">${esc(u.email)}</div>
+                    </td>
+                    <td>
+                        <div><strong>${esc(u.name)}</strong></div>
+                        <div class="ax-num" style="font-size:0.78rem; color:var(--ax-text-secondary);">${esc(u.phone || '-')}</div>
+                    </td>
+                    <td>${roleBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td class="ax-num"><strong>${Number(u.order_count || 0)}건</strong></td>
+                    <td class="ax-num"><strong>${Number(u.total_spent || 0).toLocaleString()}원</strong></td>
+                    <td class="ax-num" style="font-size:0.78rem; color:var(--ax-text-secondary);">
+                        <div>가입: ${esc(u.created_at || '-')}</div>
+                        <div>로그인: ${esc(u.last_login_at || '-')}</div>
+                    </td>
+                    <td>${actionHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function toggleAdminUserStatus(userId, nextActive) {
+        try {
+            const res = await fetch('/api/admin/users/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, is_active: nextActive })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !data.user) {
+                alert((data && data.message) || '회원 상태 변경에 실패했습니다.');
+                return;
+            }
+            const idx = adminMembers.findIndex(m => Number(m.id) === Number(data.user.id));
+            if (idx >= 0) adminMembers[idx] = data.user;
+            renderAdminMembersTable();
+            showMallToast(data.user.is_active ? '회원 계정이 활성화되었습니다.' : '회원 계정이 정지되었습니다.');
+        } catch (err) {
+            alert('회원 상태 변경 오류: ' + err.message);
+        }
+    }
+
+    let adminQnaList = [];
+    let adminInquiriesList = [];
+    let adminNoticesList = [];
+    let adminFaqsList = [];
+    let adminNotificationsList = [];
+    let activeAdminCsSubtab = 'qna';
+
+    function switchAdminCsSubtab(subtab) {
+        activeAdminCsSubtab = subtab || 'qna';
+        document.querySelectorAll('.js-admin-cs-subtab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.csSubtab === activeAdminCsSubtab);
+        });
+        const map = {
+            qna: 'adminCsSubQna',
+            inquiries: 'adminCsSubInquiries',
+            notices: 'adminCsSubNotices',
+            faqs: 'adminCsSubFaqs'
+        };
+        Object.keys(map).forEach(k => {
+            document.getElementById(map[k])?.classList.toggle('ax-is-hidden', k !== activeAdminCsSubtab);
+        });
+    }
+
+    async function loadAdminCsData() {
+        await Promise.all([
+            loadAdminQna(),
+            loadAdminInquiries(),
+            loadAdminNotices(),
+            loadAdminFaqs()
+        ]);
+    }
+
+    async function loadAdminQna() {
+        const st = document.getElementById('adminQnaStatusFilter')?.value || 'ALL';
+        try {
+            const res = await fetch('/api/admin/qna?status=' + encodeURIComponent(st));
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                adminQnaList = Array.isArray(data.items) ? data.items : [];
+                renderAdminQnaList();
+            }
+        } catch (err) {}
+    }
+
+    function renderAdminQnaList() {
+        const box = document.getElementById('adminQnaList');
+        if (!box) return;
+        const esc = window.mallEscapeHtml;
+        if (!adminQnaList.length) {
+            box.innerHTML = '<div class="ax-detail-empty-box">등록된 상품 Q&amp;A가 없습니다.</div>';
+            return;
+        }
+        box.innerHTML = adminQnaList.map(q => {
+            const qid = Number(q.id);
+            const secretBadge = q.is_secret ? '<span class="ax-badge ax-badge-warning">비밀글</span>' : '';
+            const ansBadge = q.is_answered ? '<span class="ax-badge ax-badge-success">답변완료</span>' : '<span class="ax-badge ax-badge-neutral">답변대기</span>';
+            return `
+                <article class="ax-cs-item-card" data-admin-qna-id="${qid}">
+                    <div class="ax-cs-item-head">
+                        <div class="ax-order-complete-code-row">
+                            <span class="ax-code-chip">#${Number(q.product_num)}</span>
+                            ${secretBadge}
+                            ${ansBadge}
+                            <strong>${esc(q.title || '')}</strong>
+                            <span>${esc(q.author_name || '')}</span>
+                        </div>
+                        <div class="ax-order-complete-code-row">
+                            <span class="ax-num">${esc(q.created_at || '')}</span>
+                            <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-admin-qna-del" data-qna-id="${qid}">삭제</button>
+                        </div>
+                    </div>
+                    <div class="ax-cs-item-body">${esc(q.content || '')}</div>
+                    <div class="ax-admin-inline-reply">
+                        <input type="text" class="ax-input ax-input-compact js-admin-qna-answer-input" data-qna-id="${qid}" value="${esc(q.answer_content || '')}" placeholder="관리자 답변 입력...">
+                        <button type="button" class="ax-btn ax-btn-primary ax-btn-sm js-admin-qna-answer-btn" data-qna-id="${qid}">답변 저장</button>
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function loadAdminInquiries() {
+        const st = document.getElementById('adminInquiryStatusFilter')?.value || 'ALL';
+        try {
+            const res = await fetch('/api/admin/inquiries?status=' + encodeURIComponent(st));
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                adminInquiriesList = Array.isArray(data.inquiries) ? data.inquiries : [];
+                renderAdminInquiriesList();
+            }
+        } catch (err) {}
+    }
+
+    function renderAdminInquiriesList() {
+        const box = document.getElementById('adminInquiriesList');
+        if (!box) return;
+        const esc = window.mallEscapeHtml;
+        if (!adminInquiriesList.length) {
+            box.innerHTML = '<div class="ax-detail-empty-box">등록된 1:1 문의가 없습니다.</div>';
+            return;
+        }
+        box.innerHTML = adminInquiriesList.map(inq => {
+            const iid = Number(inq.id);
+            const badgeCls = inq.status === '답변완료' ? 'ax-badge-success' : 'ax-badge-warning';
+            const ordChip = inq.order_code ? `<span class="ax-code-chip">${esc(inq.order_code)}</span>` : '';
+            return `
+                <article class="ax-cs-item-card" data-admin-inquiry-id="${iid}">
+                    <div class="ax-cs-item-head">
+                        <div class="ax-order-complete-code-row">
+                            <span class="ax-badge ax-badge-neutral">${esc(inq.category || '')}</span>
+                            <span class="ax-badge ${badgeCls}">${esc(inq.status || '')}</span>
+                            <strong>${esc(inq.title || '')}</strong>
+                            <span>${esc(inq.author_name || '')} (${esc(inq.author_email || '')})</span>
+                            ${ordChip}
+                        </div>
+                        <span class="ax-num">${esc(inq.created_at || '')}</span>
+                    </div>
+                    <div class="ax-cs-item-body">${esc(inq.content || '')}</div>
+                    <div class="ax-admin-inline-reply">
+                        <input type="text" class="ax-input ax-input-compact js-admin-inq-answer-input" data-inquiry-id="${iid}" value="${esc(inq.answer_content || '')}" placeholder="1:1 문의 답변 입력...">
+                        <button type="button" class="ax-btn ax-btn-primary ax-btn-sm js-admin-inq-answer-btn" data-inquiry-id="${iid}">답변 저장</button>
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function loadAdminNotices() {
+        try {
+            const res = await fetch('/api/notices');
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                adminNoticesList = Array.isArray(data.notices) ? data.notices : [];
+                renderAdminNoticesTable();
+            }
+        } catch (err) {}
+    }
+
+    function renderAdminNoticesTable() {
+        const tbody = document.getElementById('adminNoticesTbody');
+        if (!tbody) return;
+        const esc = window.mallEscapeHtml;
+        if (!adminNoticesList.length) {
+            tbody.innerHTML = '<tr><td colspan="5">등록된 공지사항이 없습니다.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = adminNoticesList.map(n => {
+            const nid = Number(n.id);
+            const pinBadge = n.is_pinned ? '<span class="ax-badge ax-badge-indigo">고정</span>' : '<span class="ax-badge ax-badge-neutral">일반</span>';
+            return `
+                <tr>
+                    <td class="ax-num"><span class="ax-code-chip">#${nid}</span></td>
+                    <td><strong>${esc(n.title || '')}</strong></td>
+                    <td>${pinBadge}</td>
+                    <td class="ax-num">${esc(n.created_at || '')}</td>
+                    <td>
+                        <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-admin-notice-edit" data-notice-id="${nid}">수정</button>
+                        <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-admin-notice-del" data-notice-id="${nid}">삭제</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function loadAdminFaqs() {
+        try {
+            const res = await fetch('/api/admin/faqs');
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                adminFaqsList = Array.isArray(data.faqs) ? data.faqs : [];
+                renderAdminFaqsTable();
+            }
+        } catch (err) {}
+    }
+
+    function renderAdminFaqsTable() {
+        const tbody = document.getElementById('adminFaqsTbody');
+        if (!tbody) return;
+        const esc = window.mallEscapeHtml;
+        if (!adminFaqsList.length) {
+            tbody.innerHTML = '<tr><td colspan="5">등록된 FAQ가 없습니다.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = adminFaqsList.map(f => {
+            const fid = Number(f.id);
+            const stBadge = f.is_active ? '<span class="ax-badge ax-badge-success">공개</span>' : '<span class="ax-badge ax-badge-neutral">비공개</span>';
+            return `
+                <tr>
+                    <td class="ax-num">${Number(f.sort_order || 10)}</td>
+                    <td><span class="ax-badge ax-badge-indigo">${esc(f.category || '')}</span></td>
+                    <td><strong>${esc(f.question || '')}</strong></td>
+                    <td>${stBadge}</td>
+                    <td>
+                        <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-admin-faq-edit" data-faq-id="${fid}">수정</button>
+                        <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-admin-faq-del" data-faq-id="${fid}">삭제</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function loadAdminNotificationLogs() {
+        const params = new URLSearchParams();
+        const ev = document.getElementById('adminNotifyEventFilter')?.value || 'ALL';
+        const ch = document.getElementById('adminNotifyChannelFilter')?.value || 'ALL';
+        const st = document.getElementById('adminNotifyStatusFilter')?.value || 'ALL';
+        const q = (document.getElementById('adminNotifySearchInput')?.value || '').trim();
+        if (ev !== 'ALL') params.set('event_type', ev);
+        if (ch !== 'ALL') params.set('channel', ch);
+        if (st !== 'ALL') params.set('status', st);
+        if (q) params.set('q', q);
+        try {
+            const res = await fetch('/api/admin/notifications/logs?' + params.toString());
+            const data = await res.json();
+            if (res.ok && data.status === 'ok') {
+                adminNotificationsList = Array.isArray(data.logs) ? data.logs : [];
+                renderAdminNotificationsTable();
+            }
+        } catch (err) {}
+    }
+
+    function renderAdminNotificationsTable() {
+        const tbody = document.getElementById('adminNotificationsTbody');
+        const badge = document.getElementById('adminNotificationsTotalBadge');
+        const rows = Array.isArray(adminNotificationsList) ? adminNotificationsList : [];
+        if (badge) badge.textContent = `${rows.length}건`;
+        if (!tbody) return;
+        const esc = window.mallEscapeHtml;
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="7">조건에 해당하는 알림 발송 로그가 없습니다.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(row => {
+            const st = String(row.status || 'LOGGED_ONLY');
+            const stBadge = st === 'SENT'
+                ? '<span class="ax-badge ax-badge-success">SENT</span>'
+                : (st === 'FAILED' ? '<span class="ax-badge ax-badge-live">FAILED</span>' : '<span class="ax-badge ax-badge-warning">LOGGED_ONLY</span>');
+            const errNote = row.error_msg ? `<div class="ax-page-sub">${esc(row.error_msg)}</div>` : '';
+            return `
+                <tr>
+                    <td class="ax-num"><span class="ax-code-chip">#${Number(row.id)}</span><div>${esc(row.created_at || '')}</div></td>
+                    <td><span class="ax-badge ax-badge-indigo">${esc(row.event_type || '')}</span></td>
+                    <td><span class="ax-badge ax-badge-neutral">${esc(row.channel || '')}</span></td>
+                    <td class="ax-num">${esc(row.recipient || '-')}</td>
+                    <td class="ax-num"><span class="ax-code-chip">${esc(row.ref_code || '-')}</span></td>
+                    <td><strong>${esc(row.subject || '')}</strong><div>${esc(row.body || '')}</div>${errNote}</td>
+                    <td>${stBadge}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    let adminReviewsList = [];
+    let adminCouponsList = [];
+
+    async function loadAdminReviews() {
+        const box = document.getElementById('adminReviewsList');
+        if (!box) return;
+        const vis = document.getElementById('adminReviewVisFilter')?.value || 'ALL';
+        const q = document.getElementById('adminReviewSearchInput')?.value.trim() || '';
+        const params = new URLSearchParams();
+        if (vis && vis !== 'ALL') params.set('visibility', vis);
+        if (q) params.set('q', q);
+        try {
+            const res = await fetch('/api/admin/reviews?' + params.toString(), { cache: 'no-store' });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                box.innerHTML = '<div class="ax-detail-empty-box">리뷰 목록을 불러오지 못했습니다.</div>';
+                return;
+            }
+            adminReviewsList = data.reviews || data.items || [];
+            renderAdminReviews();
+        } catch (e) {
+            box.innerHTML = '<div class="ax-detail-empty-box">리뷰 조회 중 오류가 발생했습니다.</div>';
+        }
+    }
+
+    function renderAdminReviews() {
+        const box = document.getElementById('adminReviewsList');
+        if (!box) return;
+        const esc = window.mallEscapeHtml;
+        if (!Array.isArray(adminReviewsList) || adminReviewsList.length === 0) {
+            box.innerHTML = '<div class="ax-detail-empty-box">조건에 맞는 리뷰가 없습니다.</div>';
+            return;
+        }
+        box.innerHTML = adminReviewsList.map((r) => {
+            const rid = Number(r.id);
+            const score = Math.max(1, Math.min(5, Number(r.rating || 5)));
+            const stars = `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`;
+            const visBadge = r.is_hidden
+                ? '<span class="ax-badge ax-badge-warning">숨김 처리됨</span>'
+                : '<span class="ax-badge ax-badge-success">노출중</span>';
+            const verBadge = r.is_verified_buyer
+                ? '<span class="ax-badge ax-badge-indigo">구매 인증</span>'
+                : '';
+            const imgs = Array.isArray(r.images) && r.images.length > 0
+                ? r.images
+                : (r.image_url ? [r.image_url] : []);
+            const photosHtml = imgs.length > 0
+                ? `<div class="ax-review-photos">${imgs.map(u => {
+                    const safeU = window.mallSafeImageUrl(u);
+                    return safeU ? `<img src="${esc(safeU)}" alt="리뷰 사진" class="ax-review-photo-thumb">` : '';
+                }).join('')}</div>`
+                : '';
+            const toggleLabel = r.is_hidden ? '노출 복구' : '숨김 처리';
+            const toggleAction = r.is_hidden ? 'unhide' : 'hide';
+            return `
+                <article class="ax-admin-review-card ${r.is_hidden ? 'is-hidden-review' : ''}" data-admin-review-id="${rid}">
+                    <div class="ax-review-card-head">
+                        <div class="ax-review-score-row">
+                            <span class="ax-code-chip">#${Number(r.product_num)}</span>
+                            <strong>${esc(r.product_name || '')}</strong>
+                            <span class="ax-review-stars">${stars}</span>
+                            <strong>${esc(r.author)}</strong>
+                            ${verBadge}
+                            ${visBadge}
+                        </div>
+                        <span class="ax-num">${esc(r.created_at || '')}</span>
+                    </div>
+                    <div class="ax-review-body">${esc(r.content || '')}</div>
+                    ${photosHtml}
+                    <div class="ax-admin-inline-reply">
+                        <input type="text" class="ax-input ax-input-compact js-admin-review-reply-input" data-review-id="${rid}" value="${esc(r.admin_reply || '')}" placeholder="판매자 답글 입력...">
+                        <button type="button" class="ax-btn ax-btn-primary ax-btn-sm js-admin-review-reply-btn" data-review-id="${rid}">답글 저장</button>
+                        <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-admin-review-toggle-btn" data-review-id="${rid}" data-action="${toggleAction}">${toggleLabel}</button>
+                        <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-admin-review-delete-btn" data-review-id="${rid}">삭제</button>
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function loadAdminCoupons() {
+        const tbody = document.getElementById('adminCouponsTbody');
+        if (!tbody) return;
+        try {
+            const res = await fetch('/api/admin/coupons', { cache: 'no-store' });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                tbody.innerHTML = '<tr><td colspan="8">쿠폰 목록을 불러오지 못했습니다.</td></tr>';
+                return;
+            }
+            adminCouponsList = data.coupons || [];
+            renderAdminCoupons();
+        } catch (e) {
+            tbody.innerHTML = '<tr><td colspan="8">쿠폰 목록 조회 중 오류가 발생했습니다.</td></tr>';
+        }
+    }
+
+    function renderAdminCoupons() {
+        const tbody = document.getElementById('adminCouponsTbody');
+        if (!tbody) return;
+        const esc = window.mallEscapeHtml;
+        if (!Array.isArray(adminCouponsList) || adminCouponsList.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--ax-text-muted);">등록된 쿠폰이 없습니다.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = adminCouponsList.map((c) => {
+            const cid = Number(c.id);
+            const benefit = c.discount_type === 'PERCENT'
+                ? `${Number(c.discount_value || 0)}%${Number(c.max_discount || 0) > 0 ? ` (최대 ${Number(c.max_discount).toLocaleString()}원)` : ''}`
+                : `${Number(c.discount_value || 0).toLocaleString()}원`;
+            const limTxt = Number(c.usage_limit || 0) > 0
+                ? `${Number(c.used_count || 0)} / ${Number(c.usage_limit)}`
+                : `${Number(c.used_count || 0)} / 무제한`;
+            const flags = [
+                c.live_only ? '<span class="ax-badge ax-badge-live">라이브전용</span>' : '',
+                c.is_welcome_auto ? '<span class="ax-badge ax-badge-indigo">웰컴자동</span>' : ''
+            ].filter(Boolean).join(' ') || '<span class="ax-badge ax-badge-neutral">일반</span>';
+            const stBadge = c.is_active
+                ? '<span class="ax-badge ax-badge-success">활성</span>'
+                : '<span class="ax-badge ax-badge-neutral">중지</span>';
+            return `
+                <tr>
+                    <td><span class="ax-code-chip">${esc(c.code)}</span></td>
+                    <td><strong>${esc(c.name)}</strong></td>
+                    <td class="ax-num">${benefit}</td>
+                    <td class="ax-num">${Number(c.min_order_amount || 0).toLocaleString()}원</td>
+                    <td class="ax-num">${limTxt}</td>
+                    <td>${flags}</td>
+                    <td>${stBadge}</td>
+                    <td>
+                        <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-admin-coupon-edit" data-coupon-id="${cid}">수정</button>
+                        <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-admin-coupon-del" data-coupon-id="${cid}">삭제</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function resetAdminCouponForm() {
+        document.getElementById('acCouponId').value = '0';
+        document.getElementById('acCode').value = '';
+        document.getElementById('acName').value = '';
+        document.getElementById('acDiscountType').value = 'FIXED';
+        document.getElementById('acDiscountValue').value = '';
+        document.getElementById('acMaxDiscount').value = '0';
+        document.getElementById('acMinOrder').value = '0';
+        document.getElementById('acUsageLimit').value = '0';
+        document.getElementById('acStartAt').value = '';
+        document.getElementById('acEndAt').value = '';
+        document.getElementById('acLiveOnly').checked = false;
+        document.getElementById('acWelcomeAuto').checked = false;
+        document.getElementById('acIsActive').checked = true;
+    }
+
+    async function loadAdminRestockAlerts() {
+        const tbody = document.getElementById('adminRestockTbody');
+        const badge = document.getElementById('adminRestockTotalBadge');
+        if (!tbody) return;
+        const st = document.getElementById('adminRestockStatusFilter')?.value || 'ALL';
+        const q = (document.getElementById('adminRestockSearchInput')?.value || '').trim();
+        const params = new URLSearchParams();
+        if (st && st !== 'ALL') params.set('status', st);
+        if (q) params.set('q', q);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--ax-text-secondary);">재입고 알림 목록을 불러오는 중...</td></tr>';
+        try {
+            const res = await fetch('/api/admin/restock-alerts?' + params.toString());
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--ax-live);">재입고 알림 목록 조회에 실패했습니다.</td></tr>';
+                return;
+            }
+            const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+            if (badge) badge.textContent = `${alerts.length}건`;
+            if (alerts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--ax-text-secondary);">조건에 해당하는 재입고 알림 신청이 없습니다.</td></tr>';
+                return;
+            }
+            const esc = window.mallEscapeHtml;
+            tbody.innerHTML = alerts.map(a => {
+                const isNotified = String(a.status || '').toUpperCase() === 'NOTIFIED';
+                const stBadge = isNotified
+                    ? `<span class="ax-badge ax-badge-success">NOTIFIED</span>`
+                    : `<span class="ax-badge ax-badge-warning">PENDING</span>`;
+                const notifAt = a.notified_at ? `<div class="ax-num" style="font-size:0.74rem; color:var(--ax-text-muted); margin-top:2px;">${esc(a.notified_at)}</div>` : '';
+                return `
+                    <tr>
+                        <td class="ax-num"><strong>#${Number(a.id)}</strong><div style="font-size:0.74rem; color:var(--ax-text-muted);">${esc(a.created_at)}</div></td>
+                        <td><span class="ax-code-chip">#${Number(a.product_num)}</span> <strong>${esc(a.product_name || '')}</strong></td>
+                        <td>${esc(a.color)} / ${esc(a.size)}</td>
+                        <td><span class="ax-badge ax-badge-neutral">${esc(a.contact_type)}</span></td>
+                        <td class="ax-num">${esc(a.contact_value)}</td>
+                        <td>${stBadge}${notifAt}</td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--ax-live);">재입고 알림 목록 조회 중 오류가 발생했습니다.</td></tr>';
+        }
+    }
+
+    let adminAuditCurrentPage = 1;
+
+    function _formatOpsBytes(bytesVal) {
+        const n = Number(bytesVal || 0);
+        if (n < 1024) return `${n} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+        return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    async function loadAdminOpsPanel() {
+        const hrsTextEl = document.getElementById('adminOpsCancelHoursText');
+        const storeHrsEl = document.getElementById('asUnpaidCancelHours');
+        if (hrsTextEl && storeHrsEl) {
+            hrsTextEl.textContent = String(storeHrsEl.value || '72');
+        }
+        await Promise.all([
+            loadAdminBackups(),
+            loadAdminAuditLogs(adminAuditCurrentPage || 1),
+            (async () => {
+                try {
+                    const res = await fetch('/api/admin/store-info');
+                    const data = await res.json();
+                    if (res.ok && data.status === 'ok' && data.store_info && hrsTextEl) {
+                        hrsTextEl.textContent = String(data.store_info.unpaid_cancel_hours ?? 72);
+                    }
+                } catch (err) {}
+            })()
+        ]);
+    }
+
+    async function loadAdminBackups() {
+        const tbody = document.getElementById('adminBackupsTbody');
+        const badge = document.getElementById('adminBackupsCountBadge');
+        const schedBadge = document.getElementById('adminOpsSchedulerBadge');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="4" class="ax-ops-empty-cell">백업 목록을 불러오는 중...</td></tr>';
+        try {
+            const res = await fetch('/api/admin/system/backups');
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                tbody.innerHTML = '<tr><td colspan="4" class="ax-ops-error-cell">백업 목록 조회에 실패했습니다.</td></tr>';
+                return;
+            }
+            if (schedBadge && data.scheduler) {
+                const isRunning = Boolean(data.scheduler.running);
+                const isEnabled = Boolean(data.scheduler.enabled);
+                schedBadge.textContent = isRunning ? '자동 스케줄러 가동중' : (isEnabled ? '스케줄러 대기' : '수동/테스트 모드');
+                schedBadge.className = 'ax-badge ' + (isRunning ? 'ax-badge-success' : 'ax-badge-indigo');
+            }
+            const backups = Array.isArray(data.backups) ? data.backups : [];
+            if (badge) badge.textContent = `${backups.length}건`;
+            if (backups.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="ax-ops-empty-cell">생성된 백업 파일이 없습니다.</td></tr>';
+                return;
+            }
+            const esc = window.mallEscapeHtml;
+            tbody.innerHTML = backups.map(b => {
+                const fname = String(b.filename || '');
+                const href = '/api/admin/system/backup/' + encodeURIComponent(fname);
+                return `
+                    <tr>
+                        <td><span class="ax-code-chip">${esc(fname)}</span></td>
+                        <td class="ax-num">${esc(_formatOpsBytes(b.size_bytes ?? b.size))}</td>
+                        <td class="ax-num">${esc(b.created_at || '-')}</td>
+                        <td><a href="${href}" class="ax-btn ax-btn-secondary ax-btn-sm">다운로드</a></td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="4" class="ax-ops-error-cell">백업 목록 조회 중 오류가 발생했습니다.</td></tr>';
+        }
+    }
+
+    async function createAdminDbBackup() {
+        const btn = document.getElementById('btnCreateDbBackup');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/system/backup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || 'DB 백업 생성에 실패했습니다.');
+                return;
+            }
+            showMallToast(`백업 파일이 생성되었습니다: ${data.filename || ''}`);
+            await Promise.all([loadAdminBackups(), loadAdminAuditLogs(1)]);
+        } catch (err) {
+            alert('DB 백업 생성 오류: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function runAdminMaintenanceNow() {
+        const btn = document.getElementById('btnRunMaintenanceNow');
+        const resBox = document.getElementById('adminOpsMaintenanceResult');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/system/run-maintenance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '유지보수 실행에 실패했습니다.');
+                return;
+            }
+            const esc = window.mallEscapeHtml;
+            const cCount = Number(data.cancelled_count || 0);
+            const ordersList = Array.isArray(data.cancelled_orders) ? data.cancelled_orders : [];
+            if (resBox) {
+                resBox.classList.remove('ax-is-hidden');
+                if (data.enabled === false) {
+                    resBox.innerHTML = '<strong>미입금 자동 취소가 비활성화되어 있습니다 (0시간 설정).</strong>';
+                } else if (cCount > 0) {
+                    resBox.innerHTML = `<strong class="ax-num">자동 취소 완료: ${cCount}건</strong> (${esc(ordersList.join(', '))}) · 재고·쿠폰·적립금 복구 완료`;
+                } else {
+                    resBox.innerHTML = `<strong class="ax-num">점검 완료: 기한 경과 미입금 주문 0건</strong> (기준: ${Number(data.expire_hours || 72)}시간)`;
+                }
+            }
+            showMallToast(`유지보수 실행 완료 (자동 취소 ${cCount}건)`);
+            await loadAdminAuditLogs(1);
+        } catch (err) {
+            alert('유지보수 실행 오류: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function loadAdminAuditLogs(page = 1) {
+        adminAuditCurrentPage = Math.max(1, Number(page || 1));
+        const tbody = document.getElementById('adminAuditLogsTbody');
+        const badge = document.getElementById('adminAuditTotalBadge');
+        const pagNav = document.getElementById('adminAuditPagination');
+        if (!tbody) return;
+
+        const actionVal = document.getElementById('adminAuditActionFilter')?.value || 'ALL';
+        const qVal = String(document.getElementById('adminAuditSearchInput')?.value || '').trim();
+        const params = new URLSearchParams();
+        params.set('page', String(adminAuditCurrentPage));
+        params.set('per_page', '20');
+        if (actionVal && actionVal !== 'ALL') params.set('action', actionVal);
+        if (qVal) params.set('q', qVal);
+
+        tbody.innerHTML = '<tr><td colspan="6" class="ax-ops-empty-cell">감사 로그를 불러오는 중...</td></tr>';
+        try {
+            const res = await fetch('/api/admin/audit-logs?' + params.toString());
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                tbody.innerHTML = '<tr><td colspan="6" class="ax-ops-error-cell">감사 로그 조회에 실패했습니다.</td></tr>';
+                return;
+            }
+            const logs = Array.isArray(data.logs) ? data.logs : [];
+            const totalCount = Number(data.total_count ?? logs.length);
+            const curPage = Number(data.page || 1);
+            const totalPages = Math.max(1, Number(data.total_pages || 1));
+            if (badge) badge.textContent = `${totalCount.toLocaleString()}건`;
+
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="ax-ops-empty-cell">조건에 해당하는 감사 로그가 없습니다.</td></tr>';
+            } else {
+                const esc = window.mallEscapeHtml;
+                tbody.innerHTML = logs.map(row => {
+                    const detailStr = typeof row.detail_json === 'string' ? row.detail_json : JSON.stringify(row.detail || {});
+                    return `
+                        <tr>
+                            <td class="ax-num">
+                                <span class="ax-code-chip">#${Number(row.id)}</span>
+                                <div class="ax-ops-helper-text">${esc(row.created_at || '')}</div>
+                            </td>
+                            <td>
+                                <div><strong>${esc(row.admin_name || '-')}</strong></div>
+                                <div class="ax-ops-helper-text">${esc(row.admin_email || '-')}</div>
+                            </td>
+                            <td><span class="ax-badge ax-badge-indigo">${esc(row.action || '')}</span></td>
+                            <td>
+                                <div>${esc(row.target_type || '-')}</div>
+                                <div class="ax-num"><span class="ax-code-chip">${esc(row.target_id || '-')}</span></div>
+                            </td>
+                            <td class="ax-ops-detail-cell">${esc(detailStr)}</td>
+                            <td class="ax-num">${esc(row.ip_address || '-')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            if (pagNav) {
+                if (totalPages <= 1) {
+                    pagNav.innerHTML = '';
+                } else {
+                    const btns = [];
+                    const prevDisabled = curPage <= 1 ? ' is-disabled' : '';
+                    btns.push(`<button type="button" class="ax-page-btn${prevDisabled}" data-audit-page="${Math.max(1, curPage - 1)}" ${curPage <= 1 ? 'disabled' : ''}>이전</button>`);
+                    const startP = Math.max(1, curPage - 2);
+                    const endP = Math.min(totalPages, curPage + 2);
+                    for (let p = startP; p <= endP; p++) {
+                        const actCls = p === curPage ? ' active' : '';
+                        btns.push(`<button type="button" class="ax-page-btn${actCls}" data-audit-page="${p}">${p}</button>`);
+                    }
+                    const nextDisabled = curPage >= totalPages ? ' is-disabled' : '';
+                    btns.push(`<button type="button" class="ax-page-btn${nextDisabled}" data-audit-page="${Math.min(totalPages, curPage + 1)}" ${curPage >= totalPages ? 'disabled' : ''}>다음</button>`);
+                    pagNav.innerHTML = btns.join('');
+                }
+            }
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="6" class="ax-ops-error-cell">감사 로그 조회 중 오류가 발생했습니다.</td></tr>';
+        }
+    }
+
     document.addEventListener('keydown', (ev) => {
         if (ev.key === 'Escape') {
             closeAdminProductModal();
@@ -2811,6 +4316,368 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('adminTabCs')?.addEventListener('click', () => switchAdminTab('cs'));
+        document.getElementById('adminTabReviews')?.addEventListener('click', () => switchAdminTab('reviews'));
+        document.getElementById('adminTabPromos')?.addEventListener('click', () => switchAdminTab('promos'));
+        document.getElementById('adminTabRestock')?.addEventListener('click', () => switchAdminTab('restock'));
+        document.getElementById('adminTabNotifications')?.addEventListener('click', () => switchAdminTab('notifications'));
+        document.getElementById('adminTabOps')?.addEventListener('click', () => switchAdminTab('ops'));
+        document.getElementById('btnRefreshAdminOps')?.addEventListener('click', loadAdminOpsPanel);
+        document.getElementById('btnRunMaintenanceNow')?.addEventListener('click', runAdminMaintenanceNow);
+        document.getElementById('btnCreateDbBackup')?.addEventListener('click', createAdminDbBackup);
+        document.getElementById('btnAdminAuditSearch')?.addEventListener('click', () => loadAdminAuditLogs(1));
+        document.getElementById('adminAuditActionFilter')?.addEventListener('change', () => loadAdminAuditLogs(1));
+        let auditSearchTimer = null;
+        document.getElementById('adminAuditSearchInput')?.addEventListener('input', () => {
+            clearTimeout(auditSearchTimer);
+            auditSearchTimer = setTimeout(() => loadAdminAuditLogs(1), 200);
+        });
+        document.getElementById('adminAuditSearchInput')?.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                loadAdminAuditLogs(1);
+            }
+        });
+        document.getElementById('adminAuditPagination')?.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('.ax-page-btn[data-audit-page]');
+            if (!btn || btn.disabled) return;
+            loadAdminAuditLogs(Number(btn.dataset.auditPage || 1));
+        });
+        document.getElementById('btnRefreshAdminRestock')?.addEventListener('click', loadAdminRestockAlerts);
+        document.getElementById('adminRestockStatusFilter')?.addEventListener('change', loadAdminRestockAlerts);
+        let restockSearchTimer = null;
+        document.getElementById('adminRestockSearchInput')?.addEventListener('input', () => {
+            clearTimeout(restockSearchTimer);
+            restockSearchTimer = setTimeout(loadAdminRestockAlerts, 180);
+        });
+
+        document.getElementById('btnRefreshAdminReviews')?.addEventListener('click', loadAdminReviews);
+        document.getElementById('adminReviewVisFilter')?.addEventListener('change', loadAdminReviews);
+        let reviewSearchTimer = null;
+        document.getElementById('adminReviewSearchInput')?.addEventListener('input', () => {
+            clearTimeout(reviewSearchTimer);
+            reviewSearchTimer = setTimeout(loadAdminReviews, 180);
+        });
+        document.getElementById('adminReviewsList')?.addEventListener('click', async (ev) => {
+            const replyBtn = ev.target.closest('.js-admin-review-reply-btn');
+            if (replyBtn) {
+                const rid = Number(replyBtn.dataset.reviewId);
+                const inp = document.querySelector(`.js-admin-review-reply-input[data-review-id="${rid}"]`);
+                const admin_reply = inp ? inp.value.trim() : '';
+                const res = await fetch('/api/admin/reviews/moderate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ review_id: rid, action: 'reply', admin_reply })
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    alert((data && data.message) || '판매자 답글 저장 실패');
+                    return;
+                }
+                showMallToast('판매자 답글이 저장되었습니다.');
+                await loadAdminReviews();
+                return;
+            }
+            const toggleBtn = ev.target.closest('.js-admin-review-toggle-btn');
+            if (toggleBtn) {
+                const rid = Number(toggleBtn.dataset.reviewId);
+                const act = toggleBtn.dataset.action || 'hide';
+                const res = await fetch('/api/admin/reviews/moderate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ review_id: rid, action: act, is_hidden: act === 'hide' })
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    alert((data && data.message) || '리뷰 노출 상태 변경 실패');
+                    return;
+                }
+                showMallToast(act === 'hide' ? '리뷰를 숨김 처리했습니다.' : '리뷰 숨김을 해제했습니다.');
+                await loadAdminReviews();
+                return;
+            }
+            const delBtn = ev.target.closest('.js-admin-review-delete-btn');
+            if (delBtn) {
+                if (!confirm('이 리뷰를 영구 삭제하시겠습니까?')) return;
+                const rid = Number(delBtn.dataset.reviewId);
+                const res = await fetch('/api/admin/reviews/moderate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ review_id: rid, action: 'delete', is_deleted: true })
+                });
+                if (res.ok) {
+                    showMallToast('리뷰가 삭제되었습니다.');
+                    await loadAdminReviews();
+                }
+            }
+        });
+
+        document.getElementById('btnAdminCouponReset')?.addEventListener('click', resetAdminCouponForm);
+        document.getElementById('adminCouponForm')?.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const payload = {
+                id: Number(document.getElementById('acCouponId')?.value || 0),
+                code: document.getElementById('acCode')?.value.trim().toUpperCase() || '',
+                name: document.getElementById('acName')?.value.trim() || '',
+                discount_type: document.getElementById('acDiscountType')?.value || 'FIXED',
+                discount_value: Number(document.getElementById('acDiscountValue')?.value || 0),
+                max_discount_amount: Number(document.getElementById('acMaxDiscount')?.value || 0),
+                min_order_amount: Number(document.getElementById('acMinOrder')?.value || 0),
+                usage_limit: Number(document.getElementById('acUsageLimit')?.value || 0),
+                start_at: document.getElementById('acStartAt')?.value.trim() || '',
+                end_at: document.getElementById('acEndAt')?.value.trim() || '',
+                live_only: Boolean(document.getElementById('acLiveOnly')?.checked),
+                is_welcome_auto: Boolean(document.getElementById('acWelcomeAuto')?.checked),
+                is_active: Boolean(document.getElementById('acIsActive')?.checked)
+            };
+            const res = await fetch('/api/admin/coupons/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '쿠폰 저장에 실패했습니다.');
+                return;
+            }
+            resetAdminCouponForm();
+            adminCouponsList = data.coupons || [];
+            renderAdminCoupons();
+            showMallToast('쿠폰이 저장되었습니다.');
+        });
+        document.getElementById('adminCouponsTbody')?.addEventListener('click', async (ev) => {
+            const editBtn = ev.target.closest('.js-admin-coupon-edit');
+            if (editBtn) {
+                const cid = Number(editBtn.dataset.couponId);
+                const found = adminCouponsList.find(c => Number(c.id) === cid);
+                if (found) {
+                    document.getElementById('acCouponId').value = String(found.id);
+                    document.getElementById('acCode').value = found.code || '';
+                    document.getElementById('acName').value = found.name || '';
+                    document.getElementById('acDiscountType').value = found.discount_type || 'FIXED';
+                    document.getElementById('acDiscountValue').value = String(found.discount_value || 0);
+                    document.getElementById('acMaxDiscount').value = String(found.max_discount || 0);
+                    document.getElementById('acMinOrder').value = String(found.min_order_amount || 0);
+                    document.getElementById('acUsageLimit').value = String(found.usage_limit || 0);
+                    document.getElementById('acStartAt').value = found.start_at || '';
+                    document.getElementById('acEndAt').value = found.end_at || '';
+                    document.getElementById('acLiveOnly').checked = Boolean(found.live_only);
+                    document.getElementById('acWelcomeAuto').checked = Boolean(found.is_welcome_auto);
+                    document.getElementById('acIsActive').checked = Boolean(found.is_active);
+                }
+                return;
+            }
+            const delBtn = ev.target.closest('.js-admin-coupon-del');
+            if (delBtn) {
+                if (!confirm('선택한 쿠폰을 삭제하시겠습니까?')) return;
+                const cid = Number(delBtn.dataset.couponId);
+                const res = await fetch('/api/admin/coupons/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: cid })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'ok') {
+                    adminCouponsList = data.coupons || [];
+                    renderAdminCoupons();
+                    showMallToast('쿠폰이 삭제되었습니다.');
+                }
+            }
+        });
+        document.querySelectorAll('.js-admin-cs-subtab').forEach(btn => {
+            btn.addEventListener('click', () => switchAdminCsSubtab(btn.dataset.csSubtab));
+        });
+        document.getElementById('btnRefreshAdminCs')?.addEventListener('click', loadAdminCsData);
+        document.getElementById('adminQnaStatusFilter')?.addEventListener('change', loadAdminQna);
+        document.getElementById('adminInquiryStatusFilter')?.addEventListener('change', loadAdminInquiries);
+
+        document.getElementById('adminQnaList')?.addEventListener('click', async (ev) => {
+            const ansBtn = ev.target.closest('.js-admin-qna-answer-btn');
+            if (ansBtn) {
+                const qid = Number(ansBtn.dataset.qnaId);
+                const inp = document.querySelector(`.js-admin-qna-answer-input[data-qna-id="${qid}"]`);
+                const answer_content = inp ? inp.value.trim() : '';
+                const res = await fetch('/api/admin/qna/answer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ qna_id: qid, answer_content })
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    alert((data && data.message) || 'Q&A 답변 등록 실패');
+                    return;
+                }
+                showMallToast('Q&A 답변이 저장되었습니다.');
+                await loadAdminQna();
+                return;
+            }
+            const delBtn = ev.target.closest('.js-admin-qna-del');
+            if (delBtn) {
+                const qid = Number(delBtn.dataset.qnaId);
+                const res = await fetch('/api/admin/qna/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ qna_id: qid })
+                });
+                if (res.ok) {
+                    showMallToast('Q&A 글이 삭제되었습니다.');
+                    await loadAdminQna();
+                }
+            }
+        });
+
+        document.getElementById('adminInquiriesList')?.addEventListener('click', async (ev) => {
+            const ansBtn = ev.target.closest('.js-admin-inq-answer-btn');
+            if (!ansBtn) return;
+            const iid = Number(ansBtn.dataset.inquiryId);
+            const inp = document.querySelector(`.js-admin-inq-answer-input[data-inquiry-id="${iid}"]`);
+            const answer_content = inp ? inp.value.trim() : '';
+            const res = await fetch('/api/admin/inquiries/answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inquiry_id: iid, answer_content, status: '답변완료' })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '1:1 문의 답변 실패');
+                return;
+            }
+            showMallToast('1:1 문의 답변이 저장되었습니다.');
+            await loadAdminInquiries();
+        });
+
+        document.getElementById('btnAdminNoticeReset')?.addEventListener('click', () => {
+            document.getElementById('adminNoticeId').value = '0';
+            document.getElementById('adminNoticeTitle').value = '';
+            document.getElementById('adminNoticeContent').value = '';
+            document.getElementById('adminNoticePinned').checked = false;
+        });
+
+        document.getElementById('adminNoticeForm')?.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const payload = {
+                id: Number(document.getElementById('adminNoticeId')?.value || 0),
+                title: document.getElementById('adminNoticeTitle')?.value.trim() || '',
+                content: document.getElementById('adminNoticeContent')?.value.trim() || '',
+                is_pinned: Boolean(document.getElementById('adminNoticePinned')?.checked)
+            };
+            const res = await fetch('/api/admin/notices/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '공지사항 저장 실패');
+                return;
+            }
+            document.getElementById('btnAdminNoticeReset')?.click();
+            showMallToast('공지사항이 저장되었습니다.');
+            await loadAdminNotices();
+        });
+
+        document.getElementById('adminNoticesTbody')?.addEventListener('click', async (ev) => {
+            const editBtn = ev.target.closest('.js-admin-notice-edit');
+            if (editBtn) {
+                const nid = Number(editBtn.dataset.noticeId);
+                const found = adminNoticesList.find(n => Number(n.id) === nid);
+                if (found) {
+                    document.getElementById('adminNoticeId').value = String(found.id);
+                    document.getElementById('adminNoticeTitle').value = found.title || '';
+                    document.getElementById('adminNoticeContent').value = found.content || '';
+                    document.getElementById('adminNoticePinned').checked = Boolean(found.is_pinned);
+                }
+                return;
+            }
+            const delBtn = ev.target.closest('.js-admin-notice-del');
+            if (delBtn) {
+                const nid = Number(delBtn.dataset.noticeId);
+                const res = await fetch('/api/admin/notices/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notice_id: nid })
+                });
+                if (res.ok) {
+                    showMallToast('공지사항이 삭제되었습니다.');
+                    await loadAdminNotices();
+                }
+            }
+        });
+
+        document.getElementById('btnAdminFaqReset')?.addEventListener('click', () => {
+            document.getElementById('adminFaqId').value = '0';
+            document.getElementById('adminFaqCategory').value = '주문/결제';
+            document.getElementById('adminFaqSortOrder').value = '10';
+            document.getElementById('adminFaqQuestion').value = '';
+            document.getElementById('adminFaqAnswer').value = '';
+            document.getElementById('adminFaqActive').checked = true;
+        });
+
+        document.getElementById('adminFaqForm')?.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const payload = {
+                id: Number(document.getElementById('adminFaqId')?.value || 0),
+                category: document.getElementById('adminFaqCategory')?.value || '주문/결제',
+                sort_order: Number(document.getElementById('adminFaqSortOrder')?.value || 10),
+                question: document.getElementById('adminFaqQuestion')?.value.trim() || '',
+                answer: document.getElementById('adminFaqAnswer')?.value.trim() || '',
+                is_active: Boolean(document.getElementById('adminFaqActive')?.checked)
+            };
+            const res = await fetch('/api/admin/faqs/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || 'FAQ 저장 실패');
+                return;
+            }
+            document.getElementById('btnAdminFaqReset')?.click();
+            showMallToast('FAQ가 저장되었습니다.');
+            await loadAdminFaqs();
+        });
+
+        document.getElementById('adminFaqsTbody')?.addEventListener('click', async (ev) => {
+            const editBtn = ev.target.closest('.js-admin-faq-edit');
+            if (editBtn) {
+                const fid = Number(editBtn.dataset.faqId);
+                const found = adminFaqsList.find(f => Number(f.id) === fid);
+                if (found) {
+                    document.getElementById('adminFaqId').value = String(found.id);
+                    document.getElementById('adminFaqCategory').value = found.category || '주문/결제';
+                    document.getElementById('adminFaqSortOrder').value = String(found.sort_order || 10);
+                    document.getElementById('adminFaqQuestion').value = found.question || '';
+                    document.getElementById('adminFaqAnswer').value = found.answer || '';
+                    document.getElementById('adminFaqActive').checked = Boolean(found.is_active);
+                }
+                return;
+            }
+            const delBtn = ev.target.closest('.js-admin-faq-del');
+            if (delBtn) {
+                const fid = Number(delBtn.dataset.faqId);
+                const res = await fetch('/api/admin/faqs/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ faq_id: fid })
+                });
+                if (res.ok) {
+                    showMallToast('FAQ가 삭제되었습니다.');
+                    await loadAdminFaqs();
+                }
+            }
+        });
+
+        document.getElementById('btnRefreshAdminNotifications')?.addEventListener('click', loadAdminNotificationLogs);
+        document.getElementById('adminNotifyEventFilter')?.addEventListener('change', loadAdminNotificationLogs);
+        document.getElementById('adminNotifyChannelFilter')?.addEventListener('change', loadAdminNotificationLogs);
+        document.getElementById('adminNotifyStatusFilter')?.addEventListener('change', loadAdminNotificationLogs);
+        let notifyTimer = null;
+        document.getElementById('adminNotifySearchInput')?.addEventListener('input', () => {
+            clearTimeout(notifyTimer);
+            notifyTimer = setTimeout(loadAdminNotificationLogs, 180);
+        });
+
         const modal = document.getElementById('adminProductModal');
         if (modal && modal.parentElement !== document.body) {
             document.body.appendChild(modal);
@@ -2822,6 +4689,28 @@
         if (settlePaidEl && !settlePaidEl.value) {
             settlePaidEl.value = _formatIsoLocalDate(new Date());
         }
+        document.getElementById('btnImportTrackingCsv')?.addEventListener('click', () => {
+            document.getElementById('adminTrackingCsvInput')?.click();
+        });
+        document.getElementById('adminTrackingCsvInput')?.addEventListener('change', async (ev) => {
+            const file = ev.target && ev.target.files && ev.target.files[0];
+            if (file) {
+                await uploadTrackingCsvFile(file);
+            }
+            ev.target.value = '';
+        });
+        document.getElementById('btnRefreshAdminMembers')?.addEventListener('click', loadAdminUsers);
+        document.getElementById('adminMemberStatusFilter')?.addEventListener('change', loadAdminUsers);
+        let memberSearchTimer = null;
+        document.getElementById('adminMemberSearchInput')?.addEventListener('input', () => {
+            clearTimeout(memberSearchTimer);
+            memberSearchTimer = setTimeout(loadAdminUsers, 180);
+        });
+        document.getElementById('adminMembersTbody')?.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('.js-admin-user-status-btn');
+            if (!btn) return;
+            toggleAdminUserStatus(Number(btn.dataset.userId), Number(btn.dataset.nextActive));
+        });
         renderAdminCategoriesTable();
         renderAdminProductsList();
         renderAdminOrdersPanel();

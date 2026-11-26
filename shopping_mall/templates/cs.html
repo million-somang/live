@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% block title %}고객센터 (공지·FAQ·1:1 문의) — 골라방 LIVE{% endblock %}
+
+{% block content %}
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">CUSTOMER SERVICE</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">골라방 LIVE 고객센터</h1>
+        </div>
+        <p class="ax-page-sub">공지사항, 자주 묻는 질문(FAQ), 회원 1:1 문의를 한곳에서 빠르게 확인하고 접수하실 수 있습니다.</p>
+    </div>
+    <div>
+        <a href="/orders" class="ax-btn ax-btn-secondary">주문/배송 조회</a>
+    </div>
+</div>
+
+<div class="ax-cs-subtabs">
+    <nav class="ax-segmented-bar" aria-label="고객센터 바로가기">
+        <a href="#csNoticesSection" class="ax-tab-btn active js-cs-nav-btn">공지사항</a>
+        <a href="#csFaqSection" class="ax-tab-btn js-cs-nav-btn">자주 묻는 질문 (FAQ)</a>
+        <a href="#csInquirySection" class="ax-tab-btn js-cs-nav-btn">1:1 문의</a>
+    </nav>
+</div>
+
+<div class="ax-cs-section-stack">
+    <!-- 1. 공지사항 -->
+    <section id="csNoticesSection" class="ax-card ax-card-pad">
+        <div class="ax-section-head">
+            <div>
+                <span class="ax-badge-eyebrow">NOTICES</span>
+                <h2 class="ax-section-title">공지사항</h2>
+            </div>
+            <span class="ax-badge ax-badge-neutral ax-num">{{ (notices or [])|length }}건</span>
+        </div>
+
+        <div id="csNoticesList" class="ax-cs-list">
+            {% if notices and notices|length > 0 %}
+                {% for n in notices %}
+                <article class="ax-cs-item-card">
+                    <div class="ax-cs-item-head">
+                        <div class="ax-order-complete-code-row">
+                            {% if n.is_pinned %}
+                            <span class="ax-badge ax-badge-indigo">중요 공지</span>
+                            {% endif %}
+                            <strong>{{ n.title }}</strong>
+                        </div>
+                        <span class="ax-num">{{ n.created_at }}</span>
+                    </div>
+                    <div class="ax-cs-item-body">{{ n.content }}</div>
+                </article>
+                {% endfor %}
+            {% else %}
+                <div class="ax-detail-empty-box">등록된 공지사항이 없습니다.</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- 2. 자주 묻는 질문 (FAQ) -->
+    <section id="csFaqSection" class="ax-card ax-card-pad">
+        <div class="ax-section-head">
+            <div>
+                <span class="ax-badge-eyebrow">FAQ</span>
+                <h2 class="ax-section-title">자주 묻는 질문 (FAQ)</h2>
+            </div>
+            <span class="ax-badge ax-badge-neutral ax-num" id="csFaqCountBadge">{{ (faqs or [])|length }}건</span>
+        </div>
+
+        <nav id="csFaqCategoryBar" class="ax-segmented-bar ax-mb-16" aria-label="FAQ 카테고리 필터">
+            <button type="button" class="ax-tab-btn active js-faq-cat-btn" data-faq-cat="ALL">전체</button>
+            <button type="button" class="ax-tab-btn js-faq-cat-btn" data-faq-cat="주문/결제">주문/결제</button>
+            <button type="button" class="ax-tab-btn js-faq-cat-btn" data-faq-cat="배송">배송</button>
+            <button type="button" class="ax-tab-btn js-faq-cat-btn" data-faq-cat="취소/교환/반품">취소/교환/반품</button>
+            <button type="button" class="ax-tab-btn js-faq-cat-btn" data-faq-cat="회원/기타">회원/기타</button>
+        </nav>
+
+        <div id="csFaqList" class="ax-cs-list">
+            {% if faqs and faqs|length > 0 %}
+                {% for f in faqs %}
+                <details class="ax-policy-disclosure js-faq-item" data-faq-cat="{{ f.category }}">
+                    <summary class="ax-policy-disclosure-summary">
+                        <span><span class="ax-badge ax-badge-indigo">{{ f.category }}</span> {{ f.question }}</span>
+                        <svg class="ax-icon-sm ax-policy-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m6 9 6 6 6-6" />
+                        </svg>
+                    </summary>
+                    <div class="ax-policy-disclosure-body">{{ f.answer }}</div>
+                </details>
+                {% endfor %}
+            {% else %}
+                <div class="ax-detail-empty-box">등록된 FAQ가 없습니다.</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- 3. 1:1 문의 -->
+    <section id="csInquirySection" class="ax-card ax-card-pad">
+        <div class="ax-section-head">
+            <div>
+                <span class="ax-badge-eyebrow">1:1 INQUIRY</span>
+                <h2 class="ax-section-title">1:1 고객 문의</h2>
+            </div>
+            <span class="ax-badge ax-badge-indigo">본인 전용 비공개</span>
+        </div>
+
+        {% if current_mall_user %}
+        <form id="csInquiryForm" class="ax-qna-compose">
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label" for="csInquiryCategory">문의 유형</label>
+                    <select id="csInquiryCategory" name="category" class="ax-select">
+                        {% for cat in inquiry_categories %}
+                        <option value="{{ cat }}">{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="csInquiryOrderCode">관련 주문번호 (선택)</label>
+                    <input type="text" id="csInquiryOrderCode" name="order_code" class="ax-input ax-num" maxlength="40" placeholder="예: ORD-20261126-...">
+                </div>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="csInquiryTitle">문의 제목 *</label>
+                <input type="text" id="csInquiryTitle" name="title" class="ax-input" minlength="2" maxlength="120" required placeholder="문의 제목을 입력해 주세요">
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="csInquiryContent">문의 내용 *</label>
+                <textarea id="csInquiryContent" name="content" class="ax-input ax-review-textarea" minlength="2" maxlength="2000" required placeholder="문의 내용을 자세히 작성해 주세요"></textarea>
+            </div>
+            <div class="ax-qna-compose-foot">
+                <span class="ax-page-sub">작성하신 1:1 문의는 본인과 관리자만 열람할 수 있습니다.</span>
+                <button type="submit" id="csInquirySubmitBtn" class="ax-btn ax-btn-primary">1:1 문의 등록</button>
+            </div>
+        </form>
+
+        <h3 class="ax-section-title ax-mb-12">내 1:1 문의 내역 (<span id="csMyInquiryCount" class="ax-num">{{ (inquiries or [])|length }}</span>)</h3>
+        <div id="csMyInquiriesList" class="ax-cs-list">
+            {% if inquiries and inquiries|length > 0 %}
+                {% for inq in inquiries %}
+                <article class="ax-cs-item-card">
+                    <div class="ax-cs-item-head">
+                        <div class="ax-order-complete-code-row">
+                            <span class="ax-badge ax-badge-neutral">{{ inq.category }}</span>
+                            <span class="ax-badge {% if inq.status == '답변완료' %}ax-badge-success{% else %}ax-badge-warning{% endif %}">{{ inq.status }}</span>
+                            <strong>{{ inq.title }}</strong>
+                            {% if inq.order_code %}
+                            <span class="ax-code-chip">{{ inq.order_code }}</span>
+                            {% endif %}
+                        </div>
+                        <span class="ax-num">{{ inq.created_at }}</span>
+                    </div>
+                    <div class="ax-cs-item-body">{{ inq.content }}</div>
+                    {% if inq.answer_content %}
+                    <div class="ax-cs-answer-box">
+                        <div class="ax-qna-answer-head">
+                            <strong>관리자 답변 ({{ inq.answered_by or '관리자' }})</strong>
+                            <span class="ax-num">{{ inq.answered_at }}</span>
+                        </div>
+                        <div class="ax-cs-item-body">{{ inq.answer_content }}</div>
+                    </div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            {% else %}
+                <div class="ax-detail-empty-box">등록하신 1:1 문의 내역이 없습니다.</div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="ax-review-login-gate">
+            <div>
+                <div class="ax-section-title">로그인 후 1:1 문의를 작성·조회할 수 있습니다</div>
+                <p class="ax-page-sub">개인정보 및 주문 보호를 위해 1:1 문의는 로그인한 회원 본인만 작성·열람할 수 있습니다.</p>
+            </div>
+            <a href="/auth/login?next=/cs" class="ax-btn ax-btn-primary ax-btn-sm">로그인하고 1:1 문의하기</a>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<div id="mallCsBootstrap" hidden
+     data-faqs="{{ (faqs or []) | tojson | forceescape }}"
+     data-inquiries="{{ (inquiries or []) | tojson | forceescape }}"></div>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const bootEl = document.getElementById('mallCsBootstrap');
+        let csInquiries = bootEl ? JSON.parse(bootEl.dataset.inquiries || '[]') : [];
+
+        document.querySelectorAll('.js-cs-nav-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.js-cs-nav-btn').forEach((el) => el.classList.toggle('active', el === btn));
+            });
+        });
+
+        document.querySelectorAll('.js-faq-cat-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const cat = btn.dataset.faqCat || 'ALL';
+                document.querySelectorAll('.js-faq-cat-btn').forEach((el) => el.classList.toggle('active', el === btn));
+                let visibleCount = 0;
+                document.querySelectorAll('.js-faq-item').forEach((item) => {
+                    const match = (cat === 'ALL' || (item.dataset.faqCat || '') === cat);
+                    item.classList.toggle('ax-is-hidden', !match);
+                    if (match) visibleCount += 1;
+                });
+                const badge = document.getElementById('csFaqCountBadge');
+                if (badge) badge.textContent = visibleCount + '건';
+            });
+        });
+
+        function renderMyInquiries(items) {
+            const listEl = document.getElementById('csMyInquiriesList');
+            const cntEl = document.getElementById('csMyInquiryCount');
+            const safe = Array.isArray(items) ? items : [];
+            if (cntEl) cntEl.textContent = String(safe.length);
+            if (!listEl) return;
+            if (safe.length === 0) {
+                listEl.innerHTML = '<div class="ax-detail-empty-box">등록하신 1:1 문의 내역이 없습니다.</div>';
+                return;
+            }
+            const esc = window.mallEscapeHtml;
+            listEl.innerHTML = safe.map((inq) => {
+                const badgeCls = inq.status === '답변완료' ? 'ax-badge-success' : 'ax-badge-warning';
+                const orderChip = inq.order_code ? `<span class="ax-code-chip">${esc(inq.order_code)}</span>` : '';
+                const ansHtml = inq.answer_content
+                    ? `<div class="ax-cs-answer-box"><div class="ax-qna-answer-head"><strong>관리자 답변 (${esc(inq.answered_by || '관리자')})</strong><span class="ax-num">${esc(inq.answered_at || '')}</span></div><div class="ax-cs-item-body">${esc(inq.answer_content)}</div></div>`
+                    : '';
+                return `
+                    <article class="ax-cs-item-card">
+                        <div class="ax-cs-item-head">
+                            <div class="ax-order-complete-code-row">
+                                <span class="ax-badge ax-badge-neutral">${esc(inq.category || '일반문의')}</span>
+                                <span class="ax-badge ${badgeCls}">${esc(inq.status || '접수대기')}</span>
+                                <strong>${esc(inq.title || '')}</strong>
+                                ${orderChip}
+                            </div>
+                            <span class="ax-num">${esc(inq.created_at || '')}</span>
+                        </div>
+                        <div class="ax-cs-item-body">${esc(inq.content || '')}</div>
+                        ${ansHtml}
+                    </article>
+                `;
+            }).join('');
+        }
+
+        const inqForm = document.getElementById('csInquiryForm');
+        if (inqForm) {
+            inqForm.addEventListener('submit', async (ev) => {
+                ev.preventDefault();
+                const btn = document.getElementById('csInquirySubmitBtn');
+                const category = document.getElementById('csInquiryCategory')?.value || '일반문의';
+                const order_code = (document.getElementById('csInquiryOrderCode')?.value || '').trim();
+                const title = (document.getElementById('csInquiryTitle')?.value || '').trim();
+                const content = (document.getElementById('csInquiryContent')?.value || '').trim();
+                if (title.length < 2 || content.length < 2) {
+                    alert('문의 제목과 내용을 2자 이상 입력해 주세요.');
+                    return;
+                }
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/inquiries/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category, order_code, title, content })
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.status !== 'ok') {
+                        alert((data && data.message) || '1:1 문의 등록에 실패했습니다.');
+                        return;
+                    }
+                    document.getElementById('csInquiryTitle').value = '';
+                    document.getElementById('csInquiryContent').value = '';
+                    document.getElementById('csInquiryOrderCode').value = '';
+                    csInquiries = Array.isArray(data.inquiries) ? data.inquiries : csInquiries;
+                    renderMyInquiries(csInquiries);
+                    showMallToast('1:1 문의가 접수되었습니다.');
+                } catch (err) {
+                    alert('1:1 문의 등록 중 오류가 발생했습니다: ' + err.message);
+                } finally {
+                    if (btn) btn.disabled = false;
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

@@ -8,6 +8,7 @@
 
 import os
 import re
+import math
 import time
 import json
 import uuid
@@ -18,12 +19,121 @@ from threading import RLock, Condition
 from typing import Any, Optional
 
 import mall_security
+import mall_shipping
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MALL_DB_PATH = os.getenv("MALL_DB_PATH", os.path.join(BASE_DIR, "shopping_mall.db"))
 HEARTBEAT_TIMEOUT_SEC = float(os.getenv("MALL_HEARTBEAT_TIMEOUT_SEC", "35"))
+SQLITE_INT64_MIN = -9223372036854775808
+SQLITE_INT64_MAX = 9223372036854775807
 mall_db_lock = RLock()
 mall_state_cond = Condition()
+
+
+def parse_strict_int64(
+    val: Any,
+    min_val: Optional[int] = None,
+    max_val: Optional[int] = None,
+) -> Optional[int]:
+    """bool/float/문자열 쓰레기값 및 SQLite int64 범위 초과 정수를 거부합니다."""
+    if val is None or isinstance(val, bool) or isinstance(val, float):
+        return None
+    if isinstance(val, int):
+        num = val
+    else:
+        s = str(val).strip()
+        if not s or not re.fullmatch(r"-?[0-9]+", s):
+            return None
+        is_neg = s.startswith("-")
+        digits = (s[1:] if is_neg else s).lstrip("0") or "0"
+        if len(digits) > 19:
+            return None
+        num = -int(digits) if is_neg else int(digits)
+    if num < SQLITE_INT64_MIN or num > SQLITE_INT64_MAX:
+        return None
+    if min_val is not None and num < min_val:
+        return None
+    if max_val is not None and num > max_val:
+        return None
+    return num
+
+def _safe_live_float(val: Any, default: float = 0.0, min_val: float = 0.0) -> float:
+    """mall_live_state 실수 필드 파싱 시 예외나 비유한값(NaN/Inf)으로 인한 500을 방지합니다."""
+    if val is None or isinstance(val, bool):
+        return default
+    if isinstance(val, (int, float)):
+        num = float(val)
+    elif isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return default
+        try:
+            num = float(s)
+        except (ValueError, TypeError, OverflowError):
+            return default
+    else:
+        return default
+    if not math.isfinite(num) or num < min_val:
+        return default
+    return num
+
+
+def _safe_live_int(val: Any, default: int = 1, min_val: int = 1) -> int:
+    """mall_live_state 정수 필드 파싱 시 예외나 범위 초과로 인한 500을 방지합니다."""
+    parsed = parse_strict_int64(val, min_val=min_val)
+    if parsed is None:
+        return default
+    return parsed
+
+
+def _parse_strict_non_neg_finite_float(val: Any) -> Optional[float]:
+    """bool/NaN/Inf/음수/비수치 문자열을 거부하고 0 이상의 유한 실수를 반환합니다."""
+    if val is None or isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        num = float(val)
+    elif isinstance(val, str):
+        s = val.strip()
+        if not s or not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", s):
+            return None
+        try:
+            num = float(s)
+        except (ValueError, TypeError, OverflowError):
+            return None
+    else:
+        return None
+    if not math.isfinite(num) or num < 0.0:
+        return None
+    return num
+
+
+def validate_live_state_bundle(state_dict: Any) -> Optional[dict]:
+    """OBS 동기화 live_state / live_bundle 페이로드의 핵심 타입과 범위를 DB 반영 전 엄격히 검증합니다."""
+    if not isinstance(state_dict, dict):
+        return None
+    out = dict(state_dict)
+    if "last_heartbeat_ts" in out:
+        hb = _parse_strict_non_neg_finite_float(out["last_heartbeat_ts"])
+        if hb is None:
+            return None
+        out["last_heartbeat_ts"] = hb
+    for ver_key in ("state_version", "catalog_version"):
+        if ver_key in out:
+            ver_val = parse_strict_int64(out[ver_key], min_val=1)
+            if ver_val is None:
+                return None
+            out[ver_key] = ver_val
+    for num_key in ("pinned_product_num", "active_product_num"):
+        if num_key in out and out[num_key] is not None:
+            parsed_num = parse_strict_int64(out[num_key], min_val=0)
+            if parsed_num is None:
+                return None
+            out[num_key] = parsed_num
+    for dict_key in ("timer", "live_urls"):
+        if dict_key in out and out[dict_key] is not None and not isinstance(out[dict_key], dict):
+            return None
+    return out
+
 
 DEFAULT_MALL_CATEGORIES = [
     ("TOP", "상의/탑", 10),
@@ -34,7 +144,10 @@ DEFAULT_MALL_CATEGORIES = [
 ]
 
 DEFAULT_MALL_POLICIES = {
-    "shipping_info": "• 배송방법: 택배 발송 (오후 2시 이전 주문 당일 출고)\n• 배송비: 기본 4,000원 (도서/산간 지역 추가 비용 발생 가능)",
+    "shipping_info": mall_shipping.format_shipping_policy_line({
+        "shipping_fee": mall_shipping.DEFAULT_SHIPPING_FEE,
+        "free_shipping_threshold": mall_shipping.DEFAULT_FREE_SHIPPING_THRESHOLD,
+    }),
     "exchange_return_info": "• 상품 수령일로부터 7일 이내 교환/반품 신청이 가능합니다.\n• 단순 변심 시 왕복 배송비는 고객 부담이며, 오배송/상품 불량 시 판매자가 부담합니다.",
     "non_returnable_info": "• 착용, 세탁, 수선 또는 상품 택(Tag)/라벨이 훼손된 경우\n• 고객 부주의로 인한 오염(화장품/향수 등) 및 구성품 누락 시 교환/반품이 불가합니다.",
     "as_info": "• 수령 후 7일 이내 초기 불량 확인 시 신속히 교환/환불 처리해 드립니다.\n• A/S 및 기타 문의는 고객센터 또는 주문 내역을 통해 접수해 주세요.",
@@ -57,6 +170,19 @@ DEFAULT_STORE_INFO = {
     "hosting_provider": "자체 운영 서버 (골라방 LIVE)",
     "escrow_notice": "고객님은 안전거래를 위해 현금 등으로 결제 시 쇼핑몰에서 안내하는 구매안전서비스(주문조회·교환/환불 보장)를 이용하실 수 있습니다.",
     "effective_date": "2026-01-01",
+    "shipping_fee": mall_shipping.DEFAULT_SHIPPING_FEE,
+    "free_shipping_threshold": mall_shipping.DEFAULT_FREE_SHIPPING_THRESHOLD,
+    "point_earn_rate": 1,
+    "unpaid_cancel_hours": 72,
+}
+
+_STORE_INFO_INT_FIELDS = {
+    "shipping_fee": (mall_shipping.DEFAULT_SHIPPING_FEE, 1_000_000),
+    "free_shipping_threshold": (mall_shipping.DEFAULT_FREE_SHIPPING_THRESHOLD, 100_000_000),
+    "unpaid_cancel_hours": (72, 8760),
+}
+_STORE_INFO_FLOAT_FIELDS = {
+    "point_earn_rate": (1, 0.0, 100.0),
 }
 
 _STORE_INFO_MAX_LEN = {
@@ -88,7 +214,12 @@ def bump_state_version(bump_catalog=False):
             cur = conn.cursor()
             cur.execute("SELECT value FROM mall_live_state WHERE key = 'state_version'")
             row = cur.fetchone()
-            cur_v = int(json.loads(row["value"])) if row and str(row["value"]).strip().isdigit() else 0
+            cur_v = 0
+            if row and row["value"] is not None:
+                try:
+                    cur_v = _safe_live_int(json.loads(row["value"]), default=0, min_val=0)
+                except Exception:
+                    cur_v = 0
             next_v = cur_v + 1
             cur.execute("""
                 INSERT INTO mall_live_state (key, value, updated_at)
@@ -99,7 +230,12 @@ def bump_state_version(bump_catalog=False):
             if bump_catalog:
                 cur.execute("SELECT value FROM mall_live_state WHERE key = 'catalog_version'")
                 crow = cur.fetchone()
-                cur_cv = int(json.loads(crow["value"])) if crow and str(crow["value"]).strip().isdigit() else 0
+                cur_cv = 0
+                if crow and crow["value"] is not None:
+                    try:
+                        cur_cv = _safe_live_int(json.loads(crow["value"]), default=0, min_val=0)
+                    except Exception:
+                        cur_cv = 0
                 next_cv = cur_cv + 1
                 cur.execute("""
                     INSERT INTO mall_live_state (key, value, updated_at)
@@ -112,6 +248,29 @@ def bump_state_version(bump_catalog=False):
     with mall_state_cond:
         mall_state_cond.notify_all()
     return next_v
+
+
+def get_db_path() -> str:
+    """현재 활성 쇼핑몰 SQLite DB 파일 경로를 반환합니다."""
+    return MALL_DB_PATH
+
+
+def set_db_path(new_path: str, init: bool = True) -> str:
+    """테스트 격리 및 환경 전환을 위해 MALL_DB_PATH를 변경하고 선택적으로 스키마를 초기화합니다."""
+    global MALL_DB_PATH
+    raw = str(new_path or "").strip()
+    if not raw:
+        raise ValueError("new_path must not be empty")
+    resolved = raw if raw == ":memory:" else os.path.abspath(raw)
+    if resolved != ":memory:":
+        parent = os.path.dirname(resolved)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+    with mall_db_lock:
+        MALL_DB_PATH = resolved
+        if init:
+            init_mall_db()
+    return MALL_DB_PATH
 
 
 def get_connection():
@@ -189,8 +348,19 @@ def init_mall_db():
                     address_detail TEXT DEFAULT '',
                     delivery_memo TEXT DEFAULT '',
                     payment_method TEXT NOT NULL DEFAULT 'BANK',
+                    depositor_name TEXT DEFAULT '',
+                    cash_receipt_type TEXT NOT NULL DEFAULT 'NONE',
+                    cash_receipt_no TEXT DEFAULT '',
+                    pg_provider TEXT DEFAULT '',
+                    pg_tid TEXT DEFAULT '',
+                    pg_status TEXT DEFAULT '',
+                    paid_at TEXT DEFAULT '',
                     payment_status TEXT NOT NULL DEFAULT '입금대기',
                     order_status TEXT NOT NULL DEFAULT '결제대기',
+                    carrier_code TEXT DEFAULT '',
+                    carrier_name TEXT DEFAULT '',
+                    tracking_number TEXT DEFAULT '',
+                    shipped_at TEXT DEFAULT '',
                     claim_reason TEXT DEFAULT '',
                     claim_updated_at TEXT DEFAULT '',
                     stock_restored INTEGER NOT NULL DEFAULT 0,
@@ -228,6 +398,13 @@ def init_mall_db():
                     author TEXT NOT NULL,
                     rating INTEGER NOT NULL DEFAULT 5,
                     content TEXT NOT NULL,
+                    images TEXT NOT NULL DEFAULT '[]',
+                    image_url TEXT NOT NULL DEFAULT '',
+                    is_verified_buyer INTEGER NOT NULL DEFAULT 0,
+                    is_hidden INTEGER NOT NULL DEFAULT 0,
+                    admin_reply TEXT NOT NULL DEFAULT '',
+                    admin_replied_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL
                 )
             """)
@@ -248,6 +425,7 @@ def init_mall_db():
                     failed_login_count INTEGER NOT NULL DEFAULT 0,
                     locked_until REAL NOT NULL DEFAULT 0,
                     last_login_at TEXT DEFAULT '',
+                    withdrawn_at TEXT DEFAULT '',
                     created_at TEXT NOT NULL
                 )
             """)
@@ -264,12 +442,37 @@ def init_mall_db():
                 ("mall_products", "non_returnable_info", "TEXT DEFAULT ''"),
                 ("mall_products", "as_info", "TEXT DEFAULT ''"),
                 ("mall_reviews", "user_id", "INTEGER DEFAULT NULL"),
+                ("mall_reviews", "images", "TEXT NOT NULL DEFAULT '[]'"),
+                ("mall_reviews", "image_url", "TEXT NOT NULL DEFAULT ''"),
+                ("mall_reviews", "is_verified_buyer", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_reviews", "is_hidden", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_reviews", "admin_reply", "TEXT NOT NULL DEFAULT ''"),
+                ("mall_reviews", "admin_replied_at", "TEXT NOT NULL DEFAULT ''"),
+                ("mall_reviews", "updated_at", "TEXT NOT NULL DEFAULT ''"),
                 ("mall_orders", "user_id", "INTEGER DEFAULT NULL"),
+                ("mall_orders", "zipcode", "TEXT DEFAULT ''"),
+                ("mall_orders", "address", "TEXT DEFAULT ''"),
+                ("mall_orders", "address_detail", "TEXT DEFAULT ''"),
                 ("mall_orders", "is_guest", "INTEGER NOT NULL DEFAULT 0"),
                 ("mall_orders", "guest_password_hash", "TEXT DEFAULT ''"),
+                ("mall_orders", "carrier_code", "TEXT DEFAULT ''"),
+                ("mall_orders", "carrier_name", "TEXT DEFAULT ''"),
+                ("mall_orders", "tracking_number", "TEXT DEFAULT ''"),
+                ("mall_orders", "shipped_at", "TEXT DEFAULT ''"),
                 ("mall_orders", "claim_reason", "TEXT DEFAULT ''"),
                 ("mall_orders", "claim_updated_at", "TEXT DEFAULT ''"),
                 ("mall_orders", "stock_restored", "INTEGER NOT NULL DEFAULT 0"),
+                ("mall_orders", "depositor_name", "TEXT DEFAULT ''"),
+                ("mall_orders", "cash_receipt_type", "TEXT NOT NULL DEFAULT 'NONE'"),
+                ("mall_orders", "cash_receipt_no", "TEXT DEFAULT ''"),
+                ("mall_orders", "pg_provider", "TEXT DEFAULT ''"),
+                ("mall_orders", "pg_tid", "TEXT DEFAULT ''"),
+                ("mall_orders", "pg_status", "TEXT DEFAULT ''"),
+                ("mall_orders", "paid_at", "TEXT DEFAULT ''"),
+                ("mall_users", "zipcode", "TEXT DEFAULT ''"),
+                ("mall_users", "address", "TEXT DEFAULT ''"),
+                ("mall_users", "address_detail", "TEXT DEFAULT ''"),
+                ("mall_users", "withdrawn_at", "TEXT DEFAULT ''"),
                 ("mall_order_items", "unit_cost", "INTEGER NOT NULL DEFAULT 0"),
                 ("mall_order_items", "cost_total", "INTEGER NOT NULL DEFAULT 0"),
                 ("mall_order_items", "supplier_id", "INTEGER DEFAULT NULL"),
@@ -379,6 +582,179 @@ def init_mall_db():
                 "CREATE INDEX IF NOT EXISTS idx_mall_orders_created_pay ON mall_orders (created_at, payment_status, order_status)"
             )
 
+            # 15. 회원 다중 배송지 주소록 (mall_user_addresses)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_user_addresses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    label TEXT NOT NULL DEFAULT '기본 배송지',
+                    recipient_name TEXT NOT NULL,
+                    recipient_phone TEXT NOT NULL,
+                    zipcode TEXT DEFAULT '',
+                    address TEXT NOT NULL,
+                    address_detail TEXT DEFAULT '',
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES mall_users (id) ON DELETE CASCADE
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_user_addresses_user ON mall_user_addresses (user_id, is_default DESC, id DESC)"
+            )
+
+            # 16. 회원 비밀번호 재설정 토큰·임시코드 (mall_password_resets)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_password_resets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    email TEXT NOT NULL,
+                    token_hash TEXT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    expires_at REAL NOT NULL,
+                    used_at TEXT DEFAULT '',
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES mall_users (id) ON DELETE CASCADE
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_password_resets_token ON mall_password_resets (token_hash)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_password_resets_user ON mall_password_resets (user_id, id DESC)"
+            )
+
+            # 17. 다채널 알림 발송 및 폴백 로그 (mall_notification_logs - M2/M3 공용 스키마)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_notification_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    recipient TEXT NOT NULL,
+                    subject TEXT DEFAULT '',
+                    body TEXT DEFAULT '',
+                    status TEXT NOT NULL,
+                    error_msg TEXT DEFAULT '',
+                    ref_code TEXT DEFAULT '',
+                    meta_json TEXT DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_notification_logs_created ON mall_notification_logs (id DESC)"
+            )
+
+            # 18. 상품 Q&A 테이블 (mall_product_qna - 비밀글 지원)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_product_qna (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_num INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    author_name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    is_secret INTEGER NOT NULL DEFAULT 0,
+                    answer_content TEXT DEFAULT '',
+                    answered_by TEXT DEFAULT '',
+                    answered_at TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_product_qna_num ON mall_product_qna (product_num, id DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_product_qna_user ON mall_product_qna (user_id, id DESC)")
+
+            # 19. 1:1 고객 문의 테이블 (mall_inquiries)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_inquiries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    category TEXT NOT NULL DEFAULT '일반문의',
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    order_code TEXT DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '접수대기',
+                    answer_content TEXT DEFAULT '',
+                    answered_by TEXT DEFAULT '',
+                    answered_at TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_inquiries_user ON mall_inquiries (user_id, id DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_inquiries_status ON mall_inquiries (status, id DESC)")
+
+            # 20. 스토어 공지사항 테이블 (mall_notices)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_notices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    is_pinned INTEGER NOT NULL DEFAULT 0,
+                    author_name TEXT NOT NULL DEFAULT '관리자',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_notices_pin ON mall_notices (is_pinned DESC, id DESC)")
+
+            # 21. 자주 묻는 질문 테이블 (mall_faqs)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_faqs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL DEFAULT '주문/결제',
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 10,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_faqs_active ON mall_faqs (is_active, sort_order ASC, id ASC)")
+
+            # 22. 재입고 알림 신청 테이블 (mall_restock_alerts - F16)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_restock_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_num INTEGER NOT NULL,
+                    color TEXT NOT NULL DEFAULT '-',
+                    size TEXT NOT NULL DEFAULT '-',
+                    user_id INTEGER DEFAULT NULL,
+                    contact_type TEXT NOT NULL DEFAULT 'EMAIL',
+                    contact_value TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    notified_at TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mall_restock_alerts_lookup ON mall_restock_alerts (product_num, status, id DESC)"
+            )
+
+            # 23. 관리자 작업 감사 로그 테이블 (mall_audit_logs - F18)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS mall_audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_user_id INTEGER DEFAULT NULL,
+                    admin_email TEXT DEFAULT '',
+                    admin_name TEXT DEFAULT '',
+                    action TEXT NOT NULL,
+                    target_type TEXT DEFAULT '',
+                    target_id TEXT DEFAULT '',
+                    detail_json TEXT DEFAULT '{}',
+                    ip_address TEXT DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_audit_logs_created ON mall_audit_logs (id DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_audit_logs_action ON mall_audit_logs (action, id DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_audit_logs_target ON mall_audit_logs (target_type, target_id)")
+
+            import mall_promotions
+            mall_promotions.ensure_promotions_schema(conn)
+
             conn.commit()
         finally:
             conn.close()
@@ -386,6 +762,99 @@ def init_mall_db():
         ensure_default_mall_admin()
     except Exception:
         pass
+
+
+def _snapshot_product_option_stocks(cur, product_id: int) -> tuple[dict[tuple[str, str], int], int]:
+    cur.execute(
+        "SELECT color, size, stock FROM mall_product_options WHERE product_id = ?",
+        (int(product_id),),
+    )
+    stocks: dict[tuple[str, str], int] = {}
+    total = 0
+    for r in cur.fetchall():
+        c = str(r["color"] or "-").strip() or "-"
+        s = str(r["size"] or "-").strip() or "-"
+        stk = max(0, int(r["stock"] or 0))
+        stocks[(c, s)] = stk
+        total += stk
+    return stocks, total
+
+
+def _collect_restock_notifications_tx(
+    cur,
+    product_id: int,
+    product_num: int,
+    product_name: str,
+    prev_stocks: dict[tuple[str, str], int],
+    prev_total: int,
+    now_str: str,
+) -> list[dict[str, Any]]:
+    new_stocks, new_total = _snapshot_product_option_stocks(cur, product_id)
+    restocked_skus = {
+        (c, s): stk
+        for (c, s), stk in new_stocks.items()
+        if stk > 0 and prev_stocks.get((c, s), 0) <= 0
+    }
+    product_restocked = (prev_total <= 0 and new_total > 0)
+    if not restocked_skus and not product_restocked:
+        return []
+
+    cur.execute(
+        """
+        SELECT * FROM mall_restock_alerts
+        WHERE product_num = ? AND status = 'PENDING'
+        ORDER BY id ASC
+        """,
+        (int(product_num),),
+    )
+    pending_rows = cur.fetchall()
+    to_dispatch: list[dict[str, Any]] = []
+    for ar in pending_rows:
+        ac = str(ar["color"] or "-").strip() or "-"
+        az = str(ar["size"] or "-").strip() or "-"
+        matched_stock: Optional[int] = None
+        if (ac, az) in restocked_skus:
+            matched_stock = restocked_skus[(ac, az)]
+        elif ac in ("-", "") and az in ("-", "") and product_restocked:
+            matched_stock = new_total
+        if matched_stock is None:
+            continue
+        cur.execute(
+            """
+            UPDATE mall_restock_alerts
+            SET status = 'NOTIFIED', notified_at = ?
+            WHERE id = ? AND status = 'PENDING'
+            """,
+            (now_str, int(ar["id"])),
+        )
+        if cur.rowcount == 1:
+            alert_dict = dict(ar)
+            alert_dict["status"] = "NOTIFIED"
+            alert_dict["notified_at"] = now_str
+            to_dispatch.append({
+                "alert": alert_dict,
+                "product_name": str(product_name or f"상품 #{product_num}"),
+                "new_stock": int(matched_stock),
+            })
+    return to_dispatch
+
+
+def _dispatch_restock_notifications(events: list[dict[str, Any]]) -> None:
+    if not events:
+        return
+    try:
+        import mall_notifications
+    except Exception:
+        return
+    for ev in events:
+        try:
+            mall_notifications.notify_restock_alert(
+                ev["alert"],
+                product_name=ev.get("product_name", ""),
+                new_stock=int(ev.get("new_stock") or 0),
+            )
+        except Exception as exc:
+            print(f"[ShoppingMall] RESTOCK_ALERT 알림 경고: {exc}")
 
 
 def _infer_category(name, specs=""):
@@ -520,21 +989,113 @@ def _format_product_row(prow, opt_rows, supplier_map: dict[int, str] | None = No
     }
 
 
-def upsert_product_from_obs(prod_data):
-    """OBS에서 전달받은 단일 상품 데이터를 쇼핑몰 DB(mall_products, mall_product_options)에 저장/갱신합니다."""
+def parse_obs_product_payload(prod_data):
+    """OBS 동기화 상품 payload의 숫자형 필드(num, obs_id, 가격, 옵션 재고)를 엄격히 검증·정규화합니다."""
     if not isinstance(prod_data, dict):
         return None
-    num = prod_data.get("num")
+    num = parse_strict_int64(prod_data.get("num"), min_val=1)
     if num is None:
         return None
-    num = int(num)
-    obs_id = int(str(prod_data.get("db_id") or prod_data.get("id") or 0).replace("item-", "") or 0)
-    name = str(prod_data.get("name") or f"상품 #{num}").strip()
-    price = max(0, int(prod_data.get("price") or 0))
-    live_price = max(0, int(prod_data.get("live_price") or price))
-    if live_price <= 0:
+
+    raw_db_id = prod_data.get("db_id")
+    raw_id = prod_data.get("id")
+    if isinstance(raw_db_id, (bool, float)) or isinstance(raw_id, (bool, float)):
+        return None
+    raw_obs = raw_db_id if raw_db_id not in (None, "", 0, "0") else raw_id
+    if raw_obs in (None, "", 0, "0"):
+        obs_id = 0
+    else:
+        if isinstance(raw_obs, str):
+            obs_str = raw_obs.strip()
+            if obs_str.startswith("item-"):
+                obs_str = obs_str[5:].strip()
+            obs_id = parse_strict_int64(obs_str, min_val=0)
+        else:
+            obs_id = parse_strict_int64(raw_obs, min_val=0)
+        if obs_id is None:
+            return None
+
+    raw_price = prod_data.get("price")
+    if isinstance(raw_price, (bool, float)):
+        return None
+    if raw_price is None or (isinstance(raw_price, str) and raw_price.strip() == ""):
+        price = 0
+    else:
+        price = parse_strict_int64(raw_price, min_val=0)
+        if price is None:
+            return None
+
+    raw_lp = prod_data.get("live_price")
+    if isinstance(raw_lp, (bool, float)):
+        return None
+    if raw_lp in (None, 0, "0") or (isinstance(raw_lp, str) and raw_lp.strip() in ("", "0")):
         live_price = price
-    consumer_price = max(price, int(prod_data.get("consumer_price") or price))
+    else:
+        live_price = parse_strict_int64(raw_lp, min_val=0)
+        if live_price is None:
+            return None
+        if live_price <= 0:
+            live_price = price
+
+    raw_cp = prod_data.get("consumer_price")
+    if isinstance(raw_cp, (bool, float)):
+        return None
+    if raw_cp in (None, 0, "0") or (isinstance(raw_cp, str) and raw_cp.strip() in ("", "0")):
+        consumer_price = price
+    else:
+        parsed_cp = parse_strict_int64(raw_cp, min_val=0)
+        if parsed_cp is None:
+            return None
+        consumer_price = max(price, parsed_cp)
+
+    has_options = "options" in prod_data and prod_data.get("options") is not None
+    parsed_options = None
+    if has_options:
+        raw_opts = prod_data.get("options")
+        if not isinstance(raw_opts, list):
+            return None
+        if not raw_opts:
+            parsed_options = [{"color": "기본", "size": "FREE", "stock": 10}]
+        else:
+            parsed_options = []
+            for opt in raw_opts:
+                if not isinstance(opt, dict):
+                    return None
+                raw_stk = opt.get("stock")
+                if isinstance(raw_stk, (bool, float)):
+                    return None
+                if raw_stk is None or (isinstance(raw_stk, str) and raw_stk.strip() == ""):
+                    stk = 0
+                else:
+                    stk = parse_strict_int64(raw_stk, min_val=0)
+                    if stk is None:
+                        return None
+                c = str(opt.get("color") or "-").strip() or "-"
+                s = str(opt.get("size") or "-").strip() or "-"
+                parsed_options.append({"color": c, "size": s, "stock": stk})
+
+    return {
+        "num": num,
+        "obs_id": obs_id,
+        "price": price,
+        "live_price": live_price,
+        "consumer_price": consumer_price,
+        "has_options": has_options,
+        "options": parsed_options,
+    }
+
+
+def upsert_product_from_obs(prod_data):
+    """OBS에서 전달받은 단일 상품 데이터를 쇼핑몰 DB(mall_products, mall_product_options)에 저장/갱신합니다."""
+    parsed = parse_obs_product_payload(prod_data)
+    if parsed is None:
+        return None
+    num = parsed["num"]
+    obs_id = parsed["obs_id"]
+    name = str(prod_data.get("name") or f"상품 #{num}").strip()
+    price = parsed["price"]
+    live_price = parsed["live_price"]
+    consumer_price = parsed["consumer_price"]
     image_url = str(prod_data.get("image_url") or "").strip()
     specs = str(prod_data.get("specs") or "").strip()
     incoming_cat = str(prod_data.get("category") or "").strip().upper()
@@ -543,6 +1104,8 @@ def upsert_product_from_obs(prod_data):
 
     for attempt in range(2):
         need_retry = False
+        restock_events: list[dict[str, Any]] = []
+        saved_product = None
         with mall_db_lock:
             conn = get_connection()
             try:
@@ -552,8 +1115,12 @@ def upsert_product_from_obs(prod_data):
                     FROM mall_products WHERE num = ?
                 """, (num,))
                 existing = cur.fetchone()
+                prev_stocks: dict[tuple[str, str], int] = {}
+                prev_total = 0
                 if existing:
                     mall_pid = existing["id"]
+                    if "options" in prod_data and isinstance(prod_data["options"], list):
+                        prev_stocks, prev_total = _snapshot_product_option_stocks(cur, int(mall_pid))
                     ext_keys = set(existing.keys())
                     existing_cat = str(existing["category"] or "").strip().upper() if "category" in ext_keys else ""
                     category = incoming_cat or existing_cat or _infer_category(name, specs)
@@ -606,23 +1173,21 @@ def upsert_product_from_obs(prod_data):
                     ))
                     mall_pid = cur.lastrowid
 
-                if "options" in prod_data and isinstance(prod_data["options"], list):
+                if parsed["has_options"]:
                     cur.execute("DELETE FROM mall_product_options WHERE product_id = ?", (mall_pid,))
-                    options = prod_data["options"]
-                    if not options:
-                        options = [{"color": "기본", "size": "FREE", "stock": 10}]
-                    for opt in options:
-                        c = str(opt.get("color") or "-").strip() or "-"
-                        s = str(opt.get("size") or "-").strip() or "-"
-                        stk = max(0, int(opt.get("stock") or 0))
+                    for opt in (parsed["options"] or []):
                         cur.execute("""
                             INSERT OR REPLACE INTO mall_product_options (product_id, color, size, stock)
                             VALUES (?, ?, ?, ?)
-                        """, (mall_pid, c, s, stk))
+                        """, (mall_pid, opt["color"], opt["size"], opt["stock"]))
+                    if existing:
+                        restock_events = _collect_restock_notifications_tx(
+                            cur, int(mall_pid), num, name, prev_stocks, prev_total, now_str
+                        )
 
                 conn.commit()
                 bump_state_version(bump_catalog=True)
-                return get_mall_product_by_num(num)
+                saved_product = get_mall_product_by_num(num)
             except sqlite3.OperationalError as err:
                 if attempt == 0 and "no such column" in str(err).lower():
                     need_retry = True
@@ -633,18 +1198,25 @@ def upsert_product_from_obs(prod_data):
         if need_retry:
             init_mall_db()
             continue
-        break
+        _dispatch_restock_notifications(restock_events)
+        return saved_product
     return None
+
+
+def _obs_bulk_sort_key(item):
+    if not isinstance(item, dict):
+        return 999999
+    v = parse_strict_int64(item.get("num"), min_val=0)
+    if v is None:
+        v = parse_strict_int64(item.get("db_id"), min_val=0)
+    return v if v is not None else 999999
 
 
 def bulk_sync_products_from_obs(products_list, delete_missing=True):
     """OBS의 전체 상품 목록을 쇼핑몰 DB에 일괄 동기화합니다."""
     if not isinstance(products_list, list):
         return 0
-    sorted_list = sorted(
-        products_list,
-        key=lambda x: int(x.get("num") or x.get("db_id") or 999999) if isinstance(x, dict) else 999999
-    )
+    sorted_list = sorted(products_list, key=_obs_bulk_sort_key)
     synced_nums = []
     for p in sorted_list:
         res = upsert_product_from_obs(p)
@@ -674,9 +1246,14 @@ def delete_product_by_num_or_obs_id(num=None, obs_product_id=None):
         try:
             cur = conn.cursor()
             if num is not None:
-                cur.execute("DELETE FROM mall_products WHERE num = ?", (int(num),))
+                p_num = parse_strict_int64(num, min_val=1)
+                if p_num is None:
+                    return False
+                cur.execute("DELETE FROM mall_products WHERE num = ?", (p_num,))
             elif obs_product_id is not None:
-                real_id = int(str(obs_product_id).replace("item-", ""))
+                real_id = parse_strict_int64(str(obs_product_id).replace("item-", ""), min_val=1)
+                if real_id is None:
+                    return False
                 cur.execute("DELETE FROM mall_products WHERE obs_product_id = ?", (real_id,))
             conn.commit()
             deleted = cur.rowcount > 0
@@ -762,7 +1339,10 @@ def create_mall_category(name: str, code: str = "", sort_order=None, is_active: 
                 cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 10 FROM mall_categories")
                 order_val = int(cur.fetchone()[0] or 10)
             else:
-                order_val = max(0, int(sort_order))
+                parsed_order = parse_strict_int64(sort_order, min_val=0)
+                if parsed_order is None:
+                    return {"ok": False, "message": "정렬 순서는 0 이상의 올바른 정수로 입력해 주세요."}
+                order_val = parsed_order
 
             cur.execute("""
                 INSERT INTO mall_categories (code, name, sort_order, is_active, created_at)
@@ -778,11 +1358,14 @@ def create_mall_category(name: str, code: str = "", sort_order=None, is_active: 
 
 def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None) -> dict:
     """기존 쇼핑몰 카테고리의 이름, 정렬 순서, 스토어 노출 여부를 수정합니다."""
+    parsed_cid = parse_strict_int64(cat_id, min_val=1)
+    if parsed_cid is None:
+        return {"ok": False, "message": "유효하지 않은 카테고리 ID입니다."}
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM mall_categories WHERE id = ?", (int(cat_id),))
+            cur.execute("SELECT * FROM mall_categories WHERE id = ?", (parsed_cid,))
             existing = cur.fetchone()
             if not existing:
                 return {"ok": False, "message": "수정할 카테고리를 찾을 수 없습니다."}
@@ -791,18 +1374,24 @@ def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None
             if not new_name or len(new_name) > 40:
                 return {"ok": False, "message": "카테고리명은 1~40자 이내로 입력해 주세요."}
 
-            cur.execute("SELECT id FROM mall_categories WHERE name = ? AND id != ?", (new_name, int(cat_id)))
+            cur.execute("SELECT id FROM mall_categories WHERE name = ? AND id != ?", (new_name, parsed_cid))
             if cur.fetchone():
                 return {"ok": False, "message": "이미 동일한 이름의 카테고리가 존재합니다."}
 
-            new_order = int(existing["sort_order"] or 0) if sort_order is None or str(sort_order).strip() == "" else max(0, int(sort_order))
+            if sort_order is None or str(sort_order).strip() == "":
+                new_order = int(existing["sort_order"] or 0)
+            else:
+                parsed_order = parse_strict_int64(sort_order, min_val=0)
+                if parsed_order is None:
+                    return {"ok": False, "message": "정렬 순서는 0 이상의 올바른 정수로 입력해 주세요."}
+                new_order = parsed_order
             new_active = int(existing["is_active"]) if is_active is None else (1 if is_active else 0)
 
             cur.execute("""
                 UPDATE mall_categories
                 SET name = ?, sort_order = ?, is_active = ?
                 WHERE id = ?
-            """, (new_name, new_order, new_active, int(cat_id)))
+            """, (new_name, new_order, new_active, parsed_cid))
             conn.commit()
             bump_state_version(bump_catalog=True)
             return {"ok": True}
@@ -812,11 +1401,14 @@ def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None
 
 def delete_mall_category(cat_id: int) -> dict:
     """카테고리를 삭제하고 해당 카테고리에 속해 있던 상품은 기타(ETC)로 이동합니다."""
+    parsed_cid = parse_strict_int64(cat_id, min_val=1)
+    if parsed_cid is None:
+        return {"ok": False, "message": "유효하지 않은 카테고리 ID입니다."}
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT id, code, name FROM mall_categories WHERE id = ?", (int(cat_id),))
+            cur.execute("SELECT id, code, name FROM mall_categories WHERE id = ?", (parsed_cid,))
             row = cur.fetchone()
             if not row:
                 return {"ok": False, "message": "삭제할 카테고리를 찾을 수 없습니다."}
@@ -824,7 +1416,7 @@ def delete_mall_category(cat_id: int) -> dict:
             old_code = str(row["code"] or "").strip().upper()
             cur.execute("UPDATE mall_products SET category = 'ETC' WHERE UPPER(COALESCE(category, '')) = ?", (old_code,))
             moved_cnt = int(cur.rowcount or 0)
-            cur.execute("DELETE FROM mall_categories WHERE id = ?", (int(cat_id),))
+            cur.execute("DELETE FROM mall_categories WHERE id = ?", (parsed_cid,))
             conn.commit()
             bump_state_version(bump_catalog=True)
             return {
@@ -847,7 +1439,9 @@ def get_mall_policy_defaults() -> dict:
             "non_returnable_info": str(saved.get("non_returnable_info") or "").strip(),
             "as_info": str(saved.get("as_info") or "").strip(),
         }
-    return dict(DEFAULT_MALL_POLICIES)
+    defaults = dict(DEFAULT_MALL_POLICIES)
+    defaults["shipping_info"] = mall_shipping.format_shipping_policy_line(get_mall_store_info())
+    return defaults
 
 
 def set_mall_policy_defaults(policy_data: Any) -> dict:
@@ -863,15 +1457,41 @@ def set_mall_policy_defaults(policy_data: Any) -> dict:
     return normalized
 
 
+def _coerce_bounded_float(raw_val: Any, default_val: float, min_val: float = 0.0, max_val: float = 100.0):
+    if isinstance(raw_val, bool) or raw_val is None:
+        return default_val
+    try:
+        v = float(str(raw_val).strip().replace(",", ""))
+    except (TypeError, ValueError):
+        return default_val
+    if math.isnan(v) or math.isinf(v) or v < min_val or v > max_val:
+        return default_val
+    return int(v) if v.is_integer() else round(v, 2)
+
+
 def _normalize_store_info(raw: Any) -> dict:
     src = raw if isinstance(raw, dict) else {}
     info = {}
     for key, default_val in DEFAULT_STORE_INFO.items():
+        if key in _STORE_INFO_INT_FIELDS or key in _STORE_INFO_FLOAT_FIELDS:
+            continue
         max_len = _STORE_INFO_MAX_LEN.get(key, 200)
         val = str(src.get(key) or "").strip()
         if not val:
-            val = default_val
+            val = str(default_val)
         info[key] = val[:max_len]
+    for key, (default_int, max_int) in _STORE_INFO_INT_FIELDS.items():
+        raw_val = src.get(key)
+        if key in src and raw_val is not None and str(raw_val).strip() != "":
+            info[key] = mall_shipping._coerce_non_negative_int(raw_val, default_int, max_val=max_int)
+        else:
+            info[key] = default_int
+    for key, (default_flt, min_flt, max_flt) in _STORE_INFO_FLOAT_FIELDS.items():
+        raw_val = src.get(key)
+        if key in src and raw_val is not None and str(raw_val).strip() != "":
+            info[key] = _coerce_bounded_float(raw_val, default_flt, min_val=min_flt, max_val=max_flt)
+        else:
+            info[key] = default_flt
     digits = re.sub(r"\D", "", info["biz_reg_no"])
     info["biz_reg_digits"] = digits
     if len(digits) == 10 and digits != "0000000000":
@@ -882,19 +1502,29 @@ def _normalize_store_info(raw: Any) -> dict:
 
 
 def get_mall_store_info() -> dict:
-    """쇼핑몰 하단 푸터와 법정 약관에 표시되는 사업자·고객센터·입금계좌 정보를 반환합니다."""
+    """쇼핑몰 하단 푸터와 법정 약관에 표시되는 사업자·고객센터·입금계좌·배송비 설정 정보를 반환합니다."""
     saved = get_live_state_key("store_info", None)
     return _normalize_store_info(saved)
 
 
+def calculate_shipping_fee(subtotal: int, store_info: Optional[dict] = None) -> int:
+    """스토어 설정을 기준으로 주문 배송비를 계산합니다 (Single Source of Truth 재수출)."""
+    info = store_info if isinstance(store_info, dict) else get_mall_store_info()
+    return mall_shipping.calculate_shipping_fee(subtotal, info)
+
+
 def set_mall_store_info(info_data: Any) -> dict:
-    """쇼핑몰 사업자·고객센터·입금계좌 정보를 DB에 영구 저장합니다."""
+    """쇼핑몰 사업자·고객센터·입금계좌·배송비 설정 정보를 DB에 영구 저장합니다."""
     raw = info_data if isinstance(info_data, dict) else {}
     current = get_mall_store_info()
     merged = dict(current)
     for key in DEFAULT_STORE_INFO:
         if key in raw:
-            merged[key] = raw.get(key)
+            if key in _STORE_INFO_INT_FIELDS or key in _STORE_INFO_FLOAT_FIELDS:
+                if raw.get(key) is not None and str(raw.get(key)).strip() != "":
+                    merged[key] = raw.get(key)
+            else:
+                merged[key] = raw.get(key)
     normalized = _normalize_store_info(merged)
     persist_payload = {k: normalized[k] for k in DEFAULT_STORE_INFO}
     set_live_state_key("store_info", persist_payload)
@@ -910,23 +1540,50 @@ def create_mall_product(prod_data: Any) -> dict:
     if not name:
         return {"ok": False, "message": "상품명을 입력해 주세요."}
 
-    try:
-        sell_price = max(0, int(prod_data.get("price") or 0))
-        live_price = max(0, int(prod_data.get("live_price") or sell_price))
+    raw_sell = prod_data.get("price")
+    if raw_sell in (None, ""):
+        sell_price = 0
+    else:
+        sell_price = parse_strict_int64(raw_sell, min_val=0)
+        if sell_price is None:
+            return {"ok": False, "message": "가격 및 원가는 올바른 정수로 입력해 주세요."}
+
+    raw_live = prod_data.get("live_price")
+    if raw_live in (None, "", 0, "0"):
+        live_price = sell_price
+    else:
+        live_price = parse_strict_int64(raw_live, min_val=0)
+        if live_price is None:
+            return {"ok": False, "message": "가격 및 원가는 올바른 정수로 입력해 주세요."}
         if live_price <= 0:
             live_price = sell_price
-        consumer_price = max(sell_price, int(prod_data.get("consumer_price") or sell_price))
-        cost_price = max(0, int(prod_data.get("cost_price") or 0))
-    except Exception:
-        return {"ok": False, "message": "가격 및 원가는 올바른 숫자로 입력해 주세요."}
+
+    raw_cons = prod_data.get("consumer_price")
+    if raw_cons in (None, "", 0, "0"):
+        consumer_price = sell_price
+    else:
+        parsed_cons = parse_strict_int64(raw_cons, min_val=0)
+        if parsed_cons is None:
+            return {"ok": False, "message": "가격 및 원가는 올바른 정수로 입력해 주세요."}
+        consumer_price = max(sell_price, parsed_cons)
+
+    raw_cost = prod_data.get("cost_price")
+    if raw_cost in (None, ""):
+        cost_price = 0
+    else:
+        cost_price = parse_strict_int64(raw_cost, min_val=0)
+        if cost_price is None:
+            return {"ok": False, "message": "가격 및 원가는 올바른 정수로 입력해 주세요."}
 
     raw_sup_id = prod_data.get("supplier_id")
-    try:
-        supplier_id = int(str(raw_sup_id).strip()) if raw_sup_id not in (None, "", 0, "0") else None
-        if supplier_id is not None and supplier_id <= 0:
-            supplier_id = None
-    except Exception:
+    if isinstance(raw_sup_id, (bool, float)):
+        return {"ok": False, "message": "선택한 매입업체 ID가 올바르지 않습니다."}
+    if raw_sup_id in (None, "", 0, "0"):
         supplier_id = None
+    else:
+        supplier_id = parse_strict_int64(raw_sup_id, min_val=1)
+        if supplier_id is None:
+            return {"ok": False, "message": "선택한 매입업체 ID가 올바르지 않습니다."}
 
     raw_opts = prod_data.get("options")
     clean_opts = []
@@ -936,7 +1593,13 @@ def create_mall_product(prod_data: Any) -> dict:
                 continue
             c = str(o.get("color") or "-").strip() or "-"
             s = str(o.get("size") or "-").strip() or "-"
-            stk = max(0, int(o.get("stock") or 0))
+            raw_stk = o.get("stock")
+            if raw_stk in (None, ""):
+                stk = 0
+            else:
+                stk = parse_strict_int64(raw_stk, min_val=0)
+                if stk is None:
+                    return {"ok": False, "message": "옵션 재고는 0 이상의 올바른 정수로 입력해 주세요."}
             clean_opts.append({"color": c, "size": s, "stock": stk})
     if not clean_opts:
         clean_opts = [{"color": "기본", "size": "FREE", "stock": 10}]
@@ -960,9 +1623,9 @@ def create_mall_product(prod_data: Any) -> dict:
                 cur.execute("SELECT COALESCE(MAX(num), 0) + 1 FROM mall_products")
                 num = int(cur.fetchone()[0] or 1)
             else:
-                num = int(raw_num)
-                if num <= 0:
-                    return {"ok": False, "message": "상품 번호는 1 이상의 숫자여야 합니다."}
+                num = parse_strict_int64(raw_num, min_val=1)
+                if num is None:
+                    return {"ok": False, "message": "상품 번호는 1 이상의 올바른 정수여야 합니다."}
                 cur.execute("SELECT id FROM mall_products WHERE num = ?", (num,))
                 if cur.fetchone():
                     return {"ok": False, "message": f"이미 #{num}번 상품이 등록되어 있습니다."}
@@ -1003,22 +1666,30 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
     """쇼핑몰 관리자에서 기존 상품 정보, 카테고리, 상세페이지, 4대 안내 및 옵션을 수정합니다."""
     if not isinstance(prod_data, dict):
         return {"ok": False, "message": "잘못된 상품 데이터입니다."}
+    parsed_pid = parse_strict_int64(product_id, min_val=1)
+    if parsed_pid is None:
+        return {"ok": False, "message": "유효하지 않은 상품 ID입니다."}
 
+    restock_events: list[dict[str, Any]] = []
+    res_payload: dict[str, Any] = {}
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM mall_products WHERE id = ?", (int(product_id),))
+            cur.execute("SELECT * FROM mall_products WHERE id = ?", (parsed_pid,))
             existing = cur.fetchone()
             if not existing:
                 return {"ok": False, "message": "수정할 상품을 찾을 수 없습니다."}
 
             raw_num = prod_data.get("num")
-            target_num = int(raw_num) if raw_num not in (None, "") else int(existing["num"])
-            if target_num <= 0:
-                return {"ok": False, "message": "상품 번호는 1 이상의 숫자여야 합니다."}
+            if raw_num in (None, ""):
+                target_num = int(existing["num"])
+            else:
+                target_num = parse_strict_int64(raw_num, min_val=1)
+                if target_num is None:
+                    return {"ok": False, "message": "상품 번호는 1 이상의 올바른 정수여야 합니다."}
             if target_num != int(existing["num"]):
-                cur.execute("SELECT id FROM mall_products WHERE num = ? AND id != ?", (target_num, int(product_id)))
+                cur.execute("SELECT id FROM mall_products WHERE num = ? AND id != ?", (target_num, parsed_pid))
                 if cur.fetchone():
                     return {"ok": False, "message": f"이미 #{target_num}번 상품이 등록되어 있습니다."}
 
@@ -1026,22 +1697,63 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
             if not name:
                 return {"ok": False, "message": "상품명을 입력해 주세요."}
 
-            sell_price = max(0, int(prod_data["price"])) if "price" in prod_data else int(existing["price"] or 0)
-            live_price = max(0, int(prod_data.get("live_price") or sell_price)) if "live_price" in prod_data else int(existing["live_price"] or sell_price)
-            if live_price <= 0:
-                live_price = sell_price
-            consumer_price = max(sell_price, int(prod_data.get("consumer_price") or sell_price)) if "consumer_price" in prod_data else max(sell_price, int(existing["consumer_price"] or sell_price))
+            if "price" in prod_data:
+                sell_price = parse_strict_int64(prod_data.get("price"), min_val=0)
+                if sell_price is None:
+                    return {"ok": False, "message": "판매가는 0 이상의 올바른 정수로 입력해 주세요."}
+            else:
+                sell_price = int(existing["price"] or 0)
+
+            if "live_price" in prod_data:
+                raw_lp = prod_data.get("live_price")
+                if raw_lp in (None, "", 0, "0"):
+                    live_price = sell_price
+                else:
+                    live_price = parse_strict_int64(raw_lp, min_val=0)
+                    if live_price is None:
+                        return {"ok": False, "message": "라이브 가격은 0 이상의 올바른 정수로 입력해 주세요."}
+                    if live_price <= 0:
+                        live_price = sell_price
+            else:
+                live_price = int(existing["live_price"] or sell_price)
+                if live_price <= 0:
+                    live_price = sell_price
+
+            if "consumer_price" in prod_data:
+                raw_cp = prod_data.get("consumer_price")
+                if raw_cp in (None, "", 0, "0"):
+                    consumer_price = sell_price
+                else:
+                    parsed_cp = parse_strict_int64(raw_cp, min_val=0)
+                    if parsed_cp is None:
+                        return {"ok": False, "message": "소비자가는 0 이상의 올바른 정수로 입력해 주세요."}
+                    consumer_price = max(sell_price, parsed_cp)
+            else:
+                consumer_price = max(sell_price, int(existing["consumer_price"] or sell_price))
+
             ext_keys = set(existing.keys())
             existing_cost = int(existing["cost_price"] or 0) if "cost_price" in ext_keys and existing["cost_price"] is not None else 0
-            cost_price = max(0, int(prod_data.get("cost_price") or 0)) if "cost_price" in prod_data else existing_cost
+            if "cost_price" in prod_data:
+                raw_cost = prod_data.get("cost_price")
+                if raw_cost in (None, ""):
+                    cost_price = 0
+                else:
+                    cost_price = parse_strict_int64(raw_cost, min_val=0)
+                    if cost_price is None:
+                        return {"ok": False, "message": "매입원가는 0 이상의 올바른 정수로 입력해 주세요."}
+            else:
+                cost_price = existing_cost
+
             if "supplier_id" in prod_data:
                 raw_sup = prod_data.get("supplier_id")
-                try:
-                    supplier_id = int(str(raw_sup).strip()) if raw_sup not in (None, "", 0, "0") else None
-                    if supplier_id is not None and supplier_id <= 0:
-                        supplier_id = None
-                except Exception:
+                if isinstance(raw_sup, (bool, float)):
+                    return {"ok": False, "message": "선택한 매입업체 ID가 올바르지 않습니다."}
+                if raw_sup in (None, "", 0, "0"):
                     supplier_id = None
+                else:
+                    supplier_id = parse_strict_int64(raw_sup, min_val=1)
+                    if supplier_id is None:
+                        return {"ok": False, "message": "선택한 매입업체 ID가 올바르지 않습니다."}
                 if supplier_id is not None:
                     cur.execute("SELECT id FROM mall_suppliers WHERE id = ?", (supplier_id,))
                     if not cur.fetchone():
@@ -1081,7 +1793,7 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
                 resolved_texts["detail_content"], detail_imgs,
                 resolved_texts["shipping_info"], resolved_texts["exchange_return_info"],
                 resolved_texts["non_returnable_info"], resolved_texts["as_info"],
-                now_str, int(product_id)
+                now_str, parsed_pid
             ))
 
             if "options" in prod_data and isinstance(prod_data["options"], list):
@@ -1091,35 +1803,52 @@ def update_mall_product(product_id: int, prod_data: Any) -> dict:
                         continue
                     c = str(o.get("color") or "-").strip() or "-"
                     s = str(o.get("size") or "-").strip() or "-"
-                    stk = max(0, int(o.get("stock") or 0))
+                    raw_stk = o.get("stock")
+                    if raw_stk in (None, ""):
+                        stk = 0
+                    else:
+                        stk = parse_strict_int64(raw_stk, min_val=0)
+                        if stk is None:
+                            conn.rollback()
+                            return {"ok": False, "message": "옵션 재고는 0 이상의 올바른 정수로 입력해 주세요."}
                     clean_opts.append({"color": c, "size": s, "stock": stk})
                 if not clean_opts:
+                    conn.rollback()
                     return {"ok": False, "message": "최소 1개 이상의 옵션을 입력해 주세요."}
-                cur.execute("DELETE FROM mall_product_options WHERE product_id = ?", (int(product_id),))
+                prev_stocks, prev_total = _snapshot_product_option_stocks(cur, parsed_pid)
+                cur.execute("DELETE FROM mall_product_options WHERE product_id = ?", (parsed_pid,))
                 for opt in clean_opts:
                     cur.execute("""
                         INSERT OR REPLACE INTO mall_product_options (product_id, color, size, stock)
                         VALUES (?, ?, ?, ?)
-                    """, (int(product_id), opt["color"], opt["size"], opt["stock"]))
+                    """, (parsed_pid, opt["color"], opt["size"], opt["stock"]))
+                restock_events = _collect_restock_notifications_tx(
+                    cur, parsed_pid, target_num, name, prev_stocks, prev_total, now_str
+                )
 
             conn.commit()
             bump_state_version(bump_catalog=True)
-            return {"ok": True, "product": get_mall_product_by_num(target_num)}
+            res_payload = {"ok": True, "product": get_mall_product_by_num(target_num)}
         finally:
             conn.close()
+    _dispatch_restock_notifications(restock_events)
+    return res_payload
 
 
 def delete_mall_product(product_id: int) -> dict:
     """쇼핑몰 관리자에서 상품을 삭제합니다."""
+    parsed_pid = parse_strict_int64(product_id, min_val=1)
+    if parsed_pid is None:
+        return {"ok": False, "message": "유효하지 않은 상품 ID입니다."}
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT id, num, obs_product_id, name FROM mall_products WHERE id = ?", (int(product_id),))
+            cur.execute("SELECT id, num, obs_product_id, name FROM mall_products WHERE id = ?", (parsed_pid,))
             row = cur.fetchone()
             if not row:
                 return {"ok": False, "message": "삭제할 상품을 찾을 수 없습니다."}
-            cur.execute("DELETE FROM mall_products WHERE id = ?", (int(product_id),))
+            cur.execute("DELETE FROM mall_products WHERE id = ?", (parsed_pid,))
             conn.commit()
             bump_state_version(bump_catalog=True)
             return {
@@ -1188,15 +1917,210 @@ def get_all_mall_products(category=None, search=None, sort="num_asc"):
             conn.close()
 
 
+def _parse_optional_price_bound(raw_val: Any) -> Optional[int]:
+    if raw_val is None or isinstance(raw_val, bool):
+        return None
+    s = str(raw_val).strip().replace(",", "")
+    if not s:
+        return None
+    if re.fullmatch(r"-?[0-9]+", s):
+        is_neg = s.startswith("-")
+        digits = (s[1:] if is_neg else s).lstrip("0") or "0"
+        if len(digits) > 19:
+            return SQLITE_INT64_MIN if is_neg else SQLITE_INT64_MAX
+        val = -int(digits) if is_neg else int(digits)
+        if val < SQLITE_INT64_MIN:
+            return SQLITE_INT64_MIN
+        if val > SQLITE_INT64_MAX:
+            return SQLITE_INT64_MAX
+        return val
+    return None
+
+
+def _parse_int64_safe(raw_val: Any, allow_commas: bool = False) -> Optional[int]:
+    """선행 0이 4300자 이상인 문자열을 안전하게 파싱하면서 유효 자릿수 19자리 초과 및 int64 범위 초과는 차단합니다."""
+    if raw_val is None or isinstance(raw_val, bool):
+        return None
+    if isinstance(raw_val, int):
+        return raw_val if SQLITE_INT64_MIN <= raw_val <= SQLITE_INT64_MAX else None
+    if isinstance(raw_val, float):
+        if not math.isfinite(raw_val) or not raw_val.is_integer():
+            return None
+        iv = int(raw_val)
+        return iv if SQLITE_INT64_MIN <= iv <= SQLITE_INT64_MAX else None
+    s = str(raw_val).strip()
+    if allow_commas:
+        s = s.replace(",", "")
+    if not s or not re.fullmatch(r"-?[0-9]+", s):
+        return None
+    is_neg = s.startswith("-")
+    digits = (s[1:] if is_neg else s).lstrip("0") or "0"
+    if len(digits) > 19:
+        return None
+    val = -int(digits) if is_neg else int(digits)
+    if val < SQLITE_INT64_MIN or val > SQLITE_INT64_MAX:
+        return None
+    return val
+
+
+def _parse_clamped_query_int(raw_val: Any, default_val: int, min_val: int, max_val: int) -> int:
+    if raw_val is None or isinstance(raw_val, bool):
+        return default_val
+    s = str(raw_val).strip()
+    if not s or not re.fullmatch(r"-?[0-9]+", s):
+        return default_val
+    is_neg = s.startswith("-")
+    digits = (s[1:] if is_neg else s).lstrip("0") or "0"
+    if len(digits) > 19:
+        return min_val if is_neg else max_val
+    val = -int(digits) if is_neg else int(digits)
+    if val <= 0:
+        return default_val
+    return max(min_val, min(val, max_val))
+
+
+def query_mall_products_paginated(
+    category=None,
+    search=None,
+    sort="num_asc",
+    exclude_sold_out: Any = False,
+    min_price: Any = None,
+    max_price: Any = None,
+    page: Any = 1,
+    per_page: Any = 12,
+) -> dict[str, Any]:
+    """쇼핑몰 상품 목록을 필터(카테고리·검색·품절제외·가격대)·정렬·페이지네이션으로 조회합니다."""
+    clean_cat = str(category or "").strip().upper()
+    clean_search = str(search or "").strip()
+    clean_sort = str(sort or "num_asc").strip()
+    excl = (
+        exclude_sold_out
+        if isinstance(exclude_sold_out, bool)
+        else str(exclude_sold_out or "").strip().lower() in ("1", "true", "yes", "on")
+    )
+    min_p = _parse_optional_price_bound(min_price)
+    max_p = _parse_optional_price_bound(max_price)
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            where_clauses: list[str] = []
+            params: list[Any] = []
+
+            if clean_cat and clean_cat != "ALL":
+                where_clauses.append("UPPER(COALESCE(p.category, '')) = ?")
+                params.append(clean_cat)
+
+            if clean_search:
+                q = f"%{clean_search}%"
+                where_clauses.append("(p.name LIKE ? OR p.specs LIKE ? OR CAST(p.num AS TEXT) LIKE ?)")
+                params.extend([q, q, q])
+
+            if min_p is not None:
+                where_clauses.append("p.price >= ?")
+                params.append(min_p)
+
+            if max_p is not None:
+                where_clauses.append("p.price <= ?")
+                params.append(max_p)
+
+            where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            having_sql = "HAVING COALESCE(SUM(o.stock), 0) > 0" if excl else ""
+
+            if clean_sort == "price_asc":
+                order_sql = "ORDER BY p.price ASC, p.num ASC, p.id DESC"
+            elif clean_sort == "price_desc":
+                order_sql = "ORDER BY p.price DESC, p.num ASC, p.id DESC"
+            elif clean_sort == "newest":
+                order_sql = "ORDER BY p.id DESC"
+            else:
+                order_sql = "ORDER BY p.num ASC, p.id DESC"
+
+            cur.execute(
+                f"""
+                SELECT COUNT(*) FROM (
+                    SELECT p.id
+                    FROM mall_products p
+                    LEFT JOIN mall_product_options o ON o.product_id = p.id
+                    {where_sql}
+                    GROUP BY p.id
+                    {having_sql}
+                ) sub
+                """,
+                params,
+            )
+            total_count = int(cur.fetchone()[0] or 0)
+
+            limit_sql = ""
+            exec_params = list(params)
+            if per_page is None:
+                eff_page = 1
+                eff_per_page = max(1, total_count) if total_count > 0 else 12
+                total_pages = 1
+                has_prev = False
+                has_next = False
+                skip_rows = False
+            else:
+                eff_per_page = _parse_clamped_query_int(per_page, 12, 1, 100)
+                eff_page = _parse_clamped_query_int(page, 1, 1, SQLITE_INT64_MAX)
+                total_pages = max(1, math.ceil(total_count / eff_per_page)) if total_count > 0 else 1
+                offset = (eff_page - 1) * eff_per_page
+                skip_rows = (total_count == 0) or (eff_page > total_pages) or (offset > SQLITE_INT64_MAX)
+                limit_sql = "LIMIT ? OFFSET ?"
+                exec_params.extend([eff_per_page, min(offset, SQLITE_INT64_MAX)])
+                has_prev = eff_page > 1 and total_count > 0
+                has_next = eff_page < total_pages
+
+            if skip_rows:
+                rows = []
+            else:
+                cur.execute(
+                    f"""
+                    SELECT p.*
+                    FROM mall_products p
+                    LEFT JOIN mall_product_options o ON o.product_id = p.id
+                    {where_sql}
+                    GROUP BY p.id
+                    {having_sql}
+                    {order_sql}
+                    {limit_sql}
+                    """,
+                    exec_params,
+                )
+                rows = cur.fetchall()
+            supplier_map = _get_supplier_name_map(conn)
+            result: list[dict] = []
+            for r in rows:
+                cur.execute(
+                    "SELECT color, size, stock FROM mall_product_options WHERE product_id = ? ORDER BY id ASC",
+                    (r["id"],),
+                )
+                opt_rows = cur.fetchall()
+                result.append(_format_product_row(r, opt_rows, supplier_map))
+            return {
+                "products": result,
+                "total_count": total_count,
+                "page": eff_page,
+                "per_page": eff_per_page,
+                "total_pages": total_pages,
+                "has_prev": has_prev,
+                "has_next": has_next,
+            }
+        finally:
+            conn.close()
+
+
 def get_mall_product_by_num(num):
     """상품 번호(num)로 쇼핑몰 상품 상세 정보를 조회합니다."""
-    if num is None:
+    p_num = parse_strict_int64(num)
+    if p_num is None:
         return None
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM mall_products WHERE num = ?", (int(num),))
+            cur.execute("SELECT * FROM mall_products WHERE num = ?", (p_num,))
             r = cur.fetchone()
             if not r:
                 return None
@@ -1211,13 +2135,47 @@ def get_mall_product_by_num(num):
             conn.close()
 
 
+def get_related_mall_products(product: Optional[dict], limit: int = 4) -> list[dict]:
+    """
+    현재 상품과 연관된 상품을 최대 limit개 반환합니다.
+    우선순위:
+    1) 동일 카테고리 + 재고 있음(판매중)
+    2) 동일 카테고리 + 품절
+    3) 타 카테고리 + 재고 있음(판매중)
+    4) 타 카테고리 + 품절
+    (현재 상품 num 제외, num ASC 정렬)
+    """
+    if not isinstance(product, dict):
+        return []
+    try:
+        cur_num = int(product.get("num"))
+    except Exception:
+        return []
+    cur_cat = str(product.get("category") or "").strip().upper()
+    max_items = max(0, int(limit or 0))
+    if max_items <= 0:
+        return []
+
+    candidates = [p for p in get_all_mall_products(sort="num_asc") if int(p.get("num") or 0) != cur_num]
+    candidates.sort(
+        key=lambda p: (
+            0 if str(p.get("category") or "").strip().upper() == cur_cat else 1,
+            0 if not p.get("is_sold_out") else 1,
+            int(p.get("num") or 0),
+        )
+    )
+    return candidates[:max_items]
+
+
 def get_mall_product_by_id(product_id):
     """상품 번호(num) 최우선, 이후 OBS ID 또는 쇼핑몰 DB ID로 상품 상세 정보를 조회합니다."""
+    real_id = parse_strict_int64(str(product_id or "").replace("item-", ""), min_val=1)
+    if real_id is None:
+        return None
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            real_id = int(str(product_id).replace("item-", ""))
             cur.execute("SELECT * FROM mall_products WHERE num = ?", (real_id,))
             r = cur.fetchone()
             if not r:
@@ -1350,7 +2308,7 @@ def _read_raw_live_state_and_check_heartbeat():
                     latest_upd = r["updated_at"]
 
             is_live = bool(raw.get("is_live", False))
-            hb_ts = float(raw.get("last_heartbeat_ts") or 0.0)
+            hb_ts = _safe_live_float(raw.get("last_heartbeat_ts"), default=0.0, min_val=0.0)
             if is_live and hb_ts > 0.0 and (time.time() - hb_ts) > HEARTBEAT_TIMEOUT_SEC:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 for k, v in (("is_live", False), ("last_heartbeat_ts", 0.0)):
@@ -1372,6 +2330,22 @@ def _read_raw_live_state_and_check_heartbeat():
         raw["state_version"] = new_v
 
     return raw, latest_upd
+
+
+PUBLIC_INTERNAL_PRODUCT_KEYS = ("cost_price", "supplier_id", "supplier_name", "obs_product_id")
+
+
+def sanitize_public_product_detail(product: Optional[dict]) -> Optional[dict]:
+    """공개/라이브 뷰용 상품 dict에서 매입원가·매입업체·OBS 내부 ID를 제거합니다 (live_price/live_discount_rate 유지)."""
+    if not isinstance(product, dict):
+        return product
+    sanitized = {k: v for k, v in product.items() if k not in PUBLIC_INTERNAL_PRODUCT_KEYS}
+    if isinstance(sanitized.get("options"), list):
+        sanitized["options"] = [
+            dict(opt) if isinstance(opt, dict) else opt
+            for opt in sanitized["options"]
+        ]
+    return sanitized
 
 
 def get_full_live_state():
@@ -1407,24 +2381,27 @@ def get_full_live_state():
         else {"count": 0, "avg_rating": 0.0}
     )
 
+    public_all_products = [sanitize_public_product_detail(p) for p in all_products]
+    public_selected_product = sanitize_public_product_detail(selected_product)
+
     return {
-        "state_version": int(raw.get("state_version") or 1),
-        "catalog_version": int(raw.get("catalog_version") or 1),
+        "state_version": _safe_live_int(raw.get("state_version"), default=1, min_val=1),
+        "catalog_version": _safe_live_int(raw.get("catalog_version"), default=1, min_val=1),
         "is_live": bool(raw.get("is_live", False)),
         "broadcast_title": str(raw.get("broadcast_title") or "실시간 라이브 커머스 특가 방송"),
         "ticker_message": str(raw.get("ticker_message") or "라이브 방송 중 선택된 상품을 페이지 이동 없이 바로 확인하고 특가로 구매하세요!"),
         "pinned_product_num": pinned_num,
         "is_pinned_by_obs": is_pinned_by_obs,
-        "selected_product": selected_product,
+        "selected_product": public_selected_product,
         "selected_product_reviews": sel_reviews,
         "selected_product_review_summary": sel_review_summary,
-        "all_products": all_products,
-        "timer": raw.get("timer") or {"active": False},
+        "all_products": public_all_products,
+        "timer": raw.get("timer") if isinstance(raw.get("timer"), dict) else {"active": False},
         "youtube_video_id": str(raw.get("youtube_video_id") or ""),
         "youtube_channel_input": str(raw.get("youtube_channel_input") or ""),
         "youtube_embed_url": _derive_youtube_embed_url(raw),
-        "live_urls": raw.get("live_urls") or {},
-        "last_heartbeat_ts": float(raw.get("last_heartbeat_ts") or 0.0),
+        "live_urls": raw.get("live_urls") if isinstance(raw.get("live_urls"), dict) else {},
+        "last_heartbeat_ts": _safe_live_float(raw.get("last_heartbeat_ts"), default=0.0, min_val=0.0),
         "obs_server_url": str(raw.get("obs_server_url") or "http://localhost:5000"),
         "updated_at": latest_upd or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
@@ -1479,19 +2456,19 @@ def get_lite_live_state():
         selected_product = get_mall_product_by_num(first_num)
 
     return {
-        "state_version": int(raw.get("state_version") or 1),
-        "catalog_version": int(raw.get("catalog_version") or 1),
+        "state_version": _safe_live_int(raw.get("state_version"), default=1, min_val=1),
+        "catalog_version": _safe_live_int(raw.get("catalog_version"), default=1, min_val=1),
         "is_live": bool(raw.get("is_live", False)),
         "broadcast_title": str(raw.get("broadcast_title") or "실시간 라이브 커머스 특가 방송"),
         "ticker_message": str(raw.get("ticker_message") or "라이브 방송 중 선택된 상품을 페이지 이동 없이 바로 확인하고 특가로 구매하세요!"),
         "pinned_product_num": pinned_num,
         "is_pinned_by_obs": is_pinned_by_obs,
-        "selected_product": selected_product,
+        "selected_product": sanitize_public_product_detail(selected_product),
         "product_stocks": product_stocks,
-        "timer": raw.get("timer") or {"active": False},
+        "timer": raw.get("timer") if isinstance(raw.get("timer"), dict) else {"active": False},
         "youtube_video_id": str(raw.get("youtube_video_id") or ""),
         "youtube_embed_url": _derive_youtube_embed_url(raw),
-        "live_urls": raw.get("live_urls") or {},
+        "live_urls": raw.get("live_urls") if isinstance(raw.get("live_urls"), dict) else {},
         "updated_at": latest_upd or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
@@ -1528,6 +2505,84 @@ def apply_mall_discount_rate(discount_pct=30):
     return {"updated": updated, "discount_pct": pct}
 
 
+def _normalize_zipcode(val: Any) -> str:
+    return re.sub(r"\s+", "", str(val or "").strip())[:16]
+
+
+def _normalize_payment_method_value(raw_method: Any) -> Optional[str]:
+    val = str(raw_method or "BANK").strip().upper()
+    if not val:
+        return "BANK"
+    alias = {
+        "BANK": "BANK",
+        "BANK_TRANSFER": "BANK",
+        "PORTONE": "PORTONE_V2",
+        "PORTONE_V2": "PORTONE_V2",
+        "TOSS": "TOSS_PAYMENTS",
+        "TOSS_PAYMENTS": "TOSS_PAYMENTS",
+        "CARD": "CARD",
+    }
+    return alias.get(val)
+
+
+def _format_order_row(row, items: list[dict]) -> dict:
+    d = dict(row)
+    d.pop("guest_password_hash", None)
+    d["zipcode"] = _normalize_zipcode(d.get("zipcode"))
+    d["address"] = str(d.get("address") or "")
+    d["address_detail"] = str(d.get("address_detail") or "")
+    d["delivery_memo"] = str(d.get("delivery_memo") or "")
+    pm = _normalize_payment_method_value(d.get("payment_method")) or str(d.get("payment_method") or "BANK").strip().upper() or "BANK"
+    d["payment_method"] = pm
+    d["depositor_name"] = str(d.get("depositor_name") or "").strip()
+    crt = str(d.get("cash_receipt_type") or "NONE").strip().upper()
+    d["cash_receipt_type"] = crt if crt in ("NONE", "INCOME", "EXPENSE") else "NONE"
+    d["cash_receipt_no"] = str(d.get("cash_receipt_no") or "").strip() if d["cash_receipt_type"] != "NONE" else ""
+    d["pg_provider"] = str(d.get("pg_provider") or "").strip().upper()
+    d["pg_tid"] = str(d.get("pg_tid") or "").strip()
+    d["pg_status"] = str(d.get("pg_status") or "").strip().upper()
+    d["paid_at"] = str(d.get("paid_at") or "").strip()
+    raw_cc = str(d.get("carrier_code") or "").strip()
+    raw_cn = str(d.get("carrier_name") or "").strip()
+    if raw_cc or raw_cn:
+        res_cc, res_cn = mall_shipping.resolve_carrier(raw_cc, raw_cn)
+        d["carrier_code"] = res_cc or raw_cc
+        d["carrier_name"] = res_cn or raw_cn
+    else:
+        d["carrier_code"] = ""
+        d["carrier_name"] = ""
+    d["tracking_number"] = str(d.get("tracking_number") or "").strip()
+    d["shipped_at"] = str(d.get("shipped_at") or "").strip()
+    d["tracking_url"] = (
+        mall_shipping.get_carrier_tracking_url(d["carrier_code"] or d["carrier_name"], d["tracking_number"])
+        if d["tracking_number"]
+        else ""
+    )
+    if d.get("shipping_fee") is None:
+        try:
+            tot = int(d.get("total_amount") or 0)
+            sub = int(d.get("subtotal_amount") or 0)
+            d["shipping_fee"] = max(0, tot - sub) if tot >= sub else 0
+        except Exception:
+            d["shipping_fee"] = 0
+    else:
+        try:
+            d["shipping_fee"] = max(0, int(d.get("shipping_fee") or 0))
+        except Exception:
+            d["shipping_fee"] = 0
+    d["coupon_code"] = str(d.get("coupon_code") or "").strip().upper()
+    d["coupon_discount"] = max(0, int(d.get("coupon_discount") or 0))
+    d["points_used"] = max(0, int(d.get("points_used") or 0))
+    d["points_earned"] = max(0, int(d.get("points_earned") or 0))
+    d["points_awarded"] = int(d.get("points_awarded") or 0)
+    d["points_refunded"] = int(d.get("points_refunded") or 0)
+    d["coupon_restored"] = int(d.get("coupon_restored") or 0)
+    d["points_revoked"] = int(d.get("points_revoked") or 0)
+    d["items"] = items
+    d["order_items"] = items
+    return d
+
+
 def create_mall_order(order_data):
     """
     쇼핑몰 주문 생성 및 옵션 재고 차감 트랜잭션 처리
@@ -1535,11 +2590,30 @@ def create_mall_order(order_data):
     """
     buyer_name = str(order_data.get("buyer_name") or "").strip()
     buyer_phone = str(order_data.get("buyer_phone") or "").strip()
-    zipcode = str(order_data.get("zipcode") or "").strip()
+    zipcode = _normalize_zipcode(order_data.get("zipcode"))
     address = str(order_data.get("address") or "").strip()
     address_detail = str(order_data.get("address_detail") or "").strip()
     delivery_memo = str(order_data.get("delivery_memo") or "").strip()
-    payment_method = "BANK"
+    payment_method = _normalize_payment_method_value(order_data.get("payment_method"))
+    if not payment_method:
+        return {"ok": False, "message": "지원하지 않는 결제 수단입니다."}
+    depositor_name = str(order_data.get("depositor_name") or "").strip()[:60]
+    raw_cr_type = str(order_data.get("cash_receipt_type") or "NONE").strip().upper() or "NONE"
+    if raw_cr_type not in ("NONE", "INCOME", "EXPENSE"):
+        return {"ok": False, "message": "올바른 현금영수증 유형을 선택해 주세요."}
+    raw_cr_no = str(order_data.get("cash_receipt_no") or "").strip()
+    if raw_cr_type in ("INCOME", "EXPENSE"):
+        digits_only = "".join(ch for ch in raw_cr_no if ch.isdigit())
+        if not raw_cr_no or not re.fullmatch(r"[0-9\-]{6,32}", raw_cr_no) or len(digits_only) < 6:
+            return {"ok": False, "message": "현금영수증 발급번호를 올바르게 입력해 주세요. (숫자 6자리 이상)"}
+        cash_receipt_no = raw_cr_no[:32]
+    else:
+        cash_receipt_no = ""
+    cash_receipt_type = raw_cr_type
+    pg_provider = "" if payment_method == "BANK" else ("TOSS_PAYMENTS" if payment_method == "TOSS_PAYMENTS" else "PORTONE_V2")
+    pg_tid = ""
+    pg_status = "" if payment_method == "BANK" else "READY"
+    paid_at = ""
     source_page = str(order_data.get("source_page") or "MALL").strip().upper()
     items_req = order_data.get("items") or []
 
@@ -1563,24 +2637,43 @@ def create_mall_order(order_data):
             # 라이브 커머스 전용관(/live) 주문일 때만 라이브 특가 적용 (일반 쇼핑몰은 항상 일반 판매가 적용)
             use_live_pricing = (source_page == "LIVE")
 
-            for it in items_req:
+            for idx, it in enumerate(items_req):
                 if not isinstance(it, dict):
                     continue
                 raw_num = it.get("num") if it.get("num") is not None else it.get("product_num")
-                if raw_num is None or not str(raw_num).strip().lstrip("-").isdigit():
-                    return {"ok": False, "message": "장바구니에 유효하지 않은 상품 번호가 포함되어 있습니다."}
-                p_num = int(raw_num)
+                raw_num_s = "" if (raw_num is None or isinstance(raw_num, bool)) else str(raw_num).strip()
+                if not raw_num_s or not re.fullmatch(r"-?[0-9]+", raw_num_s):
+                    conn.rollback()
+                    return {"ok": False, "http_status": 400, "message": "장바구니에 유효하지 않은 상품 번호가 포함되어 있습니다."}
+                is_neg_num = raw_num_s.startswith("-")
+                num_digits = (raw_num_s[1:] if is_neg_num else raw_num_s).lstrip("0") or "0"
+                if len(num_digits) > 19:
+                    conn.rollback()
+                    return {"ok": False, "http_status": 400, "message": "장바구니 상품 번호가 허용 범위를 초과했습니다."}
+                p_num = -int(num_digits) if is_neg_num else int(num_digits)
+                if p_num < SQLITE_INT64_MIN or p_num > SQLITE_INT64_MAX:
+                    conn.rollback()
+                    return {"ok": False, "http_status": 400, "message": "장바구니 상품 번호가 허용 범위를 초과했습니다."}
                 color = str(it.get("color") or "-").strip() or "-"
                 size = str(it.get("size") or "-").strip() or "-"
-                try:
-                    qty = max(1, int(it.get("quantity") or 1))
-                except Exception:
+                if "quantity" not in it or it.get("quantity") is None:
                     qty = 1
+                else:
+                    qty = parse_strict_int64(it.get("quantity"), min_val=1)
+                    if qty is None:
+                        conn.rollback()
+                        return {"ok": False, "http_status": 400, "message": "주문 수량은 1개 이상의 올바른 정수로 입력해 주세요."}
 
                 cur.execute("SELECT * FROM mall_products WHERE num = ?", (p_num,))
                 p_row = cur.fetchone()
                 if not p_row:
-                    return {"ok": False, "message": f"상품 #{p_num} 정보를 찾을 수 없습니다."}
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "code": "OUT_OF_STOCK",
+                        "http_status": 400,
+                        "message": f"상품 #{p_num} 정보를 찾을 수 없습니다.",
+                    }
 
                 mall_pid = p_row["id"]
                 cur.execute("""
@@ -1589,32 +2682,69 @@ def create_mall_order(order_data):
                 """, (mall_pid, color, size))
                 opt_row = cur.fetchone()
                 if opt_row:
-                    if int(opt_row["stock"]) < qty:
+                    cur_stk = max(0, int(opt_row["stock"] or 0))
+                    if cur_stk < qty:
+                        conn.rollback()
                         return {
                             "ok": False,
-                            "message": f"[{p_row['name']} ({color}/{size})] 재고가 부족합니다. (잔여: {opt_row['stock']}개)"
+                            "code": "OUT_OF_STOCK" if cur_stk <= 0 else "INSUFFICIENT_STOCK",
+                            "http_status": 400,
+                            "message": f"[{p_row['name']} ({color}/{size})] 재고가 부족합니다. (잔여: {cur_stk}개)"
                         }
-                    new_stk = int(opt_row["stock"]) - qty
+                    new_stk = cur_stk - qty
                     cur.execute("UPDATE mall_product_options SET stock = ? WHERE id = ?", (new_stk, opt_row["id"]))
                 else:
-                    # 단일 옵션 상품 폴백 차감
-                    cur.execute("SELECT id, color, size, stock FROM mall_product_options WHERE product_id = ? LIMIT 1", (mall_pid,))
-                    any_opt = cur.fetchone()
-                    if any_opt:
-                        if int(any_opt["stock"]) < qty:
+                    cur.execute(
+                        "SELECT id, color, size, stock FROM mall_product_options WHERE product_id = ? ORDER BY id ASC",
+                        (mall_pid,),
+                    )
+                    all_opts = cur.fetchall()
+                    if len(all_opts) == 1 and color in ("-", "") and size in ("-", ""):
+                        any_opt = all_opts[0]
+                        color = str(any_opt["color"] or "-").strip() or "-"
+                        size = str(any_opt["size"] or "-").strip() or "-"
+                        cur_stk = max(0, int(any_opt["stock"] or 0))
+                        if cur_stk < qty:
+                            conn.rollback()
                             return {
                                 "ok": False,
-                                "message": f"[{p_row['name']}] 재고가 부족합니다. (잔여: {any_opt['stock']}개)"
+                                "code": "OUT_OF_STOCK" if cur_stk <= 0 else "INSUFFICIENT_STOCK",
+                                "http_status": 400,
+                                "message": f"[{p_row['name']}] 재고가 부족합니다. (잔여: {cur_stk}개)"
                             }
                         cur.execute(
                             "UPDATE mall_product_options SET stock = ? WHERE id = ?",
-                            (int(any_opt["stock"]) - qty, any_opt["id"])
+                            (cur_stk - qty, any_opt["id"])
                         )
+                    else:
+                        conn.rollback()
+                        return {
+                            "ok": False,
+                            "code": "OUT_OF_STOCK",
+                            "http_status": 400,
+                            "message": f"[{p_row['name']} ({color}/{size})] 유효한 상품 옵션을 찾을 수 없습니다."
+                        }
 
                 p_keys = set(p_row.keys())
                 sell_price = int(p_row["price"] or 0)
                 live_price = int(p_row["live_price"] or 0) if "live_price" in p_keys and p_row["live_price"] is not None and int(p_row["live_price"]) > 0 else sell_price
                 unit_price = live_price if use_live_pricing else sell_price
+
+                raw_item_exp_price = it.get("expected_price")
+                if raw_item_exp_price is not None and str(raw_item_exp_price).strip() != "":
+                    exp_p_val = _parse_int64_safe(raw_item_exp_price, allow_commas=True)
+                    if exp_p_val is None:
+                        conn.rollback()
+                        return {"ok": False, "code": "PRICE_CHANGED", "http_status": 409, "message": "상품 가격 정보가 변경되었습니다. 다시 확인해 주세요."}
+                    if exp_p_val != unit_price:
+                        conn.rollback()
+                        return {
+                            "ok": False,
+                            "code": "PRICE_CHANGED",
+                            "http_status": 409,
+                            "message": f"[{p_row['name']}] 상품 가격이 변경되었습니다. (기존 {exp_p_val:,}원 → 현재 {unit_price:,}원)"
+                        }
+
                 line_total = unit_price * qty
                 unit_cost = max(0, int(p_row["cost_price"] or 0)) if "cost_price" in p_keys and p_row["cost_price"] is not None else 0
                 cost_total = unit_cost * qty
@@ -1640,28 +2770,147 @@ def create_mall_order(order_data):
                     "supplier_name": sup_name,
                 })
 
-            shipping_fee = 4000
-            total_amount = subtotal + shipping_fee
+            if not resolved_items:
+                conn.rollback()
+                return {"ok": False, "http_status": 400, "message": "주문할 상품이 없습니다."}
+
+            if "expected_items" in order_data and order_data.get("expected_items") is not None:
+                exp_items = order_data.get("expected_items")
+                if not isinstance(exp_items, list) or len(exp_items) != len(resolved_items):
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "code": "PRICE_CHANGED",
+                        "http_status": 409,
+                        "message": "주문 상품 구성이 변경되었습니다. 장바구니를 다시 확인해 주세요.",
+                    }
+                for idx_exp, exp_it in enumerate(exp_items):
+                    if not isinstance(exp_it, dict):
+                        conn.rollback()
+                        return {
+                            "ok": False,
+                            "code": "PRICE_CHANGED",
+                            "http_status": 409,
+                            "message": "상품 가격 또는 구성이 변경되었습니다. 장바구니를 다시 확인해 주세요.",
+                        }
+                    res_it = resolved_items[idx_exp]
+                    exp_raw_num = exp_it.get("num") if exp_it.get("num") is not None else exp_it.get("product_num")
+                    exp_num = _parse_int64_safe(exp_raw_num)
+                    raw_exp_qty = exp_it.get("quantity")
+                    if raw_exp_qty is None or str(raw_exp_qty).strip() == "":
+                        exp_qty = 1
+                    else:
+                        parsed_exp_qty = _parse_int64_safe(raw_exp_qty)
+                        exp_qty = max(1, parsed_exp_qty) if parsed_exp_qty is not None else None
+                    if exp_num is None or exp_qty is None:
+                        conn.rollback()
+                        return {
+                            "ok": False,
+                            "code": "PRICE_CHANGED",
+                            "http_status": 409,
+                            "message": "상품 가격 또는 구성이 변경되었습니다. 장바구니를 다시 확인해 주세요.",
+                        }
+                    exp_c = str(exp_it.get("color") or "-").strip() or "-"
+                    exp_s = str(exp_it.get("size") or "-").strip() or "-"
+                    if exp_num != res_it["product_num"] or exp_qty != res_it["quantity"] or (
+                        exp_c not in ("-", "") and exp_c != res_it["color"]
+                    ) or (exp_s not in ("-", "") and exp_s != res_it["size"]):
+                        conn.rollback()
+                        return {
+                            "ok": False,
+                            "code": "PRICE_CHANGED",
+                            "http_status": 409,
+                            "message": "상품 옵션 또는 수량이 변경되었습니다. 장바구니를 다시 확인해 주세요.",
+                        }
+                    raw_ep = None
+                    for pk in ("unit_price", "expected_price", "client_price", "price"):
+                        if exp_it.get(pk) is not None and str(exp_it.get(pk)).strip() != "":
+                            raw_ep = exp_it.get(pk)
+                            break
+                    if raw_ep is not None:
+                        ep_val = _parse_int64_safe(raw_ep, allow_commas=True)
+                        if ep_val is None:
+                            conn.rollback()
+                            return {
+                                "ok": False,
+                                "code": "PRICE_CHANGED",
+                                "http_status": 409,
+                                "message": "상품 가격 정보가 올바르지 않습니다.",
+                            }
+                        if ep_val != res_it["unit_price"]:
+                            conn.rollback()
+                            return {
+                                "ok": False,
+                                "code": "PRICE_CHANGED",
+                                "http_status": 409,
+                                "message": f"[{res_it['product_name']}] 상품 가격이 변경되었습니다. ({ep_val:,}원 → {res_it['unit_price']:,}원)",
+                            }
+
+            store_info = get_mall_store_info()
+            shipping_fee = calculate_shipping_fee(subtotal, store_info=store_info)
             pay_status = "입금대기"
             ord_status = "결제대기"
 
-            user_id = order_data.get("user_id")
-            user_id = int(user_id) if user_id is not None and str(user_id).strip().isdigit() else None
+            user_id = parse_strict_int64(order_data.get("user_id"), min_val=1)
             is_guest = 1 if (not user_id or order_data.get("is_guest")) else 0
             guest_pw_raw = str(order_data.get("guest_password") or "").strip()
             guest_pw_hash = ""
             if is_guest and guest_pw_raw:
                 guest_pw_hash = mall_security.hash_password(guest_pw_raw)
 
+            import mall_promotions
+            promo_ok, promo_res = mall_promotions.prepare_order_promotions_tx(
+                conn,
+                user_id=user_id,
+                subtotal=subtotal,
+                source_page=source_page,
+                coupon_code=order_data.get("coupon_code"),
+                points_used_raw=order_data.get("points_used"),
+                point_earn_rate=store_info.get("point_earn_rate", 1),
+            )
+            if not promo_ok:
+                conn.rollback()
+                return {"ok": False, "message": str(promo_res)}
+            assert isinstance(promo_res, dict)
+            coupon_code_used = str(promo_res["coupon_code"])
+            coupon_discount = int(promo_res["coupon_discount"])
+            points_used = int(promo_res["points_used"])
+            points_earned = int(promo_res["points_earned"])
+            total_amount = max(0, subtotal - coupon_discount - points_used) + shipping_fee
+
+            if "expected_total" in order_data and order_data.get("expected_total") not in (None, ""):
+                ok_et, parsed_et, et_err = mall_promotions.parse_strict_non_neg_int(
+                    order_data.get("expected_total"),
+                    "결제 예정 금액",
+                )
+                if not ok_et or parsed_et is None:
+                    conn.rollback()
+                    return {"ok": False, "http_status": 400, "message": et_err or "유효하지 않은 결제 예정 금액입니다."}
+                if parsed_et != total_amount:
+                    conn.rollback()
+                    return {
+                        "ok": False,
+                        "code": "PRICE_CHANGED",
+                        "http_status": 409,
+                        "message": f"결제 예정 금액이 변경되었습니다. ({parsed_et:,}원 → {total_amount:,}원)",
+                    }
+
             cur.execute("""
                 INSERT INTO mall_orders
                 (order_code, buyer_name, buyer_phone, zipcode, address, address_detail, delivery_memo,
-                 payment_method, payment_status, order_status, subtotal_amount, shipping_fee, total_amount,
+                 payment_method, depositor_name, cash_receipt_type, cash_receipt_no,
+                 pg_provider, pg_tid, pg_status, paid_at,
+                 payment_status, order_status, subtotal_amount, shipping_fee, total_amount,
+                 coupon_code, coupon_discount, points_used, points_earned,
+                 points_awarded, points_refunded, coupon_restored, points_revoked,
                  source_page, user_id, is_guest, guest_password_hash, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)
             """, (
                 order_code, buyer_name, buyer_phone, zipcode, address, address_detail, delivery_memo,
-                payment_method, pay_status, ord_status, subtotal, shipping_fee, total_amount,
+                payment_method, depositor_name, cash_receipt_type, cash_receipt_no,
+                pg_provider, pg_tid, pg_status, paid_at,
+                pay_status, ord_status, subtotal, shipping_fee, total_amount,
+                coupon_code_used, coupon_discount, points_used, points_earned,
                 source_page, user_id, is_guest, guest_pw_hash, now_str
             ))
             order_id = cur.lastrowid
@@ -1688,6 +2937,18 @@ def create_mall_order(order_data):
                     item["supplier_name"],
                 ))
 
+            commit_ok, commit_err = mall_promotions.commit_order_promotions_tx(
+                conn,
+                user_id=user_id,
+                order_id=int(order_id),
+                order_code=order_code,
+                promo=promo_res,
+                now_str=now_str,
+            )
+            if not commit_ok:
+                conn.rollback()
+                return {"ok": False, "message": commit_err}
+
             conn.commit()
             bump_state_version(bump_catalog=True)
             return {
@@ -1696,12 +2957,38 @@ def create_mall_order(order_data):
                 "order_code": order_code,
                 "buyer_name": buyer_name,
                 "buyer_phone": buyer_phone,
+                "zipcode": zipcode,
+                "address": address,
+                "address_detail": address_detail,
+                "delivery_memo": delivery_memo,
                 "total_amount": total_amount,
                 "subtotal_amount": subtotal,
                 "shipping_fee": shipping_fee,
+                "coupon_code": coupon_code_used,
+                "coupon_discount": coupon_discount,
+                "points_used": points_used,
+                "points_earned": points_earned,
+                "points_awarded": 0,
+                "points_refunded": 0,
+                "coupon_restored": 0,
+                "points_revoked": 0,
                 "payment_method": payment_method,
+                "depositor_name": depositor_name,
+                "cash_receipt_type": cash_receipt_type,
+                "cash_receipt_no": cash_receipt_no,
+                "pg_provider": pg_provider,
+                "pg_tid": pg_tid,
+                "pg_status": pg_status,
+                "paid_at": paid_at,
                 "payment_status": pay_status,
                 "order_status": ord_status,
+                "is_guest": bool(is_guest),
+                "user_id": user_id,
+                "carrier_code": "",
+                "carrier_name": "",
+                "tracking_number": "",
+                "shipped_at": "",
+                "tracking_url": "",
                 "items": resolved_items,
                 "order_items": resolved_items,
                 "created_at": now_str
@@ -1728,11 +3015,7 @@ def get_mall_orders_after(after_id=0, limit=100):
             for r in ord_rows:
                 cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
                 items = [dict(ir) for ir in cur.fetchall()]
-                d = dict(r)
-                d.pop("guest_password_hash", None)
-                d["items"] = items
-                d["order_items"] = items
-                orders.append(d)
+                orders.append(_format_order_row(r, items))
             return orders
         finally:
             conn.close()
@@ -1764,11 +3047,7 @@ def get_mall_orders(buyer_name=None, buyer_phone=None, order_code=None, limit=10
             for r in ord_rows:
                 cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
                 items = [dict(ir) for ir in cur.fetchall()]
-                d = dict(r)
-                d.pop("guest_password_hash", None)
-                d["items"] = items
-                d["order_items"] = items
-                orders.append(d)
+                orders.append(_format_order_row(r, items))
             return orders
         finally:
             conn.close()
@@ -1791,11 +3070,7 @@ def get_mall_orders_by_user(user_id: int, limit: int = 50):
             for r in ord_rows:
                 cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
                 items = [dict(ir) for ir in cur.fetchall()]
-                d = dict(r)
-                d.pop("guest_password_hash", None)
-                d["items"] = items
-                d["order_items"] = items
-                orders.append(d)
+                orders.append(_format_order_row(r, items))
             return orders
         finally:
             conn.close()
@@ -1816,11 +3091,7 @@ def get_mall_order_by_code(order_code: str):
                 return []
             cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (row["id"],))
             items = [dict(ir) for ir in cur.fetchall()]
-            d = dict(row)
-            d.pop("guest_password_hash", None)
-            d["items"] = items
-            d["order_items"] = items
-            return [d]
+            return [_format_order_row(row, items)]
         finally:
             conn.close()
 
@@ -1853,11 +3124,7 @@ def lookup_guest_mall_order(order_code: str, buyer_phone: str, guest_password: s
 
             cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (row["id"],))
             items = [dict(ir) for ir in cur.fetchall()]
-            d = dict(row)
-            d.pop("guest_password_hash", None)
-            d["items"] = items
-            d["order_items"] = items
-            return [d]
+            return [_format_order_row(row, items)]
         finally:
             conn.close()
 
@@ -1883,31 +3150,34 @@ def update_mall_order_workflow(
     payment_status=None,
     order_status=None,
     claim_reason=None,
+    conn=None,
 ):
     """
     쇼핑몰 주문 상태/입금 상태/환불·교환 사유를 갱신하고,
     '주문취소' 또는 '환불완료' 전환 시 아직 복구되지 않은 품목 재고를 1회 자동 복구합니다.
     """
-    try:
-        oid = int(order_id)
-    except Exception:
-        return {"ok": False, "message": "유효하지 않은 주문 ID입니다."}
+    oid = parse_strict_int64(order_id, min_val=1)
+    if oid is None:
+        return {"ok": False, "http_status": 400, "message": "유효하지 않은 주문 ID입니다."}
 
     clean_pay = str(payment_status).strip() if payment_status is not None else ""
     clean_ord = str(order_status).strip() if order_status is not None else ""
     if clean_pay and clean_pay not in VALID_PAYMENT_STATUSES:
-        return {"ok": False, "message": f"허용되지 않는 입금 상태입니다: {clean_pay}"}
+        return {"ok": False, "http_status": 400, "message": f"허용되지 않는 입금 상태입니다: {clean_pay}"}
     if clean_ord and clean_ord not in VALID_ORDER_STATUSES:
-        return {"ok": False, "message": f"허용되지 않는 주문 상태입니다: {clean_ord}"}
+        return {"ok": False, "http_status": 400, "message": f"허용되지 않는 주문 상태입니다: {clean_ord}"}
 
+    owns_conn = conn is None
+    restock_events: list[dict[str, Any]] = []
+    res_payload: dict[str, Any] = {}
     with mall_db_lock:
-        conn = get_connection()
+        active_conn = conn if conn is not None else get_connection()
         try:
-            cur = conn.cursor()
+            cur = active_conn.cursor()
             cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
             row = cur.fetchone()
             if not row:
-                return {"ok": False, "message": "주문을 찾을 수 없습니다."}
+                return {"ok": False, "http_status": 404, "message": "주문을 찾을 수 없습니다."}
 
             cur_pay = str(row["payment_status"] or "입금대기")
             cur_ord = str(row["order_status"] or "결제대기")
@@ -1921,6 +3191,21 @@ def update_mall_order_workflow(
             elif clean_ord == "환불요청" and not clean_pay and next_pay == "입금완료":
                 next_pay = "환불대기"
 
+            if cur_ord in ("주문취소", "환불완료"):
+                same_state = (next_ord == cur_ord and next_pay == cur_pay)
+                paid_refund_transition = (
+                    cur_ord == "주문취소"
+                    and cur_pay == "입금완료"
+                    and next_ord == "환불완료"
+                    and next_pay == "환불완료"
+                )
+                if not same_state and not paid_refund_transition:
+                    return {
+                        "ok": False,
+                        "http_status": 400,
+                        "message": f"이미 [{cur_ord}] 처리된 주문은 [{next_ord}] 상태로 변경할 수 없습니다.",
+                    }
+
             cur_reason = str(row["claim_reason"] or "") if "claim_reason" in row.keys() else ""
             next_reason = str(claim_reason).strip() if claim_reason is not None else cur_reason
             cur_claim_ts = str(row["claim_updated_at"] or "") if "claim_updated_at" in row.keys() else ""
@@ -1933,6 +3218,7 @@ def update_mall_order_workflow(
             already_restored = int(row["stock_restored"] or 0) if "stock_restored" in row.keys() else 0
             next_restored = already_restored
             restored_items = []
+            affected_products: dict[int, tuple[int, str, dict[tuple[str, str], int], int]] = {}
 
             if next_ord in STOCK_RESTORE_ORDER_STATUSES and already_restored == 0:
                 cur.execute(
@@ -1947,10 +3233,13 @@ def update_mall_order_workflow(
                     qty = max(0, int(it["quantity"] or 0))
                     if qty <= 0:
                         continue
-                    cur.execute("SELECT id FROM mall_products WHERE num = ? LIMIT 1", (p_num,))
+                    cur.execute("SELECT id, name FROM mall_products WHERE num = ? LIMIT 1", (p_num,))
                     p_row = cur.fetchone()
                     if p_row:
                         mall_pid = int(p_row["id"])
+                        if mall_pid not in affected_products:
+                            ps, pt = _snapshot_product_option_stocks(cur, mall_pid)
+                            affected_products[mall_pid] = (p_num, str(p_row["name"] or ""), ps, pt)
                         cur.execute(
                             "UPDATE mall_product_options SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?",
                             (qty, mall_pid, color, size),
@@ -1973,6 +3262,17 @@ def update_mall_order_workflow(
                         "quantity": qty,
                     })
                 next_restored = 1
+                for mall_pid, (p_num, p_name, ps, pt) in affected_products.items():
+                    restock_events.extend(
+                        _collect_restock_notifications_tx(cur, mall_pid, p_num, p_name, ps, pt, now_str)
+                    )
+
+            cur_shipped_at = str(row["shipped_at"] or "").strip() if "shipped_at" in row.keys() else ""
+            next_shipped_at = cur_shipped_at or now_str if next_ord == "배송중" else cur_shipped_at
+            cur_paid_at = str(row["paid_at"] or "").strip() if "paid_at" in row.keys() else ""
+            next_paid_at = cur_paid_at or now_str if next_pay == "입금완료" else cur_paid_at
+            became_paid = (cur_pay != "입금완료" and next_pay == "입금완료")
+            became_shipped = (cur_ord != "배송중" and next_ord == "배송중")
 
             cur.execute(
                 """
@@ -1981,31 +3281,41 @@ def update_mall_order_workflow(
                     order_status = ?,
                     claim_reason = ?,
                     claim_updated_at = ?,
-                    stock_restored = ?
+                    stock_restored = ?,
+                    shipped_at = ?,
+                    paid_at = ?
                 WHERE id = ?
                 """,
-                (next_pay, next_ord, next_reason, next_claim_ts, next_restored, oid),
+                (next_pay, next_ord, next_reason, next_claim_ts, next_restored, next_shipped_at, next_paid_at, oid),
             )
-            conn.commit()
+            import mall_promotions
+            if next_ord == "배송완료":
+                mall_promotions.award_order_points_on_delivery(active_conn, oid, now_str)
+            if next_ord in STOCK_RESTORE_ORDER_STATUSES:
+                mall_promotions.restore_order_promotions_on_cancel(active_conn, oid, now_str)
+            active_conn.commit()
             bump_state_version(bump_catalog=True)
 
             cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
             updated_row = cur.fetchone()
             cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (oid,))
             items = [dict(ir) for ir in cur.fetchall()]
-            order_dict = dict(updated_row) if updated_row else {}
-            order_dict.pop("guest_password_hash", None)
-            order_dict["items"] = items
-            order_dict["order_items"] = items
+            order_dict = _format_order_row(updated_row, items) if updated_row else {}
 
-            return {
+            res_payload = {
                 "ok": True,
                 "order": order_dict,
                 "restored_items": restored_items,
                 "stock_restored_now": bool(already_restored == 0 and next_restored == 1),
+                "became_paid": became_paid,
+                "became_shipped": became_shipped,
             }
         finally:
-            conn.close()
+            if owns_conn:
+                active_conn.close()
+    if owns_conn:
+        _dispatch_restock_notifications(restock_events)
+    return res_payload
 
 
 def update_mall_order_status(order_id, payment_status=None, order_status=None):
@@ -2017,25 +3327,589 @@ def update_mall_order_status(order_id, payment_status=None, order_status=None):
     return bool(res.get("ok"))
 
 
-def get_mall_reviews(product_num, limit=50):
+def confirm_mall_order_pg_payment(
+    order_code: str,
+    pg_provider: str,
+    pg_tid: str,
+    pg_status: str = "PAID",
+    paid_at: str = "",
+) -> dict:
+    """PG 결제 승인/웹훅 검증 완료 시 주문 입금상태·PG 거래 정보를 원자적으로 갱신합니다."""
+    code = str(order_code or "").strip()
+    if not code:
+        return {"ok": False, "not_found": True, "message": "주문번호가 필요합니다."}
+    clean_provider = str(pg_provider or "").strip().upper()[:40]
+    clean_tid = str(pg_tid or "").strip()[:120]
+    clean_pg_status = str(pg_status or "PAID").strip().upper()[:40] or "PAID"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT * FROM mall_reviews WHERE product_num = ? ORDER BY id DESC LIMIT ?", (int(product_num), int(limit)))
-            return [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT * FROM mall_orders WHERE order_code = ? LIMIT 1", (code,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "not_found": True, "message": "주문을 찾을 수 없습니다."}
+            oid = int(row["id"])
+            cur_pay = str(row["payment_status"] or "입금대기")
+            cur_ord = str(row["order_status"] or "결제대기")
+            cur_method = str(row["payment_method"] or "BANK").strip().upper() or "BANK"
+            if cur_method == "BANK":
+                return {"ok": False, "message": "무통장 입금 주문은 PG 결제 확정을 사용할 수 없습니다."}
+            if cur_pay in ("환불대기", "환불완료"):
+                return {"ok": False, "message": f"결제 상태 [{cur_pay}]인 주문은 결제 확정할 수 없습니다."}
+            if cur_ord in ("주문취소", "환불요청", "환불완료", "교환요청", "교환완료"):
+                return {"ok": False, "message": f"[{cur_ord}] 상태의 주문은 결제 확정할 수 없습니다."}
+            if cur_pay not in ("입금대기", "입금완료"):
+                return {"ok": False, "message": f"결제 상태 [{cur_pay}]인 주문은 결제 확정할 수 없습니다."}
+            if cur_pay == "입금대기" and cur_ord not in ("결제대기", "상품준비중"):
+                return {"ok": False, "message": f"[{cur_ord}] 상태의 미결제 주문은 결제 확정할 수 없습니다."}
+
+            existing_tid = str(row["pg_tid"] or "").strip() if "pg_tid" in row.keys() else ""
+            if cur_pay == "입금완료" and existing_tid and clean_tid and existing_tid != clean_tid:
+                return {"ok": False, "message": "이미 다른 거래번호로 결제 완료된 주문입니다."}
+
+            next_pay = "입금완료"
+            next_ord = "상품준비중" if cur_ord == "결제대기" else cur_ord
+            cur_paid_at = str(row["paid_at"] or "").strip() if "paid_at" in row.keys() else ""
+            next_paid_at = str(paid_at or "").strip() or cur_paid_at or now_str
+            next_tid = clean_tid or existing_tid
+            became_paid = (cur_pay != "입금완료")
+
+            cur.execute(
+                """
+                UPDATE mall_orders
+                SET payment_status = ?,
+                    order_status = ?,
+                    pg_provider = ?,
+                    pg_tid = ?,
+                    pg_status = ?,
+                    paid_at = ?
+                WHERE id = ?
+                """,
+                (next_pay, next_ord, clean_provider, next_tid, clean_pg_status, next_paid_at, oid),
+            )
+            conn.commit()
+            bump_state_version(bump_catalog=False)
+
+            cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
+            updated_row = cur.fetchone()
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (oid,))
+            items = [dict(ir) for ir in cur.fetchall()]
+            return {
+                "ok": True,
+                "order": _format_order_row(updated_row, items) if updated_row else {},
+                "became_paid": became_paid,
+            }
+        finally:
+            conn.close()
+
+
+def _fetch_order_by_id_or_code(cur, order_id=None, order_code=None):
+    oid = parse_strict_int64(order_id, min_val=1)
+    if oid is not None:
+        cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
+        row = cur.fetchone()
+        if row:
+            return row
+    code = str(order_code or "").strip()
+    if code:
+        cur.execute("SELECT * FROM mall_orders WHERE order_code = ? LIMIT 1", (code,))
+        return cur.fetchone()
+    return None
+
+
+def get_mall_order_raw_by_code_or_id(order_id=None, order_code=None) -> Optional[dict]:
+    """주문 ID 또는 주문번호로 단건 주문(+소유권 메타데이터)을 조회합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            row = _fetch_order_by_id_or_code(cur, order_id=order_id, order_code=order_code)
+            if not row:
+                return None
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (row["id"],))
+            items = [dict(ir) for ir in cur.fetchall()]
+            return _format_order_row(row, items)
+        finally:
+            conn.close()
+
+
+def update_mall_order_tracking(
+    order_id=None,
+    order_code=None,
+    carrier_code: str = "",
+    carrier_name: str = "",
+    tracking_number: str = "",
+    mark_shipped: bool = False,
+) -> dict:
+    """주문의 택배사·운송장 번호를 저장하고 선택적으로 배송중으로 전환합니다."""
+    raw_tracking = str(tracking_number or "").strip()
+    clean_tracking = mall_shipping.sanitize_tracking_number(raw_tracking) if raw_tracking else ""
+    if raw_tracking and not clean_tracking:
+        return {"ok": False, "message": "운송장 번호는 영문, 숫자, 하이픈(-)만 입력할 수 있습니다."}
+
+    resolved_code, resolved_name = mall_shipping.resolve_carrier(carrier_code, carrier_name)
+    if (str(carrier_code or "").strip() or str(carrier_name or "").strip()) and not resolved_code:
+        return {"ok": False, "message": f"지원하지 않는 택배사입니다: {carrier_code or carrier_name}"}
+    if clean_tracking and not resolved_code:
+        return {"ok": False, "message": "택배사를 선택해 주세요."}
+    if mark_shipped and not clean_tracking and resolved_code != "DIRECT":
+        return {"ok": False, "message": "배송중 전환을 위해 운송장 번호를 입력해 주세요."}
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            row = _fetch_order_by_id_or_code(cur, order_id=order_id, order_code=order_code)
+            if not row:
+                return {"ok": False, "not_found": True, "message": "주문을 찾을 수 없습니다."}
+
+            oid = int(row["id"])
+            cur_ord = str(row["order_status"] or "결제대기")
+            if cur_ord in ("주문취소", "환불완료"):
+                return {"ok": False, "message": f"[{cur_ord}] 상태의 주문에는 운송장을 등록할 수 없습니다."}
+
+            next_ord = cur_ord
+            cur_shipped_at = str(row["shipped_at"] or "").strip() if "shipped_at" in row.keys() else ""
+            next_shipped_at = cur_shipped_at
+            if mark_shipped and cur_ord in ("결제대기", "상품준비중"):
+                next_ord = "배송중"
+                next_shipped_at = cur_shipped_at or now_str
+            elif cur_ord == "배송중" and clean_tracking and not cur_shipped_at:
+                next_shipped_at = now_str
+
+            cur.execute(
+                """
+                UPDATE mall_orders
+                SET carrier_code = ?,
+                    carrier_name = ?,
+                    tracking_number = ?,
+                    shipped_at = ?,
+                    order_status = ?
+                WHERE id = ?
+                """,
+                (resolved_code, resolved_name, clean_tracking, next_shipped_at, next_ord, oid),
+            )
+            conn.commit()
+            bump_state_version(bump_catalog=False)
+
+            cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
+            updated_row = cur.fetchone()
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (oid,))
+            items = [dict(ir) for ir in cur.fetchall()]
+            return {
+                "ok": True,
+                "order": _format_order_row(updated_row, items),
+                "became_shipped": (cur_ord != "배송중" and next_ord == "배송중"),
+            }
+        finally:
+            conn.close()
+
+
+def bulk_update_mall_order_tracking(rows: list[dict], default_mark_shipped: bool = True) -> dict:
+    """CSV/배치 송장 데이터를 행별로 검증·반영하며 오류 행이 있어도 정상 행 처리를 중단하지 않습니다."""
+    updated_orders: list[dict] = []
+    errors: list[dict] = []
+    total_rows = len(rows or [])
+    for idx, entry in enumerate(rows or [], start=1):
+        if not isinstance(entry, dict):
+            errors.append({"row": idx, "order_code": "", "error": "유효하지 않은 행 데이터입니다."})
+            continue
+        row_no = entry.get("row_num") or idx
+        ord_code = str(entry.get("order_code") or "").strip()
+        ord_id = entry.get("order_id")
+        if not ord_code and not ord_id:
+            errors.append({"row": row_no, "order_code": "", "error": "주문번호(order_code)가 비어 있습니다."})
+            continue
+        tracking_no = str(entry.get("tracking_number") or "").strip()
+        if not tracking_no:
+            errors.append({"row": row_no, "order_code": ord_code, "error": "운송장 번호(tracking_number)가 비어 있습니다."})
+            continue
+        raw_mark = entry.get("mark_shipped")
+        mark_shipped = default_mark_shipped if raw_mark is None else bool(raw_mark)
+        res = update_mall_order_tracking(
+            order_id=ord_id,
+            order_code=ord_code,
+            carrier_code=str(entry.get("carrier_code") or ""),
+            carrier_name=str(entry.get("carrier_name") or ""),
+            tracking_number=tracking_no,
+            mark_shipped=mark_shipped,
+        )
+        if res.get("ok") and res.get("order"):
+            updated_orders.append(res["order"])
+        else:
+            errors.append({
+                "row": row_no,
+                "order_code": ord_code,
+                "error": str(res.get("message") or "운송장 반영 실패"),
+            })
+    return {
+        "ok": True,
+        "total_rows": total_rows,
+        "updated_count": len(updated_orders),
+        "error_count": len(errors),
+        "updated_orders": updated_orders,
+        "errors": errors,
+    }
+
+
+def get_mall_orders_for_shipping_export(order_status: str = "", limit: int = 500) -> list[dict]:
+    """택배사 발송용 주문서 CSV 내보내기를 위한 주문 목록을 조회합니다."""
+    clean_status = str(order_status or "").strip()
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            if clean_status and clean_status.upper() != "ALL":
+                cur.execute(
+                    "SELECT * FROM mall_orders WHERE order_status = ? ORDER BY id DESC LIMIT ?",
+                    (clean_status, int(limit)),
+                )
+            else:
+                cur.execute(
+                    "SELECT * FROM mall_orders WHERE COALESCE(order_status, '') NOT IN ('주문취소', '환불완료') ORDER BY id DESC LIMIT ?",
+                    (int(limit),),
+                )
+            ord_rows = cur.fetchall()
+            orders = []
+            for r in ord_rows:
+                cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (r["id"],))
+                items = [dict(ir) for ir in cur.fetchall()]
+                orders.append(_format_order_row(r, items))
+            return orders
+        finally:
+            conn.close()
+
+
+def cancel_mall_order_by_customer(order_id=None, order_code=None, claim_reason: str = "") -> dict:
+    """
+    고객 셀프 주문 즉시 취소:
+    - 반드시 mall_db_lock 내부에서 payment_status == '입금대기' 및 order_status in ('결제대기', '상품준비중') 검증
+    - '주문취소' 전환 및 미복구 재고 1회 원자적 복구
+    """
+    clean_reason = str(claim_reason or "").strip()[:500] or "고객 직접 주문 취소"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    restock_events: list[dict[str, Any]] = []
+    res_payload: dict[str, Any] = {}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            row = _fetch_order_by_id_or_code(cur, order_id=order_id, order_code=order_code)
+            if not row:
+                return {"ok": False, "not_found": True, "message": "주문을 찾을 수 없습니다."}
+
+            oid = int(row["id"])
+            cur_pay = str(row["payment_status"] or "입금대기")
+            cur_ord = str(row["order_status"] or "결제대기")
+            if cur_pay != "입금대기" or cur_ord not in ("결제대기", "상품준비중"):
+                return {
+                    "ok": False,
+                    "message": "입금대기 상태의 결제대기·상품준비중 주문만 즉시 취소할 수 있습니다.",
+                }
+
+            already_restored = int(row["stock_restored"] or 0) if "stock_restored" in row.keys() else 0
+            next_restored = already_restored
+            restored_items: list[dict] = []
+            affected_products: dict[int, tuple[int, str, dict[tuple[str, str], int], int]] = {}
+            if already_restored == 0:
+                cur.execute(
+                    "SELECT product_num, color, size, quantity FROM mall_order_items WHERE order_id = ? ORDER BY id ASC",
+                    (oid,),
+                )
+                for it in cur.fetchall():
+                    p_num = int(it["product_num"])
+                    color = str(it["color"] or "-")
+                    size = str(it["size"] or "-")
+                    qty = max(0, int(it["quantity"] or 0))
+                    if qty <= 0:
+                        continue
+                    cur.execute("SELECT id, name FROM mall_products WHERE num = ? LIMIT 1", (p_num,))
+                    p_row = cur.fetchone()
+                    if p_row:
+                        mall_pid = int(p_row["id"])
+                        if mall_pid not in affected_products:
+                            ps, pt = _snapshot_product_option_stocks(cur, mall_pid)
+                            affected_products[mall_pid] = (p_num, str(p_row["name"] or ""), ps, pt)
+                        cur.execute(
+                            "UPDATE mall_product_options SET stock = stock + ? WHERE product_id = ? AND color = ? AND size = ?",
+                            (qty, mall_pid, color, size),
+                        )
+                        if cur.rowcount == 0:
+                            cur.execute(
+                                "SELECT id FROM mall_product_options WHERE product_id = ? ORDER BY id ASC LIMIT 1",
+                                (mall_pid,),
+                            )
+                            fallback_opt = cur.fetchone()
+                            if fallback_opt:
+                                cur.execute(
+                                    "UPDATE mall_product_options SET stock = stock + ? WHERE id = ?",
+                                    (qty, int(fallback_opt["id"])),
+                                )
+                    restored_items.append({
+                        "product_num": p_num,
+                        "color": color,
+                        "size": size,
+                        "quantity": qty,
+                    })
+                next_restored = 1
+                for mall_pid, (p_num, p_name, ps, pt) in affected_products.items():
+                    restock_events.extend(
+                        _collect_restock_notifications_tx(cur, mall_pid, p_num, p_name, ps, pt, now_str)
+                    )
+
+            cur.execute(
+                """
+                UPDATE mall_orders
+                SET order_status = '주문취소',
+                    claim_reason = ?,
+                    claim_updated_at = ?,
+                    stock_restored = ?
+                WHERE id = ?
+                """,
+                (clean_reason, now_str, next_restored, oid),
+            )
+            import mall_promotions
+            mall_promotions.restore_order_promotions_on_cancel(conn, oid, now_str)
+            conn.commit()
+            bump_state_version(bump_catalog=True)
+
+            cur.execute("SELECT * FROM mall_orders WHERE id = ? LIMIT 1", (oid,))
+            updated_row = cur.fetchone()
+            cur.execute("SELECT * FROM mall_order_items WHERE order_id = ? ORDER BY id ASC", (oid,))
+            items = [dict(ir) for ir in cur.fetchall()]
+            res_payload = {
+                "ok": True,
+                "order": _format_order_row(updated_row, items),
+                "restored_items": restored_items,
+                "stock_restored_now": bool(already_restored == 0 and next_restored == 1),
+            }
+        finally:
+            conn.close()
+    _dispatch_restock_notifications(restock_events)
+    return res_payload
+
+
+def submit_mall_order_claim_by_customer(
+    order_id=None,
+    order_code=None,
+    claim_type: str = "",
+    claim_reason: str = "",
+) -> dict:
+    """고객 교환/반품(환불요청·교환요청) 접수 및 관리자 클레임 워크플로우 연동."""
+    c_type = str(claim_type or "").strip()
+    c_reason = str(claim_reason or "").strip()
+    if c_type not in ("환불요청", "교환요청"):
+        return {"ok": False, "message": "신청 유형은 '환불요청' 또는 '교환요청'만 선택할 수 있습니다."}
+    if not c_reason:
+        return {"ok": False, "message": "교환 또는 반품 신청 사유를 입력해 주세요."}
+    if len(c_reason) > 500:
+        return {"ok": False, "message": "신청 사유는 500자 이내로 입력해 주세요."}
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            row = _fetch_order_by_id_or_code(cur, order_id=order_id, order_code=order_code)
+            if not row:
+                return {"ok": False, "not_found": True, "message": "주문을 찾을 수 없습니다."}
+            oid = int(row["id"])
+            cur_pay = str(row["payment_status"] or "입금대기")
+            cur_ord = str(row["order_status"] or "결제대기")
+
+            if cur_ord in ("주문취소", "환불요청", "환불완료", "교환요청", "교환완료"):
+                return {"ok": False, "message": f"현재 [{cur_ord}] 상태에서는 교환/반품을 신청할 수 없습니다."}
+            if cur_pay == "입금대기" and cur_ord in ("결제대기", "상품준비중"):
+                return {"ok": False, "message": "입금대기 상태의 주문은 [주문 취소]를 이용해 주세요."}
+
+            return update_mall_order_workflow(
+                order_id=oid,
+                order_status=c_type,
+                claim_reason=c_reason,
+                conn=conn,
+            )
+        finally:
+            conn.close()
+
+
+_REVIEW_IMG_URL_RE = re.compile(
+    r"^/static/uploads/reviews/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpg|jpeg|webp|gif)$",
+    re.IGNORECASE,
+)
+
+
+def parse_review_images(raw_images: Any = None, raw_image_url: Any = None) -> tuple[bool, list[str], str]:
+    candidates: list[str] = []
+    if raw_image_url is not None and raw_image_url != "":
+        if not isinstance(raw_image_url, str):
+            return False, [], "유효하지 않은 리뷰 이미지 경로입니다."
+        candidates.append(raw_image_url)
+
+    if raw_images is not None:
+        if not isinstance(raw_images, list):
+            return False, [], "리뷰 이미지 목록은 배열 형식이어야 합니다."
+        if len(raw_images) > 5:
+            return False, [], "리뷰 이미지는 최대 5장까지 첨부할 수 있습니다."
+        for item in raw_images:
+            if not isinstance(item, str):
+                return False, [], "유효하지 않은 리뷰 이미지 경로입니다."
+            candidates.append(item)
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in candidates:
+        u = raw.strip()
+        if not u:
+            continue
+        if ".." in u or "\\" in u or "\x00" in u or not _REVIEW_IMG_URL_RE.match(u):
+            return False, [], "유효하지 않은 리뷰 이미지 경로입니다."
+        if u not in seen:
+            seen.add(u)
+            cleaned.append(u)
+        if len(cleaned) > 5:
+            return False, [], "리뷰 이미지는 최대 5장까지 첨부할 수 있습니다."
+    return True, cleaned, ""
+
+
+def is_verified_buyer_for_product(user_id: Any, product_num: Any, conn=None) -> bool:
+    uid = parse_strict_int64(user_id, min_val=1) or 0
+    pnum = parse_strict_int64(product_num, min_val=1) or 0
+    if uid <= 0 or pnum <= 0:
+        return False
+
+    sql = """
+        SELECT 1
+        FROM mall_orders o
+        INNER JOIN mall_order_items oi ON oi.order_id = o.id
+        WHERE o.user_id = ?
+          AND oi.product_num = ?
+          AND COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')
+          AND COALESCE(o.payment_status, '') != '환불완료'
+        LIMIT 1
+    """
+    if conn is not None:
+        row = conn.execute(sql, (uid, pnum)).fetchone()
+        return row is not None
+
+    with mall_db_lock:
+        c = get_connection()
+        try:
+            row = c.execute(sql, (uid, pnum)).fetchone()
+            return row is not None
+        finally:
+            c.close()
+
+
+def _format_review_row(row, viewer: Optional[dict] = None, verified_override: Optional[bool] = None) -> dict:
+    d = dict(row)
+    raw_imgs = d.get("images")
+    parsed_imgs: list[str] = []
+    if isinstance(raw_imgs, list):
+        parsed_imgs = [str(x).strip() for x in raw_imgs if str(x).strip()]
+    elif isinstance(raw_imgs, str) and raw_imgs.strip():
+        try:
+            loaded = json.loads(raw_imgs)
+            if isinstance(loaded, list):
+                parsed_imgs = [str(x).strip() for x in loaded if str(x).strip()]
+        except Exception:
+            parsed_imgs = []
+
+    single_url = str(d.get("image_url") or "").strip()
+    if single_url and single_url not in parsed_imgs:
+        parsed_imgs.insert(0, single_url)
+    parsed_imgs = [u for u in parsed_imgs if _REVIEW_IMG_URL_RE.match(u)][:5]
+    main_url = parsed_imgs[0] if parsed_imgs else ""
+
+    if verified_override is not None:
+        is_verified = bool(verified_override)
+    else:
+        is_verified = bool(int(d.get("is_verified_buyer") or 0))
+
+    viewer_id = int(viewer["id"]) if viewer and viewer.get("id") else 0
+    is_admin = bool(viewer and str(viewer.get("role") or "").upper() == "ADMIN")
+    row_uid = int(d["user_id"]) if d.get("user_id") is not None else None
+    is_owner = bool(viewer_id and row_uid is not None and row_uid == viewer_id)
+
+    out = {
+        "id": int(d["id"]),
+        "product_num": int(d["product_num"]),
+        "user_id": row_uid,
+        "author": str(d.get("author") or "구매회원"),
+        "rating": max(1, min(5, int(d.get("rating") or 5))),
+        "content": str(d.get("content") or ""),
+        "images": parsed_imgs,
+        "image_url": main_url,
+        "is_verified_buyer": is_verified,
+        "is_hidden": bool(int(d.get("is_hidden") or 0)),
+        "admin_reply": str(d.get("admin_reply") or ""),
+        "admin_replied_at": str(d.get("admin_replied_at") or ""),
+        "created_at": str(d.get("created_at") or ""),
+        "updated_at": str(d.get("updated_at") or ""),
+        "is_owner": is_owner,
+        "can_edit": bool(is_owner or is_admin),
+        "can_delete": bool(is_owner or is_admin),
+    }
+    if "product_name" in d:
+        out["product_name"] = str(d.get("product_name") or "")
+    return out
+
+
+def get_mall_reviews(product_num, limit=50, viewer=None, include_hidden=False):
+    pnum = parse_strict_int64(product_num, min_val=1)
+    if pnum is None:
+        return []
+    eff_limit = _parse_clamped_query_int(limit, 50, 1, 500)
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            hidden_clause = "" if include_hidden else "AND COALESCE(r.is_hidden, 0) = 0"
+            cur.execute(
+                f"""
+                SELECT
+                    r.*,
+                    EXISTS (
+                        SELECT 1
+                        FROM mall_orders o
+                        INNER JOIN mall_order_items oi ON oi.order_id = o.id
+                        WHERE o.user_id = r.user_id
+                          AND oi.product_num = r.product_num
+                          AND COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')
+                          AND COALESCE(o.payment_status, '') != '환불완료'
+                    ) AS live_verified_buyer
+                FROM mall_reviews r
+                WHERE r.product_num = ? {hidden_clause}
+                ORDER BY r.id DESC
+                LIMIT ?
+                """,
+                (pnum, eff_limit),
+            )
+            return [
+                _format_review_row(r, viewer=viewer, verified_override=bool(r["live_verified_buyer"]))
+                for r in cur.fetchall()
+            ]
         finally:
             conn.close()
 
 
 def get_mall_review_summary(product_num):
+    pnum = parse_strict_int64(product_num, min_val=1)
+    if pnum is None:
+        return {"count": 0, "avg_rating": 0.0}
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
             cur.execute(
-                "SELECT COUNT(*) AS cnt, COALESCE(AVG(rating), 0) AS avg_rating FROM mall_reviews WHERE product_num = ?",
-                (int(product_num),)
+                """
+                SELECT COUNT(*) AS cnt, COALESCE(AVG(rating), 0) AS avg_rating
+                FROM mall_reviews
+                WHERE product_num = ? AND COALESCE(is_hidden, 0) = 0
+                """,
+                (pnum,),
             )
             row = cur.fetchone()
             cnt = int(row["cnt"] or 0) if row else 0
@@ -2045,27 +3919,301 @@ def get_mall_review_summary(product_num):
             conn.close()
 
 
-def add_mall_review(product_num, author, rating, content, user_id=None):
+def get_mall_review_by_id(review_id, viewer=None) -> Optional[dict]:
+    rid = parse_strict_int64(review_id, min_val=1)
+    if rid is None:
+        return None
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT
+                    r.*,
+                    EXISTS (
+                        SELECT 1
+                        FROM mall_orders o
+                        INNER JOIN mall_order_items oi ON oi.order_id = o.id
+                        WHERE o.user_id = r.user_id
+                          AND oi.product_num = r.product_num
+                          AND COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')
+                          AND COALESCE(o.payment_status, '') != '환불완료'
+                    ) AS live_verified_buyer
+                FROM mall_reviews r
+                WHERE r.id = ?
+                LIMIT 1
+                """,
+                (rid,),
+            )
+            row = cur.fetchone()
+            return _format_review_row(row, viewer=viewer, verified_override=bool(row["live_verified_buyer"])) if row else None
+        finally:
+            conn.close()
+
+
+def add_mall_review(product_num, author, rating, content, user_id=None, images=None, image_url=""):
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ok_imgs, imgs_list, _ = parse_review_images(images, image_url)
+    if not ok_imgs:
+        imgs_list = []
+    main_img = imgs_list[0] if imgs_list else ""
+    uid = parse_strict_int64(user_id, min_val=1)
+    pnum = parse_strict_int64(product_num, min_val=1)
+    if pnum is None:
+        return {"ok": False, "message": "유효하지 않은 상품 번호입니다."}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            is_verified = 1 if is_verified_buyer_for_product(uid, pnum, conn=conn) else 0
+            cur.execute(
+                """
+                INSERT INTO mall_reviews
+                (product_num, user_id, author, rating, content, images, image_url,
+                 is_verified_buyer, is_hidden, admin_reply, admin_replied_at, updated_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?)
+                """,
+                (
+                    pnum,
+                    uid,
+                    str(author or "구매회원").strip(),
+                    max(1, min(5, int(rating or 5))),
+                    str(content or "").strip(),
+                    json.dumps(imgs_list, ensure_ascii=False),
+                    main_img,
+                    is_verified,
+                    now_str,
+                    now_str,
+                ),
+            )
+            rid = int(cur.lastrowid)
+            conn.commit()
+            cur.execute("SELECT * FROM mall_reviews WHERE id = ? LIMIT 1", (rid,))
+            row = cur.fetchone()
+            viewer = {"id": uid, "role": "MEMBER"} if uid else None
+            formatted = _format_review_row(row, viewer=viewer, verified_override=bool(is_verified)) if row else {"id": rid}
+        finally:
+            conn.close()
+    bump_state_version(bump_catalog=False)
+    return formatted
+
+
+def update_mall_review(review_id, rating=None, content=None, images=None, image_url=None) -> dict:
+    rid = parse_strict_int64(review_id, min_val=1)
+    if rid is None:
+        return {"ok": False, "message": "유효하지 않은 리뷰 ID입니다."}
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with mall_db_lock:
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO mall_reviews (product_num, user_id, author, rating, content, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                int(product_num),
-                int(user_id) if user_id is not None else None,
-                str(author or "구매회원").strip(),
-                max(1, min(5, int(rating or 5))),
-                str(content or "").strip(),
-                now_str
-            ))
+            cur.execute("SELECT * FROM mall_reviews WHERE id = ? LIMIT 1", (rid,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "not_found": True, "message": "리뷰를 찾을 수 없습니다."}
+
+            next_rating = max(1, min(5, int(rating))) if rating is not None else int(row["rating"] or 5)
+            next_content = str(content).strip() if content is not None else str(row["content"] or "")
+            if images is not None or image_url is not None:
+                ok_imgs, imgs_list, img_err = parse_review_images(images, image_url)
+                if not ok_imgs:
+                    return {"ok": False, "message": img_err}
+            else:
+                existing = _format_review_row(row)
+                imgs_list = existing["images"]
+            main_img = imgs_list[0] if imgs_list else ""
+
+            cur.execute(
+                """
+                UPDATE mall_reviews
+                SET rating = ?, content = ?, images = ?, image_url = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (next_rating, next_content, json.dumps(imgs_list, ensure_ascii=False), main_img, now_str, rid),
+            )
             conn.commit()
-            return True
+            cur.execute(
+                """
+                SELECT r.*, EXISTS (
+                    SELECT 1 FROM mall_orders o
+                    INNER JOIN mall_order_items oi ON oi.order_id = o.id
+                    WHERE o.user_id = r.user_id AND oi.product_num = r.product_num
+                      AND COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')
+                      AND COALESCE(o.payment_status, '') != '환불완료'
+                ) AS live_verified_buyer
+                FROM mall_reviews r WHERE r.id = ? LIMIT 1
+                """,
+                (rid,),
+            )
+            upd = cur.fetchone()
+            viewer = {"id": int(upd["user_id"]), "role": "MEMBER"} if upd and upd["user_id"] else None
+            review_obj = _format_review_row(upd, viewer=viewer, verified_override=bool(upd["live_verified_buyer"])) if upd else None
         finally:
             conn.close()
+    bump_state_version(bump_catalog=False)
+    return {"ok": True, "review": review_obj}
+
+
+def delete_mall_review(review_id) -> dict:
+    rid = parse_strict_int64(review_id, min_val=1)
+    if rid is None:
+        return {"ok": False, "message": "유효하지 않은 리뷰 ID입니다."}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, product_num FROM mall_reviews WHERE id = ? LIMIT 1", (rid,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "not_found": True, "message": "리뷰를 찾을 수 없습니다."}
+            pnum = int(row["product_num"])
+            cur.execute("DELETE FROM mall_reviews WHERE id = ?", (rid,))
+            conn.commit()
+        finally:
+            conn.close()
+    bump_state_version(bump_catalog=False)
+    return {"ok": True, "deleted_id": rid, "product_num": pnum}
+
+
+def list_admin_reviews(product_num=None, visibility: str = "ALL", query: str = "", limit: int = 200) -> list[dict]:
+    vis = str(visibility or "ALL").strip().upper()
+    q = str(query or "").strip().lower()
+    where_parts: list[str] = []
+    params: list[Any] = []
+    if product_num is not None and str(product_num).strip() != "":
+        pnum_filter = parse_strict_int64(product_num, min_val=1)
+        if pnum_filter is None:
+            return []
+        where_parts.append("r.product_num = ?")
+        params.append(pnum_filter)
+    if vis == "HIDDEN":
+        where_parts.append("COALESCE(r.is_hidden, 0) = 1")
+    elif vis == "VISIBLE":
+        where_parts.append("COALESCE(r.is_hidden, 0) = 0")
+    if q:
+        like_q = f"%{q}%"
+        where_parts.append(
+            "(LOWER(r.author) LIKE ? OR LOWER(r.content) LIKE ? OR LOWER(COALESCE(p.name, '')) LIKE ? OR CAST(r.product_num AS TEXT) LIKE ?)"
+        )
+        params.extend([like_q, like_q, like_q, like_q])
+    where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    admin_viewer = {"id": 0, "role": "ADMIN"}
+
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT
+                    r.*,
+                    COALESCE(p.name, '') AS product_name,
+                    EXISTS (
+                        SELECT 1
+                        FROM mall_orders o
+                        INNER JOIN mall_order_items oi ON oi.order_id = o.id
+                        WHERE o.user_id = r.user_id
+                          AND oi.product_num = r.product_num
+                          AND COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')
+                          AND COALESCE(o.payment_status, '') != '환불완료'
+                    ) AS live_verified_buyer
+                FROM mall_reviews r
+                LEFT JOIN mall_products p ON p.num = r.product_num
+                {where_sql}
+                ORDER BY r.id DESC
+                LIMIT ?
+                """,
+                (*params, int(limit)),
+            )
+            return [
+                _format_review_row(r, viewer=admin_viewer, verified_override=bool(r["live_verified_buyer"]))
+                for r in cur.fetchall()
+            ]
+        finally:
+            conn.close()
+
+
+def moderate_mall_review(
+    review_id,
+    action: str = "",
+    is_hidden=None,
+    admin_reply=None,
+    is_deleted=None,
+) -> dict:
+    rid = parse_strict_int64(review_id, min_val=1)
+    if rid is None:
+        return {"ok": False, "message": "유효하지 않은 리뷰 ID입니다."}
+
+    act = str(action or "").strip().lower()
+    if act == "delete" or bool(is_deleted):
+        res = delete_mall_review(rid)
+        if res.get("ok"):
+            res["deleted"] = True
+        return res
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    admin_viewer = {"id": 0, "role": "ADMIN"}
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM mall_reviews WHERE id = ? LIMIT 1", (rid,))
+            row = cur.fetchone()
+            if not row:
+                return {"ok": False, "not_found": True, "message": "리뷰를 찾을 수 없습니다."}
+
+            next_hidden = int(row["is_hidden"] or 0)
+            if act == "hide":
+                next_hidden = 1
+            elif act == "unhide":
+                next_hidden = 0
+            elif is_hidden is not None:
+                if isinstance(is_hidden, bool):
+                    next_hidden = 1 if is_hidden else 0
+                elif isinstance(is_hidden, (int, float)):
+                    next_hidden = 1 if int(is_hidden) != 0 else 0
+                else:
+                    next_hidden = 1 if str(is_hidden).strip().lower() in ("1", "true", "yes", "y", "on") else 0
+
+            next_reply = str(row["admin_reply"] or "")
+            next_replied_at = str(row["admin_replied_at"] or "")
+            if admin_reply is not None or act == "reply":
+                reply_txt = str(admin_reply or "").strip()[:1000]
+                next_reply = reply_txt
+                next_replied_at = now_str if reply_txt else ""
+
+            cur.execute(
+                """
+                UPDATE mall_reviews
+                SET is_hidden = ?, admin_reply = ?, admin_replied_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (next_hidden, next_reply, next_replied_at, now_str, rid),
+            )
+            conn.commit()
+            cur.execute(
+                """
+                SELECT r.*, COALESCE(p.name, '') AS product_name,
+                    EXISTS (
+                        SELECT 1 FROM mall_orders o
+                        INNER JOIN mall_order_items oi ON oi.order_id = o.id
+                        WHERE o.user_id = r.user_id AND oi.product_num = r.product_num
+                          AND COALESCE(o.order_status, '') NOT IN ('주문취소', '환불완료')
+                          AND COALESCE(o.payment_status, '') != '환불완료'
+                    ) AS live_verified_buyer
+                FROM mall_reviews r
+                LEFT JOIN mall_products p ON p.num = r.product_num
+                WHERE r.id = ? LIMIT 1
+                """,
+                (rid,),
+            )
+            upd = cur.fetchone()
+            review_obj = _format_review_row(upd, viewer=admin_viewer, verified_override=bool(upd["live_verified_buyer"])) if upd else None
+        finally:
+            conn.close()
+    bump_state_version(bump_catalog=False)
+    return {"ok": True, "review": review_obj}
 
 
 # ==============================================================================
@@ -2143,17 +4291,28 @@ def create_mall_user(email: str, password: str, name: str, phone: str, zipcode: 
             if cur.fetchone():
                 return {"ok": False, "message": "이미 가입된 이메일 주소입니다."}
             pw_hash = mall_security.hash_password(password)
+            norm_zip = _normalize_zipcode(zipcode)
+            norm_addr = str(address or "").strip()
+            norm_detail = str(address_detail or "").strip()
             cur.execute("""
                 INSERT INTO mall_users (email, password_hash, name, phone, zipcode, address, address_detail, role, is_active, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'MEMBER', 1, ?)
             """, (
                 mail, pw_hash, nm, ph,
-                str(zipcode or "").strip(),
-                str(address or "").strip(),
-                str(address_detail or "").strip(),
+                norm_zip,
+                norm_addr,
+                norm_detail,
                 now_str
             ))
             uid = cur.lastrowid
+            if norm_addr:
+                cur.execute("""
+                    INSERT INTO mall_user_addresses
+                    (user_id, label, recipient_name, recipient_phone, zipcode, address, address_detail, is_default, created_at, updated_at)
+                    VALUES (?, '기본 배송지', ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (uid, nm, ph, norm_zip, norm_addr, norm_detail, now_str, now_str))
+            import mall_promotions
+            mall_promotions.issue_welcome_coupons_to_user(conn, int(uid), now_str)
             conn.commit()
             return {
                 "ok": True,
@@ -2162,10 +4321,11 @@ def create_mall_user(email: str, password: str, name: str, phone: str, zipcode: 
                     "email": mail,
                     "name": nm,
                     "phone": ph,
-                    "zipcode": str(zipcode or "").strip(),
-                    "address": str(address or "").strip(),
-                    "address_detail": str(address_detail or "").strip(),
-                    "role": "MEMBER"
+                    "zipcode": norm_zip,
+                    "address": norm_addr,
+                    "address_detail": norm_detail,
+                    "role": "MEMBER",
+                    "points_balance": 0,
                 }
             }
         finally:
@@ -2184,13 +4344,15 @@ def authenticate_mall_user(email: str, password: str) -> dict:
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, email, password_hash, name, phone, zipcode, address, address_detail, role, is_active, failed_login_count, locked_until
+                SELECT id, email, password_hash, name, phone, zipcode, address, address_detail, role, is_active, withdrawn_at, failed_login_count, locked_until
                 FROM mall_users
                 WHERE email = ?
             """, (mail,))
             row = cur.fetchone()
             if not row:
                 return {"ok": False, "code": "INVALID", "message": "이메일 또는 비밀번호가 올바르지 않습니다."}
+            if str(row["withdrawn_at"] or "").strip():
+                return {"ok": False, "code": "WITHDRAWN", "message": "탈퇴 처리된 계정입니다. 로그인할 수 없습니다."}
             if not row["is_active"]:
                 return {"ok": False, "code": "SUSPENDED", "message": "이용이 정지된 계정입니다."}
 
@@ -2231,6 +4393,19 @@ def authenticate_mall_user(email: str, password: str) -> dict:
             conn.close()
 
 
+def _format_user_row(row) -> Optional[dict]:
+    if not row:
+        return None
+    d = dict(row)
+    d.pop("password_hash", None)
+    d["zipcode"] = _normalize_zipcode(d.get("zipcode"))
+    d["address"] = str(d.get("address") or "")
+    d["address_detail"] = str(d.get("address_detail") or "")
+    d["withdrawn_at"] = str(d.get("withdrawn_at") or "")
+    d["points_balance"] = max(0, int(d.get("points_balance") or 0))
+    return d
+
+
 def get_mall_user_by_id(user_id: int):
     if not user_id:
         return None
@@ -2239,12 +4414,12 @@ def get_mall_user_by_id(user_id: int):
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, created_at
+                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, withdrawn_at, points_balance, last_login_at, created_at
                 FROM mall_users
-                WHERE id = ? AND is_active = 1
+                WHERE id = ? AND is_active = 1 AND COALESCE(withdrawn_at, '') = ''
             """, (int(user_id),))
             row = cur.fetchone()
-            return dict(row) if row else None
+            return _format_user_row(row)
         finally:
             conn.close()
 
@@ -2256,15 +4431,15 @@ def get_primary_mall_admin_user():
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, created_at
+                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, withdrawn_at, points_balance, last_login_at, created_at
                 FROM mall_users
-                WHERE role = 'ADMIN' AND is_active = 1
+                WHERE role = 'ADMIN' AND is_active = 1 AND COALESCE(withdrawn_at, '') = ''
                 ORDER BY id ASC
                 LIMIT 1
             """)
             row = cur.fetchone()
             if row:
-                return dict(row)
+                return _format_user_row(row)
         finally:
             conn.close()
 
@@ -2274,27 +4449,26 @@ def get_primary_mall_admin_user():
         try:
             cur = conn.cursor()
             cur.execute("""
-                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, created_at
+                SELECT id, email, name, phone, zipcode, address, address_detail, role, is_active, withdrawn_at, points_balance, last_login_at, created_at
                 FROM mall_users
-                WHERE role = 'ADMIN' AND is_active = 1
+                WHERE role = 'ADMIN' AND is_active = 1 AND COALESCE(withdrawn_at, '') = ''
                 ORDER BY id ASC
                 LIMIT 1
             """)
             row = cur.fetchone()
-            return dict(row) if row else None
+            return _format_user_row(row)
         finally:
             conn.close()
 
 
 def _normalize_wish_product_nums(raw_nums) -> list[int]:
+    if not isinstance(raw_nums, (list, tuple, set)):
+        return []
     result: list[int] = []
     seen: set[int] = set()
-    for val in (raw_nums or []):
-        try:
-            num = int(str(val).strip())
-        except Exception:
-            continue
-        if num <= 0 or num in seen:
+    for val in raw_nums:
+        num = parse_strict_int64(val, min_val=1)
+        if num is None or num in seen:
             continue
         seen.add(num)
         result.append(num)
@@ -2304,7 +4478,8 @@ def _normalize_wish_product_nums(raw_nums) -> list[int]:
 
 
 def get_user_wishlist_nums(user_id: int) -> list[int]:
-    if not user_id:
+    uid = parse_strict_int64(user_id, min_val=1)
+    if uid is None:
         return []
     with mall_db_lock:
         conn = get_connection()
@@ -2318,7 +4493,7 @@ def get_user_wishlist_nums(user_id: int) -> list[int]:
                 WHERE w.user_id = ?
                 ORDER BY w.id DESC
                 """,
-                (int(user_id),),
+                (uid,),
             )
             return [int(r["product_num"]) for r in cur.fetchall()]
         finally:
@@ -2326,11 +4501,8 @@ def get_user_wishlist_nums(user_id: int) -> list[int]:
 
 
 def get_product_wish_count(product_num: int) -> int:
-    try:
-        p_num = int(product_num)
-    except Exception:
-        return 0
-    if p_num <= 0:
+    p_num = parse_strict_int64(product_num, min_val=1)
+    if p_num is None:
         return 0
     with mall_db_lock:
         conn = get_connection()
@@ -2362,12 +4534,9 @@ def get_user_wishlist_products(user_id: int) -> list[dict]:
 
 
 def toggle_user_wishlist(user_id: int, product_num: int) -> dict:
-    try:
-        uid = int(user_id)
-        p_num = int(product_num)
-    except Exception:
-        return {"ok": False, "message": "유효하지 않은 요청입니다."}
-    if uid <= 0 or p_num <= 0:
+    uid = parse_strict_int64(user_id, min_val=1)
+    p_num = parse_strict_int64(product_num, min_val=1)
+    if uid is None or p_num is None:
         return {"ok": False, "message": "유효하지 않은 상품 또는 회원 정보입니다."}
 
     with mall_db_lock:
@@ -2409,11 +4578,8 @@ def toggle_user_wishlist(user_id: int, product_num: int) -> dict:
 
 
 def merge_user_wishlist(user_id: int, product_nums) -> list[int]:
-    try:
-        uid = int(user_id)
-    except Exception:
-        return []
-    if uid <= 0:
+    uid = parse_strict_int64(user_id, min_val=1)
+    if uid is None:
         return []
     clean_nums = _normalize_wish_product_nums(product_nums)
     if clean_nums:
@@ -2436,11 +4602,8 @@ def merge_user_wishlist(user_id: int, product_nums) -> list[int]:
 
 
 def clear_user_wishlist(user_id: int) -> int:
-    try:
-        uid = int(user_id)
-    except Exception:
-        return 0
-    if uid <= 0:
+    uid = parse_strict_int64(user_id, min_val=1)
+    if uid is None:
         return 0
     with mall_db_lock:
         conn = get_connection()
@@ -2529,11 +4692,18 @@ def list_mall_hero_banners(active_only: bool = False) -> list:
 
 def save_mall_hero_banner(banner_data: Any) -> dict:
     """메인 히어로 배너를 신규 등록하거나 수정합니다."""
-    raw = banner_data if isinstance(banner_data, dict) else {}
-    try:
-        banner_id = int(raw.get("id") or 0)
-    except Exception:
+    if not isinstance(banner_data, dict):
+        return {"ok": False, "message": "잘못된 요청 형식입니다."}
+    raw = banner_data
+    raw_bid = raw.get("id")
+    if isinstance(raw_bid, (bool, float)):
+        return {"ok": False, "message": "올바른 배너 ID가 필요합니다."}
+    if raw_bid in (None, "", 0, "0"):
         banner_id = 0
+    else:
+        banner_id = parse_strict_int64(raw_bid, min_val=1)
+        if banner_id is None:
+            return {"ok": False, "message": "올바른 배너 ID가 필요합니다."}
 
     eyebrow = str(raw.get("eyebrow") or "").strip()[:60]
     title = str(raw.get("title") or "").strip()[:140]
@@ -2546,10 +4716,12 @@ def save_mall_hero_banner(banner_data: Any) -> dict:
         theme = "indigo"
 
     raw_sort = raw.get("sort_order")
-    try:
-        sort_order = int(str(raw_sort).strip()) if raw_sort is not None and str(raw_sort).strip() else 10
-    except Exception:
+    if raw_sort is None or str(raw_sort).strip() == "":
         sort_order = 10
+    else:
+        sort_order = parse_strict_int64(raw_sort, min_val=-1_000_000, max_val=1_000_000)
+        if sort_order is None:
+            return {"ok": False, "message": "정렬 순서는 올바른 정수로 입력해 주세요."}
 
     raw_active = raw.get("is_active")
     is_active = 0 if raw_active in (0, False, "0", "false", "False") else 1
@@ -2610,9 +4782,8 @@ def save_mall_hero_banner(banner_data: Any) -> dict:
 
 def toggle_mall_hero_banner(banner_id: int, is_active: Any) -> dict:
     """히어로 배너 활성/비활성 상태를 전환합니다."""
-    try:
-        bid = int(banner_id)
-    except Exception:
+    bid = parse_strict_int64(banner_id, min_val=1)
+    if bid is None:
         return {"ok": False, "message": "올바른 배너 ID가 필요합니다."}
     active_int = 0 if is_active in (0, False, "0", "false", "False") else 1
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2634,9 +4805,8 @@ def toggle_mall_hero_banner(banner_id: int, is_active: Any) -> dict:
 
 def delete_mall_hero_banner(banner_id: int) -> dict:
     """히어로 배너를 삭제합니다."""
-    try:
-        bid = int(banner_id)
-    except Exception:
+    bid = parse_strict_int64(banner_id, min_val=1)
+    if bid is None:
         return {"ok": False, "message": "올바른 배너 ID가 필요합니다."}
     with mall_db_lock:
         conn = get_connection()
@@ -2696,11 +4866,18 @@ def list_mall_suppliers(active_only: bool = False) -> list[dict]:
 
 def save_mall_supplier(data: Any) -> dict:
     """매입업체를 신규 등록하거나 수정합니다."""
-    raw = data if isinstance(data, dict) else {}
-    try:
-        sup_id = int(raw.get("id") or 0)
-    except Exception:
+    if not isinstance(data, dict):
+        return {"ok": False, "message": "잘못된 요청 형식입니다."}
+    raw = data
+    raw_sid = raw.get("id")
+    if isinstance(raw_sid, (bool, float)):
+        return {"ok": False, "message": "올바른 매입업체 ID가 필요합니다."}
+    if raw_sid in (None, "", 0, "0"):
         sup_id = 0
+    else:
+        sup_id = parse_strict_int64(raw_sid, min_val=1)
+        if sup_id is None:
+            return {"ok": False, "message": "올바른 매입업체 ID가 필요합니다."}
 
     name = str(raw.get("name") or "").strip()[:80]
     if not name:
@@ -2754,9 +4931,8 @@ def save_mall_supplier(data: Any) -> dict:
 
 def delete_mall_supplier(supplier_id: int) -> dict:
     """매입업체를 삭제합니다 (연결된 상품의 업체 참조는 해제하고 기존 주문 스냅샷은 보존)."""
-    try:
-        sid = int(supplier_id)
-    except Exception:
+    sid = parse_strict_int64(supplier_id, min_val=1)
+    if sid is None:
         return {"ok": False, "message": "올바른 매입업체 ID가 필요합니다."}
     with mall_db_lock:
         conn = get_connection()
@@ -2776,20 +4952,16 @@ def delete_mall_supplier(supplier_id: int) -> dict:
 
 def add_mall_supplier_settlement(data: Any) -> dict:
     """매입업체에 실제 지급(결제)한 금액을 기록합니다."""
-    raw = data if isinstance(data, dict) else {}
-    try:
-        sup_id = int(raw.get("supplier_id") or 0)
-    except Exception:
-        sup_id = 0
-    if sup_id <= 0:
+    if not isinstance(data, dict):
+        return {"ok": False, "message": "잘못된 요청 형식입니다."}
+    raw = data
+    sup_id = parse_strict_int64(raw.get("supplier_id"), min_val=1)
+    if sup_id is None:
         return {"ok": False, "message": "지급 대상 매입업체를 선택해 주세요."}
 
-    try:
-        amount = int(raw.get("amount") or 0)
-    except Exception:
-        amount = 0
-    if amount <= 0:
-        return {"ok": False, "message": "지급 금액은 1원 이상의 숫자로 입력해 주세요."}
+    amount = parse_strict_int64(raw.get("amount"), min_val=1)
+    if amount is None:
+        return {"ok": False, "message": "지급 금액은 1원 이상의 올바른 정수로 입력해 주세요."}
 
     paid_at = _normalize_iso_date(raw.get("paid_at")) or datetime.now().strftime("%Y-%m-%d")
     payment_method = str(raw.get("payment_method") or "계좌이체").strip()[:40] or "계좌이체"
@@ -2829,9 +5001,8 @@ def add_mall_supplier_settlement(data: Any) -> dict:
 
 def delete_mall_supplier_settlement(settlement_id: int) -> dict:
     """매입업체 지급(결제) 이력을 삭제합니다."""
-    try:
-        settle_id = int(settlement_id)
-    except Exception:
+    settle_id = parse_strict_int64(settlement_id, min_val=1)
+    if settle_id is None:
         return {"ok": False, "message": "올바른 지급 이력 ID가 필요합니다."}
     with mall_db_lock:
         conn = get_connection()
@@ -2859,7 +5030,7 @@ def get_mall_sales_summary(
     """
     s_date = _normalize_iso_date(start_date)
     e_date = _normalize_iso_date(end_date)
-    filter_sup_id = int(supplier_id) if supplier_id is not None and int(supplier_id) > 0 else None
+    filter_sup_id = parse_strict_int64(supplier_id, min_val=1) if supplier_id is not None and str(supplier_id).strip() != "" else None
 
     with mall_db_lock:
         conn = get_connection()

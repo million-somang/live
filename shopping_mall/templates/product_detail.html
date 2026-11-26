@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ product.name }} — 골라방 LIVE{% endblock %}
+{% block og_meta %}
+{% set og_title = product.name ~ ' — ' ~ (store_info.brand_name or '골라방 LIVE') %}
+{% set og_desc = (product.specs or product.detail_content or (product.name ~ ' 상품 상세 정보 및 구매 안내'))[:180] %}
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="{{ store_info.brand_name or '골라방 LIVE' }}">
+<meta property="og:title" content="{{ og_title }}">
+<meta property="og:description" content="{{ og_desc }}">
+<meta property="og:image" content="{{ mall_abs_url(product.image_url) }}">
+<meta property="og:url" content="{{ mall_abs_url('/product/' ~ product.num) }}">
+{% endblock %}
 
 {% block content %}
 <div class="ax-breadcrumb-bar">
@@ -57,12 +67,16 @@
                 <select id="pdOptionSelect" class="ax-select" style="font-weight:700;">
                     {% for opt in product.options %}
                     {% if opt.stock <= 0 %}
-                    <option value="{{ loop.index0 }}" disabled>{{ opt.color }} / {{ opt.size }} (잔여 {{ opt.stock }}개) - 품절</option>
+                    <option value="{{ loop.index0 }}" data-stock="{{ opt.stock }}">{{ opt.color }} / {{ opt.size }} (잔여 {{ opt.stock }}개) - 품절</option>
                     {% else %}
-                    <option value="{{ loop.index0 }}">{{ opt.color }} / {{ opt.size }} (잔여 {{ opt.stock }}개)</option>
+                    <option value="{{ loop.index0 }}" data-stock="{{ opt.stock }}">{{ opt.color }} / {{ opt.size }} (잔여 {{ opt.stock }}개)</option>
                     {% endif %}
                     {% endfor %}
                 </select>
+                <div id="pdRestockAlertBox" class="ax-restock-callout ax-is-hidden">
+                    <div class="ax-restock-callout-text">선택하신 옵션은 현재 <strong>품절</strong>입니다. 재입고 시 알림을 받아보세요.</div>
+                    <button type="button" id="pdRestockAlertBtn" class="ax-btn ax-btn-charcoal ax-btn-sm">재입고 알림 신청</button>
+                </div>
             </div>
 
             <div class="ax-field" style="margin-bottom:20px;">
@@ -108,6 +122,13 @@
             <span>상품 리뷰</span>
             <span class="ax-num">(<span id="pdAnchorReviewCount">{{ rev_count }}</span>)</span>
         </a>
+        <a href="#section-qna" class="ax-tab-btn" onclick="setPdAnchorTab(this)">
+            <span>상품 Q&amp;A</span>
+            <span class="ax-num">(<span id="pdAnchorQnaCount">{{ qna_count if qna_count is defined else 0 }}</span>)</span>
+        </a>
+        {% if related_products and related_products|length > 0 %}
+        <a href="#section-related" class="ax-tab-btn" onclick="setPdAnchorTab(this)">연관 상품</a>
+        {% endif %}
     </nav>
 </div>
 
@@ -256,6 +277,12 @@
             </div>
         </div>
         <textarea id="pdReviewContent" class="ax-input ax-review-textarea" minlength="2" maxlength="1000" placeholder="상품의 소재, 착용감, 배송 만족도 등에 대한 후기를 2자 이상 작성해 주세요." required></textarea>
+        <div class="ax-review-upload-row">
+            <label class="ax-btn ax-btn-secondary ax-btn-sm" for="pdReviewImageInput">사진 첨부 (최대 5장)</label>
+            <input type="file" id="pdReviewImageInput" class="ax-is-hidden" accept="image/png,image/jpeg,image/webp,image/gif" multiple>
+            <span id="pdReviewUploadStatus" class="ax-promo-feedback">PNG, JPG, WEBP, GIF (각 5MB 이하)</span>
+        </div>
+        <div id="pdReviewUploadPreview" class="ax-review-upload-preview ax-is-hidden"></div>
         <div class="ax-review-compose-foot">
             <span style="font-size:0.78rem; color:var(--ax-text-muted);">* 작성하신 리뷰는 상품 상세페이지에 즉시 반영됩니다.</span>
             <button type="submit" id="pdReviewSubmitBtn" class="ax-btn ax-btn-primary">
@@ -277,15 +304,44 @@
     <div id="pdReviewList" class="ax-review-list">
         {% if reviews and reviews|length > 0 %}
             {% for r in reviews %}
-            <article class="ax-review-card">
+            <article class="ax-review-card" data-review-id="{{ r.id }}">
                 <div class="ax-review-card-head">
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div class="ax-review-score-row">
                         <span class="ax-review-stars">{{ '★' * (r.rating|int) }}{{ '☆' * (5 - (r.rating|int)) }}</span>
-                        <strong style="font-size:0.875rem; color:var(--ax-text-primary);">{{ r.author }}</strong>
+                        <strong>{{ r.author }}</strong>
+                        {% if r.is_verified_buyer %}
+                        <span class="ax-badge ax-badge-success">구매 인증</span>
+                        {% endif %}
                     </div>
-                    <span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">{{ r.created_at }}</span>
+                    <span class="ax-num">{{ r.created_at }}</span>
                 </div>
                 <div class="ax-review-body">{{ r.content }}</div>
+                {% if r.images and r.images|length > 0 %}
+                <div class="ax-review-photos">
+                    {% for img_u in r.images %}
+                    <img src="{{ img_u }}" alt="리뷰 사진" class="ax-review-photo-thumb js-pd-review-photo" data-img-src="{{ img_u }}">
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if r.admin_reply %}
+                <div class="ax-review-reply-box">
+                    <div class="ax-review-reply-head">
+                        <span>판매자 답글</span>
+                        {% if r.admin_replied_at %}<span class="ax-num">{{ r.admin_replied_at }}</span>{% endif %}
+                    </div>
+                    <div class="ax-review-reply-body">{{ r.admin_reply }}</div>
+                </div>
+                {% endif %}
+                {% if r.can_edit or r.can_delete %}
+                <div class="ax-review-actions">
+                    {% if r.can_edit %}
+                    <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-pd-review-edit" data-review-id="{{ r.id }}">수정</button>
+                    {% endif %}
+                    {% if r.can_delete %}
+                    <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-pd-review-delete" data-review-id="{{ r.id }}">삭제</button>
+                    {% endif %}
+                </div>
+                {% endif %}
             </article>
             {% endfor %}
         {% else %}
@@ -293,6 +349,185 @@
         {% endif %}
     </div>
 </section>
+
+<!-- 3-2. 상품 Q&A 섹션 (비밀글 지원) -->
+<section id="section-qna" class="ax-card ax-card-pad ax-detail-section-card">
+    <div class="ax-section-head">
+        <div>
+            <span class="ax-badge-eyebrow">PRODUCT Q&amp;A</span>
+            <h2 class="ax-section-title">상품 Q&amp;A (<span id="pdSectionQnaCount" class="ax-num">{{ qna_count if qna_count is defined else 0 }}</span>)</h2>
+        </div>
+        <span class="ax-badge ax-badge-indigo">비밀글 지원</span>
+    </div>
+
+    {% if current_mall_user %}
+    <form id="pdQnaForm" class="ax-qna-compose">
+        <div class="ax-field">
+            <label class="ax-label" for="pdQnaTitle">문의 제목 (선택)</label>
+            <input type="text" id="pdQnaTitle" class="ax-input" maxlength="120" placeholder="예: 사이즈/소재/재입고 문의">
+        </div>
+        <div class="ax-field">
+            <label class="ax-label" for="pdQnaContent">문의 내용 *</label>
+            <textarea id="pdQnaContent" class="ax-input ax-review-textarea" minlength="2" maxlength="2000" required placeholder="상품에 대해 궁금한 점을 2자 이상 입력해 주세요."></textarea>
+        </div>
+        <div class="ax-qna-compose-foot">
+            <label class="ax-qna-secret-label" for="pdQnaSecret">
+                <input type="checkbox" id="pdQnaSecret" name="is_secret" value="1">
+                <span>비밀글로 등록 (작성자와 관리자만 열람)</span>
+            </label>
+            <button type="submit" id="pdQnaSubmitBtn" class="ax-btn ax-btn-primary">Q&amp;A 등록하기</button>
+        </div>
+    </form>
+    {% else %}
+    <div class="ax-review-login-gate">
+        <div>
+            <div class="ax-section-title">로그인한 회원만 상품 문의를 등록할 수 있습니다</div>
+            <p class="ax-page-sub">비밀글을 포함한 상품 Q&amp;A 작성 및 본인 글 확인은 로그인 후 이용하실 수 있습니다.</p>
+        </div>
+        <a href="/auth/login?next=/product/{{ product.num }}" class="ax-btn ax-btn-primary ax-btn-sm">로그인하고 Q&amp;A 작성하기</a>
+    </div>
+    {% endif %}
+
+    <div id="pdQnaList" class="ax-qna-list">
+        {% if qna_items and qna_items|length > 0 %}
+            {% for q in qna_items %}
+            <article class="ax-qna-card">
+                <div class="ax-qna-card-head">
+                    <div class="ax-order-complete-code-row">
+                        {% if q.is_secret %}
+                        <span class="ax-badge ax-badge-warning">비밀글</span>
+                        {% endif %}
+                        <span class="ax-badge {% if q.is_answered %}ax-badge-success{% else %}ax-badge-neutral{% endif %}">{% if q.is_answered %}답변완료{% else %}답변대기{% endif %}</span>
+                        <strong>{{ q.title }}</strong>
+                        <span>{{ q.author_name }}</span>
+                    </div>
+                    <span class="ax-num">{{ q.created_at }}</span>
+                </div>
+                <div class="ax-qna-body {% if q.is_masked %}is-masked{% endif %}">{{ q.content }}</div>
+                {% if q.answer_content %}
+                <div class="ax-qna-answer-box">
+                    <div class="ax-qna-answer-head">
+                        <strong>판매자 답변 ({{ q.answered_by or '관리자' }})</strong>
+                        <span class="ax-num">{{ q.answered_at }}</span>
+                    </div>
+                    <div class="ax-qna-body {% if q.is_masked %}is-masked{% endif %}">{{ q.answer_content }}</div>
+                </div>
+                {% endif %}
+            </article>
+            {% endfor %}
+        {% else %}
+            <div class="ax-detail-empty-box">아직 등록된 상품 Q&amp;A가 없습니다. 첫 번째 문의를 남겨보세요.</div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- 4. 연관 상품 섹션 (동일 카테고리 우선 최대 4개, 일반 판매가 전용) -->
+{% if related_products and related_products|length > 0 %}
+<section id="section-related" class="ax-card ax-card-pad ax-detail-section-card">
+    <div class="ax-section-head">
+        <div>
+            <span class="ax-badge-eyebrow">RELATED PRODUCTS</span>
+            <h2 class="ax-section-title">함께 보기 좋은 연관 상품</h2>
+        </div>
+        <span class="ax-badge ax-badge-neutral ax-num">{{ related_products|length }}개</span>
+    </div>
+
+    <div class="ax-product-grid">
+        {% for rp in related_products %}
+        {% set rp_cat = category_labels.get(rp.category, rp.category) if category_labels is defined else rp.category %}
+        {% set wish_active_cls = 'is-active' if rp.num in (user_wishlist_nums or []) else '' %}
+        <article class="ax-kpi-card ax-product-card">
+            <div class="ax-product-thumb-wrap">
+                <a href="/product/{{ rp.num }}" class="ax-product-thumb">
+                    {% if rp.image_url %}
+                    <img src="{{ rp.image_url }}" alt="{{ rp.name }}" loading="lazy">
+                    {% else %}
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    {% endif %}
+                </a>
+                <button type="button"
+                        class="ax-wish-btn {{ wish_active_cls }}"
+                        data-wish-num="{{ rp.num }}"
+                        onclick="toggleMallWishlist(Number(this.dataset.wishNum), event)"
+                        aria-label="{{ rp.name }} 찜하기"
+                        aria-pressed="false"
+                        title="상품 찜하기">
+                    <svg class="ax-icon-sm ax-wish-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                </button>
+            </div>
+            <div class="ax-product-body">
+                <div data-csr-stock-num="{{ rp.num }}" data-csr-cat="{{ rp_cat }}" class="ax-product-meta ax-num">
+                    {{ rp_cat }} · 잔여 {{ rp.total_stock }}개
+                </div>
+                <a href="/product/{{ rp.num }}" class="ax-product-title">
+                    {{ rp.name }}
+                </a>
+                <div style="margin-top:auto;">
+                    {% set rp_price = rp.price %}
+                    {% set rp_disc = rp.discount_rate %}
+                    <div class="ax-price-row">
+                        {% if rp_disc > 0 %}
+                        <span class="ax-discount-pct ax-num">{{ rp_disc }}%</span>
+                        {% endif %}
+                        <span class="ax-price-main ax-num">{{ "{:,}".format(rp_price) }}원</span>
+                        {% if rp.consumer_price > rp_price %}
+                        <span class="ax-price-strike ax-num">{{ "{:,}".format(rp.consumer_price) }}원</span>
+                        {% endif %}
+                    </div>
+                    <div class="ax-product-actions">
+                        <a href="/product/{{ rp.num }}" class="ax-btn ax-btn-secondary ax-btn-sm" style="flex:0.8;">
+                            상세
+                        </a>
+                        <button type="button" data-product-num="{{ rp.num }}" onclick="relatedCartByNum(Number(this.dataset.productNum))" class="ax-btn ax-btn-outline-charcoal ax-btn-sm" style="flex:0.95;">
+                            담기
+                        </button>
+                        <button type="button" data-product-num="{{ rp.num }}" onclick="relatedBuyByNum(Number(this.dataset.productNum))" class="ax-btn ax-btn-primary ax-btn-sm" style="flex:1.25;">
+                            바로구매
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<!-- 재입고 알림 신청 모달 -->
+<div class="ax-dialog-backdrop" id="pdRestockModal" role="dialog" aria-modal="true" aria-labelledby="pdRestockModalTitle">
+    <div class="ax-dialog-card">
+        <div class="ax-dialog-header">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <h3 id="pdRestockModalTitle" style="font-size:1.08rem; font-weight:800; color:var(--ax-text-primary);">재입고 알림 신청</h3>
+                <span class="ax-badge ax-badge-indigo">입고 즉시 알림</span>
+            </div>
+            <button type="button" id="btnClosePdRestockModal" class="ax-icon-btn" aria-label="재입고 알림 모달 닫기">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+        <form id="pdRestockForm">
+            <div class="ax-surface-muted ax-mb-12" style="font-size:0.86rem;">
+                <div><strong>상품</strong>: {{ product.name }}</div>
+                <div style="margin-top:4px;"><strong>선택 옵션</strong>: <span id="pdRestockOptionLabel">-</span></div>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="pdRestockContactType">수신 채널 *</label>
+                <select id="pdRestockContactType" class="ax-select">
+                    <option value="EMAIL" selected>이메일 (EMAIL)</option>
+                    <option value="SMS">휴대폰 문자 (SMS)</option>
+                </select>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="pdRestockContactValue">연락처 (이메일 또는 휴대폰 번호) *</label>
+                <input type="text" id="pdRestockContactValue" class="ax-input" required maxlength="160" placeholder="example@email.com 또는 010-1234-5678">
+            </div>
+            <div class="ax-dialog-actions">
+                <button type="button" id="btnCancelPdRestock" class="ax-btn ax-btn-secondary">취소</button>
+                <button type="submit" id="btnPdRestockSubmit" class="ax-btn ax-btn-primary">알림 신청하기</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- 상세 이미지 확대 보기 모달 -->
 <div class="ax-dialog-backdrop" id="pdImageLightbox" role="dialog" aria-modal="true" aria-labelledby="pdLightboxTitle" onpointerdown="handleDialogBackdropPointerDown(event, this)" onpointerup="handleDialogBackdropPointerUp(event, this)" onclick="handleDialogBackdropClick(event, this, closePdImageLightbox)">
@@ -327,11 +562,67 @@
 
 {% block extra_scripts %}
 <div id="mallProductDetailBootstrap" hidden
-     data-product="{{ product | tojson | forceescape }}"></div>
+     data-product="{{ product | tojson | forceescape }}"
+     data-reviews="{{ (reviews or []) | tojson | forceescape }}"
+     data-current-user-id="{{ (current_mall_user.id if current_mall_user else 0) | tojson | forceescape }}"
+     data-current-user-role="{{ (current_mall_user.role if current_mall_user else '') | tojson | forceescape }}"
+     data-current-user-email="{{ (current_mall_user.email if current_mall_user else '') | tojson | forceescape }}"
+     data-current-user-phone="{{ (current_mall_user.phone if current_mall_user else '') | tojson | forceescape }}"></div>
+<div id="mallRelatedProductsBootstrap" hidden
+     data-products="{{ (related_products or []) | tojson | forceescape }}"></div>
 <script>
     const __pdBootEl = document.getElementById('mallProductDetailBootstrap');
     const pdProduct = __pdBootEl ? JSON.parse(__pdBootEl.dataset.product || '{}') : {};
+    let pdReviewsCache = __pdBootEl ? JSON.parse(__pdBootEl.dataset.reviews || '[]') : [];
+    const pdCurrentUserId = __pdBootEl ? Number(JSON.parse(__pdBootEl.dataset.currentUserId || '0')) : 0;
+    const pdCurrentUserRole = __pdBootEl ? String(JSON.parse(__pdBootEl.dataset.currentUserRole || '""') || '').toUpperCase() : '';
+    const pdCurrentUserEmail = __pdBootEl ? String(JSON.parse(__pdBootEl.dataset.currentUserEmail || '""') || '') : '';
+    const pdCurrentUserPhone = __pdBootEl ? String(JSON.parse(__pdBootEl.dataset.currentUserPhone || '""') || '') : '';
+    const __rpBootEl = document.getElementById('mallRelatedProductsBootstrap');
+    const __RELATED_PRODUCTS__ = __rpBootEl ? JSON.parse(__rpBootEl.dataset.products || '[]') : [];
+    const __RELATED_PRODUCTS_MAP__ = {};
+    (__RELATED_PRODUCTS__ || []).forEach(p => { __RELATED_PRODUCTS_MAP__[Number(p.num)] = p; });
     let pdSelectedRating = 5;
+    let pdUploadedReviewImages = [];
+    let pdReviewUploadPromise = null;
+
+    function relatedCartByNum(num) {
+        const prod = __RELATED_PRODUCTS_MAP__[Number(num)];
+        if (!prod) return;
+        const firstOpt = (Array.isArray(prod.options) && prod.options.length > 0)
+            ? prod.options.find(o => Number(o.stock) > 0) || prod.options[0]
+            : { color: '기본', size: 'FREE', stock: 1 };
+        addItemToMallCart({
+            num: prod.num,
+            name: prod.name,
+            price: Number(prod.price || 0),
+            consumer_price: prod.consumer_price,
+            image_url: prod.image_url,
+            color: firstOpt.color,
+            size: firstOpt.size,
+            quantity: 1
+        });
+    }
+
+    function relatedBuyByNum(num) {
+        const prod = __RELATED_PRODUCTS_MAP__[Number(num)];
+        if (!prod) return;
+        const opts = (Array.isArray(prod.options) && prod.options.length > 0)
+            ? prod.options
+            : [{ color: '기본', size: 'FREE', stock: 10 }];
+        const firstOpt = opts.find(o => Number(o.stock) > 0) || opts[0];
+        openInstantBuyModal({
+            num: prod.num,
+            name: prod.name,
+            price: Number(prod.price || 0),
+            consumer_price: prod.consumer_price,
+            image_url: prod.image_url,
+            color: firstOpt.color,
+            size: firstOpt.size,
+            quantity: 1,
+            options: opts
+        }, 'PRODUCT_DETAIL');
+    }
 
     function getPdSelection() {
         const opts = (pdProduct.options && pdProduct.options.length > 0)
@@ -350,9 +641,83 @@
             image_url: pdProduct.image_url,
             color: opt.color,
             size: opt.size,
+            stock: Math.max(0, Number(opt.stock || 0)),
             quantity: qty,
             options: opts
         };
+    }
+
+    function syncPdOptionStockState() {
+        const sel = getPdSelection();
+        const box = document.getElementById('pdRestockAlertBox');
+        if (box) {
+            box.classList.toggle('ax-is-hidden', Number(sel.stock || 0) > 0);
+        }
+        updatePdMobilePrice();
+    }
+
+    function openPdRestockModal() {
+        const modal = document.getElementById('pdRestockModal');
+        const sel = getPdSelection();
+        const lbl = document.getElementById('pdRestockOptionLabel');
+        const typeEl = document.getElementById('pdRestockContactType');
+        const valEl = document.getElementById('pdRestockContactValue');
+        if (lbl) lbl.textContent = `${sel.color} / ${sel.size}`;
+        if (typeEl && valEl && !valEl.value.trim()) {
+            if (pdCurrentUserEmail) {
+                typeEl.value = 'EMAIL';
+                valEl.value = pdCurrentUserEmail;
+            } else if (pdCurrentUserPhone) {
+                typeEl.value = 'SMS';
+                valEl.value = pdCurrentUserPhone;
+            }
+        }
+        if (modal) modal.style.display = 'flex';
+    }
+
+    function closePdRestockModal() {
+        const modal = document.getElementById('pdRestockModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    async function submitPdRestockAlert(ev) {
+        ev.preventDefault();
+        const sel = getPdSelection();
+        const typeEl = document.getElementById('pdRestockContactType');
+        const valEl = document.getElementById('pdRestockContactValue');
+        const btn = document.getElementById('btnPdRestockSubmit');
+        const contact_type = (typeEl?.value || 'EMAIL').trim().toUpperCase();
+        const contact_value = (valEl?.value || '').trim();
+        if (!contact_value) {
+            alert('이메일 또는 휴대폰 번호를 입력해 주세요.');
+            if (valEl) valEl.focus();
+            return;
+        }
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/restock-alerts/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_num: pdProduct.num,
+                    color: sel.color,
+                    size: sel.size,
+                    contact_type,
+                    contact_value
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '재입고 알림 신청에 실패했습니다.');
+                return;
+            }
+            closePdRestockModal();
+            showMallToast(data.message || '재입고 알림 신청이 완료되었습니다.');
+        } catch (err) {
+            alert('재입고 알림 신청 중 오류가 발생했습니다: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
     }
 
     function updatePdMobilePrice() {
@@ -362,11 +727,21 @@
     }
 
     function pdAddToCart() {
-        addItemToMallCart(getPdSelection());
+        const sel = getPdSelection();
+        if (Number(sel.stock || 0) <= 0) {
+            showMallToast('선택하신 옵션은 현재 품절입니다. 재입고 알림을 신청해 주세요.');
+            return;
+        }
+        addItemToMallCart(sel);
     }
 
     function pdInstantBuy() {
-        openInstantBuyModal(getPdSelection(), 'PRODUCT_DETAIL');
+        const sel = getPdSelection();
+        if (Number(sel.stock || 0) <= 0) {
+            showMallToast('선택하신 옵션은 현재 품절입니다. 재입고 알림을 신청해 주세요.');
+            return;
+        }
+        openInstantBuyModal(sel, 'PRODUCT_DETAIL');
     }
 
     function setPdAnchorTab(btnEl) {
@@ -379,8 +754,9 @@
         const lb = document.getElementById('pdImageLightbox');
         const img = document.getElementById('pdLightboxImg');
         const title = document.getElementById('pdLightboxTitle');
-        if (!lb || !img || !src) return;
-        img.src = src;
+        const safeSrc = window.mallSafeImageUrl ? window.mallSafeImageUrl(src) : src;
+        if (!lb || !img || !safeSrc) return;
+        img.src = safeSrc;
         if (title) title.innerText = `${pdProduct.name || '상품'} — 상세 이미지 ${idxLabel || ''}`.trim();
         lb.classList.add('is-open');
     }
@@ -399,9 +775,61 @@
         });
     }
 
+    function renderPdReviewUploadPreview() {
+        const box = document.getElementById('pdReviewUploadPreview');
+        const statusEl = document.getElementById('pdReviewUploadStatus');
+        if (statusEl && !pdReviewUploadPromise) {
+            statusEl.textContent = pdUploadedReviewImages.length > 0
+                ? `사진 ${pdUploadedReviewImages.length}장 첨부됨 (최대 5장)`
+                : 'PNG, JPG, WEBP, GIF (각 5MB 이하)';
+        }
+        if (!box) return;
+        if (!Array.isArray(pdUploadedReviewImages) || pdUploadedReviewImages.length === 0) {
+            box.innerHTML = '';
+            box.classList.add('ax-is-hidden');
+            return;
+        }
+        const esc = window.mallEscapeHtml;
+        box.classList.remove('ax-is-hidden');
+        box.innerHTML = pdUploadedReviewImages.map((u, idx) => {
+            const safeU = window.mallSafeImageUrl(u);
+            return `
+                <div class="ax-review-upload-chip">
+                    <img src="${esc(safeU)}" alt="첨부 사진 미리보기">
+                    <button type="button" class="ax-review-upload-remove js-pd-upload-remove" data-upload-idx="${idx}" aria-label="첨부 사진 삭제">×</button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function uploadPdReviewFiles(filesList) {
+        const files = Array.from(filesList || []).slice(0, Math.max(0, 5 - pdUploadedReviewImages.length));
+        if (files.length === 0) return;
+        const statusEl = document.getElementById('pdReviewUploadStatus');
+        if (statusEl) statusEl.textContent = '사진 업로드 중...';
+        for (const f of files) {
+            const fd = new FormData();
+            fd.append('image', f);
+            const res = await fetch('/api/reviews/upload-image', {
+                method: 'POST',
+                body: fd
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !data.image_url) {
+                throw new Error((data && data.message) || '사진 업로드에 실패했습니다.');
+            }
+            if (pdUploadedReviewImages.length < 5 && !pdUploadedReviewImages.includes(data.image_url)) {
+                pdUploadedReviewImages.push(data.image_url);
+            }
+        }
+        if (statusEl) statusEl.textContent = `사진 ${pdUploadedReviewImages.length}장 첨부 완료`;
+        renderPdReviewUploadPreview();
+    }
+
     function renderPdReviewState(reviews, summary) {
         const listEl = document.getElementById('pdReviewList');
         const safeReviews = Array.isArray(reviews) ? reviews : [];
+        pdReviewsCache = safeReviews;
         const cnt = Number(summary && summary.count !== undefined ? summary.count : safeReviews.length);
         const avg = Number(summary && summary.avg_rating !== undefined ? summary.avg_rating : 0);
         const avgText = avg.toFixed(1);
@@ -429,28 +857,131 @@
             listEl.innerHTML = '<div class="ax-detail-empty-box">아직 등록된 상품 리뷰가 없습니다. 첫 번째 리뷰를 남겨보세요.</div>';
             return;
         }
+        const esc = window.mallEscapeHtml;
         listEl.innerHTML = safeReviews.map(r => {
+            const rid = Number(r.id);
             const score = Math.max(1, Math.min(5, Number(r.rating || 5)));
             const rStars = `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`;
+            const verifiedBadge = r.is_verified_buyer
+                ? '<span class="ax-badge ax-badge-success">구매 인증</span>'
+                : '';
+            const imgs = Array.isArray(r.images) && r.images.length > 0
+                ? r.images
+                : (r.image_url ? [r.image_url] : []);
+            const photosHtml = imgs.length > 0
+                ? `<div class="ax-review-photos">${imgs.map(u => {
+                    const safeU = window.mallSafeImageUrl(u);
+                    return safeU ? `<img src="${esc(safeU)}" alt="리뷰 사진" class="ax-review-photo-thumb js-pd-review-photo" data-img-src="${esc(safeU)}">` : '';
+                }).join('')}</div>`
+                : '';
+            const replyHtml = r.admin_reply
+                ? `<div class="ax-review-reply-box"><div class="ax-review-reply-head"><span>판매자 답글</span>${r.admin_replied_at ? `<span class="ax-num">${esc(r.admin_replied_at)}</span>` : ''}</div><div class="ax-review-reply-body">${esc(r.admin_reply)}</div></div>`
+                : '';
+            const isOwner = Boolean(r.is_owner || (pdCurrentUserId && r.user_id && Number(r.user_id) === pdCurrentUserId));
+            const canEdit = Boolean(r.can_edit !== undefined ? r.can_edit : (isOwner || pdCurrentUserRole === 'ADMIN'));
+            const canDel = Boolean(r.can_delete !== undefined ? r.can_delete : (isOwner || pdCurrentUserRole === 'ADMIN'));
+            const actionsHtml = (canEdit || canDel)
+                ? `<div class="ax-review-actions">${canEdit ? `<button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-pd-review-edit" data-review-id="${rid}">수정</button>` : ''}${canDel ? `<button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-pd-review-delete" data-review-id="${rid}">삭제</button>` : ''}</div>`
+                : '';
             return `
-                <article class="ax-review-card">
+                <article class="ax-review-card" data-review-id="${rid}">
                     <div class="ax-review-card-head">
-                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div class="ax-review-score-row">
                             <span class="ax-review-stars">${rStars}</span>
-                            <strong style="font-size:0.875rem; color:var(--ax-text-primary);">${window.mallEscapeHtml(r.author)}</strong>
+                            <strong>${esc(r.author)}</strong>
+                            ${verifiedBadge}
                         </div>
-                        <span class="ax-num" style="font-size:0.75rem; color:var(--ax-text-muted);">${window.mallEscapeHtml(r.created_at || '')}</span>
+                        <span class="ax-num">${esc(r.created_at || '')}</span>
                     </div>
-                    <div class="ax-review-body">${window.mallEscapeHtml(r.content)}</div>
+                    <div class="ax-review-body">${esc(r.content)}</div>
+                    ${photosHtml}
+                    ${replyHtml}
+                    ${actionsHtml}
                 </article>
             `;
         }).join('');
+    }
+
+    function openPdReviewEditBox(reviewId) {
+        const rev = (pdReviewsCache || []).find(x => Number(x.id) === Number(reviewId));
+        const card = document.querySelector(`#pdReviewList .ax-review-card[data-review-id="${Number(reviewId)}"]`);
+        if (!rev || !card) return;
+        const existingBox = card.querySelector('.ax-review-edit-box');
+        if (existingBox) {
+            existingBox.remove();
+            return;
+        }
+        const esc = window.mallEscapeHtml;
+        const curRate = Math.max(1, Math.min(5, Number(rev.rating || 5)));
+        const box = document.createElement('div');
+        box.className = 'ax-review-edit-box';
+        box.innerHTML = `
+            <div class="ax-form-row-2">
+                <div class="ax-field">
+                    <label class="ax-label">별점 수정</label>
+                    <select class="ax-select ax-select-compact js-pd-edit-rating">
+                        <option value="5" ${curRate === 5 ? 'selected' : ''}>★★★★★ (5점)</option>
+                        <option value="4" ${curRate === 4 ? 'selected' : ''}>★★★★ (4점)</option>
+                        <option value="3" ${curRate === 3 ? 'selected' : ''}>★★★ (3점)</option>
+                        <option value="2" ${curRate === 2 ? 'selected' : ''}>★★ (2점)</option>
+                        <option value="1" ${curRate === 1 ? 'selected' : ''}>★ (1점)</option>
+                    </select>
+                </div>
+            </div>
+            <textarea class="ax-input ax-review-textarea js-pd-edit-content" minlength="2" maxlength="1000">${esc(rev.content || '')}</textarea>
+            <div class="ax-review-actions">
+                <button type="button" class="ax-btn ax-btn-primary ax-btn-sm js-pd-review-save" data-review-id="${Number(rev.id)}">수정 저장</button>
+                <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-pd-review-cancel">취소</button>
+            </div>
+        `;
+        card.appendChild(box);
+    }
+
+    async function savePdReviewEdit(reviewId, card) {
+        const ratingEl = card.querySelector('.js-pd-edit-rating');
+        const contentEl = card.querySelector('.js-pd-edit-content');
+        const content = contentEl ? contentEl.value.trim() : '';
+        if (content.length < 2) {
+            alert('리뷰 내용을 2자 이상 입력해 주세요.');
+            if (contentEl) contentEl.focus();
+            return;
+        }
+        const rating = Number(ratingEl ? ratingEl.value : 5);
+        const res = await fetch('/api/reviews/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ review_id: Number(reviewId), rating, content })
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+            alert((data && data.message) || '리뷰 수정에 실패했습니다.');
+            return;
+        }
+        renderPdReviewState(data.reviews || [], data.summary || null);
+        showMallToast('리뷰가 수정되었습니다.');
+    }
+
+    async function deletePdReview(reviewId) {
+        if (!confirm('작성하신 리뷰를 삭제하시겠습니까?')) return;
+        const res = await fetch('/api/reviews/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ review_id: Number(reviewId) })
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+            alert((data && data.message) || '리뷰 삭제에 실패했습니다.');
+            return;
+        }
+        renderPdReviewState(data.reviews || [], data.summary || null);
+        showMallToast('리뷰가 삭제되었습니다.');
     }
 
     async function submitPdReview(e) {
         e.preventDefault();
         const contentEl = document.getElementById('pdReviewContent');
         const submitBtn = document.getElementById('pdReviewSubmitBtn');
+        const fileInput = document.getElementById('pdReviewImageInput');
         const content = contentEl ? contentEl.value.trim() : '';
         if (content.length < 2) {
             alert('리뷰 내용을 2자 이상 입력해 주세요.');
@@ -459,13 +990,21 @@
         }
         if (submitBtn) submitBtn.disabled = true;
         try {
+            if (pdReviewUploadPromise) {
+                await pdReviewUploadPromise;
+            } else if (fileInput && fileInput.files && fileInput.files.length > 0 && pdUploadedReviewImages.length === 0) {
+                await uploadPdReviewFiles(fileInput.files);
+            }
+            const imgs = pdUploadedReviewImages.slice(0, 5);
             const res = await fetch('/api/reviews/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     product_num: pdProduct.num,
-                    rating: pdSelectedRating,
-                    content: content
+                    rating: Number(pdSelectedRating),
+                    content: content,
+                    images: imgs,
+                    image_url: imgs[0] || ''
                 })
             });
             const data = await res.json();
@@ -479,23 +1018,183 @@
                 return;
             }
             if (contentEl) contentEl.value = '';
+            if (fileInput) fileInput.value = '';
+            pdUploadedReviewImages = [];
+            pdReviewUploadPromise = null;
+            renderPdReviewUploadPreview();
             selectPdReviewRating(5);
             renderPdReviewState(data.reviews || [], data.summary || null);
             showMallToast('상품 리뷰가 등록되었습니다.');
         } catch (err) {
-            alert('리뷰 등록 중 네트워크 오류가 발생했습니다: ' + err.message);
+            alert('리뷰 등록 중 오류가 발생했습니다: ' + err.message);
         } finally {
             if (submitBtn) submitBtn.disabled = false;
+        }
+    }
+
+    function renderPdQnaList(items) {
+        const safe = Array.isArray(items) ? items : [];
+        const listEl = document.getElementById('pdQnaList');
+        const anchorCnt = document.getElementById('pdAnchorQnaCount');
+        const secCnt = document.getElementById('pdSectionQnaCount');
+        if (anchorCnt) anchorCnt.textContent = String(safe.length);
+        if (secCnt) secCnt.textContent = String(safe.length);
+        if (!listEl) return;
+        if (safe.length === 0) {
+            listEl.innerHTML = '<div class="ax-detail-empty-box">아직 등록된 상품 Q&amp;A가 없습니다. 첫 번째 문의를 남겨보세요.</div>';
+            return;
+        }
+        const esc = window.mallEscapeHtml;
+        listEl.innerHTML = safe.map((q) => {
+            const secretBadge = q.is_secret ? '<span class="ax-badge ax-badge-warning">비밀글</span>' : '';
+            const statusBadge = q.is_answered
+                ? '<span class="ax-badge ax-badge-success">답변완료</span>'
+                : '<span class="ax-badge ax-badge-neutral">답변대기</span>';
+            const maskedCls = q.is_masked ? ' is-masked' : '';
+            const ansBox = q.answer_content
+                ? `<div class="ax-qna-answer-box"><div class="ax-qna-answer-head"><strong>판매자 답변 (${esc(q.answered_by || '관리자')})</strong><span class="ax-num">${esc(q.answered_at || '')}</span></div><div class="ax-qna-body${maskedCls}">${esc(q.answer_content)}</div></div>`
+                : '';
+            return `
+                <article class="ax-qna-card">
+                    <div class="ax-qna-card-head">
+                        <div class="ax-order-complete-code-row">
+                            ${secretBadge}
+                            ${statusBadge}
+                            <strong>${esc(q.title || '')}</strong>
+                            <span>${esc(q.author_name || '회원')}</span>
+                        </div>
+                        <span class="ax-num">${esc(q.created_at || '')}</span>
+                    </div>
+                    <div class="ax-qna-body${maskedCls}">${esc(q.content || '')}</div>
+                    ${ansBox}
+                </article>
+            `;
+        }).join('');
+    }
+
+    async function submitPdQna(ev) {
+        ev.preventDefault();
+        const titleEl = document.getElementById('pdQnaTitle');
+        const contentEl = document.getElementById('pdQnaContent');
+        const secretEl = document.getElementById('pdQnaSecret');
+        const btn = document.getElementById('pdQnaSubmitBtn');
+        const title = titleEl ? titleEl.value.trim() : '';
+        const content = contentEl ? contentEl.value.trim() : '';
+        const is_secret = Boolean(secretEl && secretEl.checked);
+        if (content.length < 2) {
+            alert('문의 내용을 2자 이상 입력해 주세요.');
+            if (contentEl) contentEl.focus();
+            return;
+        }
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch('/api/products/' + Number(pdProduct.num) + '/qna', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, content, is_secret })
+            });
+            const data = await res.json();
+            if (res.status === 401) {
+                alert(data.message || '로그인한 회원만 상품 문의를 작성할 수 있습니다.');
+                window.location.href = '/auth/login?next=/product/' + Number(pdProduct.num);
+                return;
+            }
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || 'Q&A 등록에 실패했습니다.');
+                return;
+            }
+            if (titleEl) titleEl.value = '';
+            if (contentEl) contentEl.value = '';
+            if (secretEl) secretEl.checked = false;
+            renderPdQnaList(data.items || data.qnas || []);
+            showMallToast('상품 Q&A가 등록되었습니다.');
+        } catch (err) {
+            alert('Q&A 등록 중 오류가 발생했습니다: ' + err.message);
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
 
     document.addEventListener('keydown', (ev) => {
         if (ev.key === 'Escape') {
             closePdImageLightbox();
+            closePdRestockModal();
         }
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+        if (typeof window.recordMallRecentProduct === 'function') {
+            window.recordMallRecentProduct(pdProduct);
+        }
+        const optSel = document.getElementById('pdOptionSelect');
+        if (optSel) {
+            optSel.addEventListener('change', syncPdOptionStockState);
+        }
+        syncPdOptionStockState();
+        document.getElementById('pdRestockAlertBtn')?.addEventListener('click', openPdRestockModal);
+        document.getElementById('btnClosePdRestockModal')?.addEventListener('click', closePdRestockModal);
+        document.getElementById('btnCancelPdRestock')?.addEventListener('click', closePdRestockModal);
+        document.getElementById('pdRestockForm')?.addEventListener('submit', submitPdRestockAlert);
+        const restockModal = document.getElementById('pdRestockModal');
+        if (restockModal) {
+            if (restockModal.parentElement !== document.body) {
+                document.body.appendChild(restockModal);
+            }
+            restockModal.addEventListener('pointerdown', (ev) => handleDialogBackdropPointerDown(ev, restockModal));
+            restockModal.addEventListener('pointerup', (ev) => handleDialogBackdropPointerUp(ev, restockModal));
+            restockModal.addEventListener('click', (ev) => handleDialogBackdropClick(ev, restockModal, closePdRestockModal));
+        }
+        document.getElementById('pdQnaForm')?.addEventListener('submit', submitPdQna);
+        document.getElementById('pdReviewImageInput')?.addEventListener('change', async (ev) => {
+            const files = ev.target && ev.target.files ? ev.target.files : [];
+            if (!files || files.length === 0) return;
+            const statusEl = document.getElementById('pdReviewUploadStatus');
+            const p = uploadPdReviewFiles(files)
+                .catch((err) => {
+                    if (statusEl) statusEl.textContent = err.message || '사진 업로드 실패';
+                    showMallToast(err.message || '사진 업로드에 실패했습니다.');
+                })
+                .finally(() => {
+                    if (pdReviewUploadPromise === p) pdReviewUploadPromise = null;
+                });
+            pdReviewUploadPromise = p;
+        });
+        document.getElementById('pdReviewUploadPreview')?.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('.js-pd-upload-remove');
+            if (!btn) return;
+            const idx = Number(btn.dataset.uploadIdx);
+            if (!Number.isNaN(idx) && idx >= 0 && idx < pdUploadedReviewImages.length) {
+                pdUploadedReviewImages.splice(idx, 1);
+                renderPdReviewUploadPreview();
+            }
+        });
+        document.getElementById('pdReviewList')?.addEventListener('click', (ev) => {
+            const photoEl = ev.target.closest('.js-pd-review-photo');
+            if (photoEl && photoEl.dataset.imgSrc) {
+                openPdImageLightbox(photoEl.dataset.imgSrc, '리뷰 사진');
+                return;
+            }
+            const editBtn = ev.target.closest('.js-pd-review-edit');
+            if (editBtn) {
+                openPdReviewEditBox(Number(editBtn.dataset.reviewId));
+                return;
+            }
+            const cancelBtn = ev.target.closest('.js-pd-review-cancel');
+            if (cancelBtn) {
+                cancelBtn.closest('.ax-review-edit-box')?.remove();
+                return;
+            }
+            const saveBtn = ev.target.closest('.js-pd-review-save');
+            if (saveBtn) {
+                const card = saveBtn.closest('.ax-review-card');
+                if (card) savePdReviewEdit(Number(saveBtn.dataset.reviewId), card);
+                return;
+            }
+            const delBtn = ev.target.closest('.js-pd-review-delete');
+            if (delBtn) {
+                deletePdReview(Number(delBtn.dataset.reviewId));
+            }
+        });
         const lb = document.getElementById('pdImageLightbox');
         if (lb && lb.parentElement !== document.body) {
             document.body.appendChild(lb);

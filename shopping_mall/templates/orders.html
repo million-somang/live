@@ -42,10 +42,11 @@
     <div class="ax-card ax-order-card">
         <div class="ax-order-card-head">
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                <span class="ax-code-chip">{{ ord.order_code }}</span>
+                <a href="/order-complete/{{ ord.order_code }}" class="ax-code-chip">{{ ord.order_code }}</a>
                 <span class="ax-num" style="font-size:0.8rem; color:var(--ax-text-secondary);">{{ ord.created_at }}</span>
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <span class="ax-badge ax-badge-neutral">{% if ord.payment_method == 'PORTONE_V2' %}포트원 V2{% elif ord.payment_method == 'TOSS_PAYMENTS' %}토스페이먼츠{% elif ord.payment_method == 'CARD' %}카드결제{% else %}무통장 입금{% endif %}</span>
                 <span class="ax-badge {% if ord.payment_status == '입금완료' %}ax-badge-success{% elif ord.payment_status == '환불완료' %}ax-badge-live{% else %}ax-badge-warning{% endif %}">{{ ord.payment_status }}</span>
                 <span class="ax-badge {% if ord.order_status in ('배송완료', '교환완료') %}ax-badge-success{% elif ord.order_status in ('주문취소', '환불완료') %}ax-badge-live{% elif ord.order_status in ('환불요청', '교환요청') %}ax-badge-warning{% else %}ax-badge-indigo{% endif %}">{{ ord.order_status }}</span>
             </div>
@@ -53,8 +54,19 @@
         <div class="ax-order-card-meta">
             <span><strong style="color:var(--ax-text-primary);">수령인:</strong> {{ ord.buyer_name }} (<span class="ax-num">{{ ord.buyer_phone }}</span>)</span>
             <span class="ax-order-meta-sep">·</span>
-            <span><strong style="color:var(--ax-text-primary);">배송지:</strong> {{ ord.address }} {{ ord.address_detail }}</span>
+            <span><strong style="color:var(--ax-text-primary);">배송지:</strong> {% if ord.zipcode %}<span class="ax-code-chip">[{{ ord.zipcode }}]</span> {% endif %}{{ ord.address }} {{ ord.address_detail }}</span>
         </div>
+        {% if ord.depositor_name or (ord.cash_receipt_type and ord.cash_receipt_type != 'NONE') %}
+        <div class="ax-order-pay-meta">
+            {% if ord.depositor_name %}
+            <span><strong>입금자명:</strong> {{ ord.depositor_name }}</span>
+            {% endif %}
+            {% if ord.cash_receipt_type and ord.cash_receipt_type != 'NONE' %}
+            <span><strong>현금영수증:</strong> {% if ord.cash_receipt_type == 'INCOME' %}소득공제{% else %}지출증빙{% endif %} (<span class="ax-num">{{ ord.cash_receipt_no }}</span>)</span>
+            {% endif %}
+            <a href="/order-complete/{{ ord.order_code }}" class="ax-auth-link-accent">주문 완료서 보기</a>
+        </div>
+        {% endif %}
         <div class="ax-surface-muted">
             {% set item_list = ord.order_items if ord.order_items is defined else ord['items'] %}
             {% for it in (item_list or []) %}
@@ -64,17 +76,70 @@
             </div>
             {% endfor %}
         </div>
+        {% if ord.payment_method == 'BANK' or not ord.payment_method %}
         <div class="ax-bank-box" style="margin-top:12px;">
-            <span class="ax-num" style="font-size:0.84rem; font-weight:700; color:var(--ax-warning);">입금 계좌: <strong style="color:var(--ax-text-primary);">카카오뱅크 3333 233 094904</strong> (예금주: 박창현)</span>
+            <span class="ax-num" style="font-size:0.84rem; font-weight:700; color:var(--ax-warning);">입금 계좌: <strong style="color:var(--ax-text-primary);">{{ store_info.bank_name }} {{ store_info.bank_account }}</strong> (예금주: {{ store_info.bank_holder }})</span>
             <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
         </div>
+        {% endif %}
         {% set safe_total = (ord.total_amount or 0)|int %}
-        {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else 4000)|int %}
-        {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship))|int %}
+        {% set fallback_ship = (store_info.shipping_fee if store_info.shipping_fee is defined and store_info.shipping_fee is not none else 0)|int %}
+        {% set safe_ship = (ord.shipping_fee if ord.shipping_fee is not none else fallback_ship)|int %}
+        {% set safe_cdisc = (ord.coupon_discount or 0)|int %}
+        {% set safe_pts_used = (ord.points_used or 0)|int %}
+        {% set safe_pts_earned = (ord.points_earned or 0)|int %}
+        {% set safe_sub = (ord.subtotal_amount if ord.subtotal_amount is not none and (ord.subtotal_amount|int) > 0 else (safe_total - safe_ship + safe_cdisc + safe_pts_used))|int %}
         <div class="ax-order-total-row ax-num">
-            <span class="ax-order-total-breakdown">(상품 {{ "{:,}".format(safe_sub) }}원 + 택배비 {{ "{:,}".format(safe_ship) }}원)</span>
+            <span class="ax-order-total-breakdown">(상품 {{ "{:,}".format(safe_sub) }}원{% if safe_cdisc > 0 %} - 쿠폰 {{ "{:,}".format(safe_cdisc) }}원{% endif %}{% if safe_pts_used > 0 %} - 포인트 {{ "{:,}".format(safe_pts_used) }}P{% endif %} + {% if safe_ship == 0 %}무료배송 0원{% else %}택배비 {{ "{:,}".format(safe_ship) }}원{% endif %})</span>
             <span class="ax-order-total-main">총 결제 금액: {{ "{:,}".format(safe_total) }}원</span>
         </div>
+        {% if safe_cdisc > 0 or safe_pts_used > 0 or safe_pts_earned > 0 %}
+        <div class="ax-order-pay-meta">
+            {% if safe_cdisc > 0 %}
+            <span><strong>쿠폰 할인:</strong> <span class="ax-code-chip">{{ ord.coupon_code }}</span> <span class="ax-num ax-promo-summary-discount">-{{ "{:,}".format(safe_cdisc) }}원</span></span>
+            {% endif %}
+            {% if safe_pts_used > 0 %}
+            <span><strong>적립금 사용:</strong> <span class="ax-num ax-promo-summary-discount">-{{ "{:,}".format(safe_pts_used) }}P</span></span>
+            {% endif %}
+            {% if safe_pts_earned > 0 %}
+            <span><strong>적립 포인트:</strong> <span class="ax-num ax-promo-summary-earn">+{{ "{:,}".format(safe_pts_earned) }}P</span> ({% if ord.points_awarded %}적립 완료{% else %}배송완료 시 적립{% endif %})</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if ord.tracking_number or ord.carrier_name or ord.shipped_at %}
+        <div class="ax-order-tracking-box">
+            <div class="ax-order-tracking-meta">
+                <span class="ax-badge ax-badge-indigo">배송 정보</span>
+                {% if ord.carrier_name %}<strong>{{ ord.carrier_name }}</strong>{% endif %}
+                {% if ord.tracking_number %}<span class="ax-code-chip">{{ ord.tracking_number }}</span>{% endif %}
+                {% if ord.shipped_at %}<span class="ax-num">출고: {{ ord.shipped_at }}</span>{% endif %}
+            </div>
+            {% if ord.tracking_url and (ord.tracking_url.startswith('https://') or ord.tracking_url.startswith('http://')) %}
+            <a href="{{ ord.tracking_url }}" target="_blank" rel="noopener noreferrer" class="ax-btn ax-btn-primary ax-btn-sm">배송 추적하기</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if ord.claim_reason %}
+        <div class="ax-surface-muted ax-order-claim-note">
+            <strong>취소/교환·반품 사유:</strong> {{ ord.claim_reason }}
+            {% if ord.claim_updated_at %}<span class="ax-num">({{ ord.claim_updated_at }})</span>{% endif %}
+        </div>
+        {% endif %}
+
+        {% set can_self_cancel = (ord.payment_status == '입금대기' and ord.order_status in ('결제대기', '상품준비중')) %}
+        {% set can_self_claim = ((ord.payment_status == '입금완료' and ord.order_status in ('결제대기', '상품준비중', '배송중', '배송완료')) or (ord.order_status in ('배송중', '배송완료'))) %}
+        {% if can_self_cancel or can_self_claim %}
+        <div class="ax-order-actions-row">
+            {% if can_self_cancel %}
+            <button type="button" class="ax-btn ax-btn-danger-soft ax-btn-sm js-self-cancel-btn" data-order-code="{{ ord.order_code }}">주문 취소</button>
+            {% endif %}
+            {% if can_self_claim %}
+            <button type="button" class="ax-btn ax-btn-secondary ax-btn-sm js-self-claim-btn" data-order-code="{{ ord.order_code }}">교환/반품 신청</button>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>
@@ -87,6 +152,43 @@
     {% endif %}
 </div>
 {% endif %}
+
+<!-- 고객 교환/반품 신청 모달 -->
+<div class="ax-dialog-backdrop" id="orderClaimModal" role="dialog" aria-modal="true" aria-labelledby="orderClaimDialogTitle">
+    <div class="ax-dialog-card">
+        <div class="ax-dialog-header">
+            <h3 id="orderClaimDialogTitle" class="ax-section-title">교환 · 반품 신청</h3>
+            <button type="button" id="btnCloseOrderClaimModal" class="ax-icon-btn" aria-label="모달 닫기">
+                <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                </svg>
+            </button>
+        </div>
+        <form id="orderClaimForm">
+            <input type="hidden" id="claimOrderCode" value="">
+            <div class="ax-field">
+                <label class="ax-label" for="claimOrderCodeBadge">대상 주문번호</label>
+                <div id="claimOrderCodeBadge" class="ax-code-chip"></div>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="claimTypeSelect">신청 유형 *</label>
+                <select id="claimTypeSelect" class="ax-select" required>
+                    <option value="환불요청">반품 · 환불 요청</option>
+                    <option value="교환요청">상품 교환 요청</option>
+                </select>
+            </div>
+            <div class="ax-field">
+                <label class="ax-label" for="claimReasonTextarea">신청 사유 *</label>
+                <textarea id="claimReasonTextarea" class="ax-input" rows="3" maxlength="500" required placeholder="교환 또는 반품 사유를 상세히 입력해 주세요 (예: 사이즈 교환, 단순 변심, 상품 불량 등)"></textarea>
+            </div>
+            <div class="ax-dialog-actions">
+                <button type="button" id="btnCancelOrderClaimModal" class="ax-btn ax-btn-secondary">닫기</button>
+                <button type="submit" id="btnSubmitOrderClaim" class="ax-btn ax-btn-primary">신청 접수하기</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -115,5 +217,116 @@
             }
         } catch (e) {}
     })();
+
+    async function cancelMyMallOrder(orderCode) {
+        if (!orderCode) return;
+        if (!confirm(`주문 [${orderCode}]을 즉시 취소하시겠습니까?\n취소 시 차감된 재고는 즉시 복구됩니다.`)) return;
+        try {
+            const res = await fetch('/api/orders/self-cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_code: orderCode })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                alert((data && data.message) || '주문 취소에 실패했습니다.');
+                return;
+            }
+            showMallToast('주문이 취소되었습니다.');
+            setTimeout(() => { window.location.href = '/orders'; }, 350);
+        } catch (err) {
+            alert('주문 취소 요청 오류: ' + err.message);
+        }
+    }
+
+    function openOrderClaimModal(orderCode) {
+        const modal = document.getElementById('orderClaimModal');
+        const codeInput = document.getElementById('claimOrderCode');
+        const codeBadge = document.getElementById('claimOrderCodeBadge');
+        const reasonEl = document.getElementById('claimReasonTextarea');
+        const typeEl = document.getElementById('claimTypeSelect');
+        if (!modal) return;
+        if (codeInput) codeInput.value = orderCode || '';
+        if (codeBadge) codeBadge.textContent = orderCode || '';
+        if (reasonEl) reasonEl.value = '';
+        if (typeEl) typeEl.value = '환불요청';
+        modal.classList.add('is-open');
+        if (reasonEl) reasonEl.focus();
+    }
+
+    function closeOrderClaimModal() {
+        const modal = document.getElementById('orderClaimModal');
+        if (modal) modal.classList.remove('is-open');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('orderClaimModal');
+        if (modal) {
+            if (modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
+            modal.addEventListener('pointerdown', (ev) => {
+                if (typeof handleDialogBackdropPointerDown === 'function') handleDialogBackdropPointerDown(ev, modal);
+            });
+            modal.addEventListener('pointerup', (ev) => {
+                if (typeof handleDialogBackdropPointerUp === 'function') handleDialogBackdropPointerUp(ev, modal);
+            });
+            modal.addEventListener('click', (ev) => {
+                if (typeof handleDialogBackdropClick === 'function') handleDialogBackdropClick(ev, modal, closeOrderClaimModal);
+            });
+        }
+
+        document.getElementById('btnCloseOrderClaimModal')?.addEventListener('click', closeOrderClaimModal);
+        document.getElementById('btnCancelOrderClaimModal')?.addEventListener('click', closeOrderClaimModal);
+
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') {
+                closeOrderClaimModal();
+            }
+        });
+
+        document.querySelectorAll('.js-self-cancel-btn').forEach((btn) => {
+            btn.addEventListener('click', () => cancelMyMallOrder(btn.dataset.orderCode || ''));
+        });
+        document.querySelectorAll('.js-self-claim-btn').forEach((btn) => {
+            btn.addEventListener('click', () => openOrderClaimModal(btn.dataset.orderCode || ''));
+        });
+
+        document.getElementById('orderClaimForm')?.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const orderCode = document.getElementById('claimOrderCode')?.value.trim() || '';
+            const claimType = document.getElementById('claimTypeSelect')?.value || '환불요청';
+            const claimReason = document.getElementById('claimReasonTextarea')?.value.trim() || '';
+            if (!claimReason) {
+                alert('교환 또는 반품 신청 사유를 입력해 주세요.');
+                return;
+            }
+            const btn = document.getElementById('btnSubmitOrderClaim');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/api/orders/self-claim', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_code: orderCode,
+                        claim_type: claimType,
+                        claim_reason: claimReason
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    alert((data && data.message) || '교환/반품 접수에 실패했습니다.');
+                    return;
+                }
+                closeOrderClaimModal();
+                showMallToast('교환/반품 신청이 접수되었습니다.');
+                setTimeout(() => { window.location.href = '/orders'; }, 350);
+            } catch (err) {
+                alert('교환/반품 신청 오류: ' + err.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
+    });
 </script>
 {% endblock %}

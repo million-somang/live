@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}주문 완료 — 골라방 LIVE{% endblock %}
+
+{% block content %}
+<div class="ax-page-header">
+    <div>
+        <span class="ax-badge-eyebrow">ORDER COMPLETED</span>
+        <div class="ax-page-title-row">
+            <h1 class="ax-page-title">주문이 정상 접수되었습니다</h1>
+        </div>
+        <p class="ax-page-sub">주문번호와 결제·입금 정보를 확인해 주세요. 주문 내역은 언제든 주문조회 페이지에서 확인하실 수 있습니다.</p>
+    </div>
+    <div class="ax-order-complete-actions">
+        <a href="/orders" class="ax-btn ax-btn-primary">주문/배송 조회</a>
+        <a href="/" class="ax-btn ax-btn-secondary">쇼핑 계속하기</a>
+    </div>
+</div>
+
+<section class="ax-order-complete-hero">
+    <div>
+        <span class="ax-badge ax-badge-indigo">주문번호</span>
+        <div class="ax-order-complete-code-row">
+            <span id="orderCompleteCode" class="ax-code-chip">{{ order.order_code }}</span>
+            <button type="button" id="btnCopyOrderCode" class="ax-btn ax-btn-charcoal ax-btn-sm">주문번호 복사</button>
+        </div>
+        <div class="ax-order-pay-meta">
+            <span>주문일시: <span class="ax-num">{{ order.created_at }}</span></span>
+            <span>·</span>
+            <span>결제수단: <strong>{% if order.payment_method == 'PORTONE_V2' %}포트원 V2{% elif order.payment_method == 'TOSS_PAYMENTS' %}토스페이먼츠{% elif order.payment_method == 'CARD' %}카드결제{% else %}무통장 입금{% endif %}</strong></span>
+        </div>
+    </div>
+    <div class="ax-order-complete-code-row">
+        <span class="ax-badge {% if order.payment_status == '입금완료' %}ax-badge-success{% else %}ax-badge-warning{% endif %}">{{ order.payment_status }}</span>
+        <span class="ax-badge ax-badge-indigo">{{ order.order_status }}</span>
+    </div>
+</section>
+
+<div class="ax-split-layout-wide">
+    <section class="ax-card ax-card-pad">
+        <h2 class="ax-section-title ax-mb-12">주문 상품 및 결제 상세</h2>
+        <div class="ax-surface-muted ax-mb-16">
+            {% set item_list = order.order_items if order.order_items is defined else order['items'] %}
+            {% for it in (item_list or []) %}
+            <div class="ax-order-item-row">
+                <span><strong>#{{ it.product_num }} {{ it.product_name }}</strong> ({{ it.color }}/{{ it.size }}) × <span class="ax-num">{{ it.quantity }}개</span></span>
+                <strong class="ax-num">{{ "{:,}".format((it.line_total or 0)|int) }}원</strong>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% set safe_total = (order.total_amount or 0)|int %}
+        {% set safe_ship = (order.shipping_fee or 0)|int %}
+        {% set safe_cdisc = (order.coupon_discount or 0)|int %}
+        {% set safe_pts_used = (order.points_used or 0)|int %}
+        {% set safe_pts_earned = (order.points_earned or 0)|int %}
+        {% set safe_sub = (order.subtotal_amount if order.subtotal_amount is not none and (order.subtotal_amount|int) > 0 else (safe_total - safe_ship + safe_cdisc + safe_pts_used))|int %}
+        <div class="ax-order-total-row ax-num">
+            <span class="ax-order-total-breakdown">상품 {{ "{:,}".format(safe_sub) }}원{% if safe_cdisc > 0 %} - 쿠폰 {{ "{:,}".format(safe_cdisc) }}원{% endif %}{% if safe_pts_used > 0 %} - 포인트 {{ "{:,}".format(safe_pts_used) }}P{% endif %} + {% if safe_ship == 0 %}무료배송 0원{% else %}배송비 {{ "{:,}".format(safe_ship) }}원{% endif %}</span>
+            <span class="ax-order-total-main">총 결제 금액: {{ "{:,}".format(safe_total) }}원</span>
+        </div>
+        {% if safe_cdisc > 0 or safe_pts_used > 0 or safe_pts_earned > 0 %}
+        <div class="ax-surface-muted ax-mt-12">
+            {% if safe_cdisc > 0 %}
+            <div class="ax-order-item-row">
+                <span>적용 쿠폰 (<span class="ax-code-chip">{{ order.coupon_code }}</span>)</span>
+                <strong class="ax-num ax-promo-summary-discount">-{{ "{:,}".format(safe_cdisc) }}원</strong>
+            </div>
+            {% endif %}
+            {% if safe_pts_used > 0 %}
+            <div class="ax-order-item-row">
+                <span>적립금 사용</span>
+                <strong class="ax-num ax-promo-summary-discount">-{{ "{:,}".format(safe_pts_used) }}P</strong>
+            </div>
+            {% endif %}
+            {% if safe_pts_earned > 0 %}
+            <div class="ax-order-item-row">
+                <span>구매 적립 포인트 ({% if order.points_awarded %}적립 완료{% else %}배송완료 시 적립 예정{% endif %})</span>
+                <strong class="ax-num ax-promo-summary-earn">+{{ "{:,}".format(safe_pts_earned) }}P</strong>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if order.payment_method == 'BANK' or not order.payment_method %}
+        <div class="ax-bank-box ax-mt-12">
+            <div>
+                <div class="ax-label">무통장 입금 계좌 안내</div>
+                <div class="ax-num">
+                    <strong>{{ store_info.bank_name }}</strong>
+                    <strong>{{ store_info.bank_account }}</strong>
+                    (예금주: {{ store_info.bank_holder }})
+                </div>
+            </div>
+            <button type="button" id="btnCopyCompleteBank" class="ax-btn ax-btn-secondary ax-btn-sm">계좌 복사</button>
+        </div>
+        {% endif %}
+
+        <div class="ax-surface-muted ax-mt-12">
+            <div class="ax-order-item-row">
+                <span>입금자명</span>
+                <strong>{{ order.depositor_name if order.depositor_name else order.buyer_name }}</strong>
+            </div>
+            <div class="ax-order-item-row">
+                <span>현금영수증 신청</span>
+                <strong class="ax-num">
+                    {% if order.cash_receipt_type == 'INCOME' %}소득공제 ({{ order.cash_receipt_no }})
+                    {% elif order.cash_receipt_type == 'EXPENSE' %}지출증빙 ({{ order.cash_receipt_no }})
+                    {% else %}미신청{% endif %}
+                </strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="ax-card ax-card-pad">
+        <h2 class="ax-section-title ax-mb-12">배송지 정보</h2>
+        <div class="ax-surface-muted">
+            <div class="ax-order-item-row">
+                <span>수령인</span>
+                <strong>{{ order.buyer_name }}</strong>
+            </div>
+            <div class="ax-order-item-row">
+                <span>연락처</span>
+                <strong class="ax-num">{{ order.buyer_phone }}</strong>
+            </div>
+            <div class="ax-order-item-row">
+                <span>배송지</span>
+                <strong>{% if order.zipcode %}<span class="ax-code-chip">[{{ order.zipcode }}]</span> {% endif %}{{ order.address }} {{ order.address_detail }}</strong>
+            </div>
+            <div class="ax-order-item-row">
+                <span>배송 메모</span>
+                <span>{{ order.delivery_memo if order.delivery_memo else '없음' }}</span>
+            </div>
+        </div>
+
+        <div class="ax-order-complete-actions">
+            <a href="/orders" class="ax-btn ax-btn-primary ax-btn-block">주문/배송 내역 확인하기</a>
+            <a href="/" class="ax-btn ax-btn-outline-charcoal ax-btn-block">스토어 홈으로 이동</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<div id="orderCompleteBootstrap" hidden
+     data-order-code="{{ order.order_code | tojson | forceescape }}"></div>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const bootEl = document.getElementById('orderCompleteBootstrap');
+        const orderCode = bootEl ? JSON.parse(bootEl.dataset.orderCode || '""') : '';
+
+        document.getElementById('btnCopyOrderCode')?.addEventListener('click', () => {
+            if (!orderCode) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(orderCode).then(() => {
+                    showMallToast('주문번호 [' + orderCode + ']가 복사되었습니다.');
+                }).catch(() => {
+                    showMallToast('주문번호: ' + orderCode);
+                });
+            } else {
+                showMallToast('주문번호: ' + orderCode);
+            }
+        });
+
+        document.getElementById('btnCopyCompleteBank')?.addEventListener('click', () => {
+            if (typeof copyMallBankAccount === 'function') {
+                copyMallBankAccount();
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -811,21 +811,43 @@
     function renderProductReviewsUI(reviews) {
         const box = document.getElementById('detailReviewsList');
         if (!box) return;
-        if (!reviews || reviews.length === 0) {
+        const visibleReviews = (Array.isArray(reviews) ? reviews : []).filter(r => !r.is_hidden);
+        if (visibleReviews.length === 0) {
             box.innerHTML = `<div class="ax-surface-muted" style="color:var(--ax-text-muted); font-size:0.84rem; text-align:center;">아직 등록된 후기가 없습니다. 첫 후기를 남겨보세요.</div>`;
             return;
         }
-        box.innerHTML = reviews.map(r => {
+        const esc = window.mallEscapeHtml;
+        box.innerHTML = visibleReviews.map(r => {
             const score = Math.max(1, Math.min(5, Number(r.rating || 5)));
             const stars = `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`;
+            const verifiedBadge = r.is_verified_buyer
+                ? `<span class="ax-badge ax-badge-success">구매 인증</span>`
+                : '';
+            const imgs = Array.isArray(r.images) && r.images.length > 0
+                ? r.images
+                : (r.image_url ? [r.image_url] : []);
+            const photosHtml = imgs.length > 0
+                ? `<div class="ax-review-photos">${imgs.map(u => {
+                    const safeU = window.mallSafeImageUrl(u);
+                    return safeU ? `<img src="${esc(safeU)}" alt="리뷰 사진" class="ax-review-photo-thumb">` : '';
+                }).join('')}</div>`
+                : '';
+            const replyHtml = r.admin_reply
+                ? `<div class="ax-review-reply-box"><div class="ax-review-reply-head"><span>판매자 답글</span>${r.admin_replied_at ? `<span class="ax-num">${esc(r.admin_replied_at)}</span>` : ''}</div><div class="ax-review-reply-body">${esc(r.admin_reply)}</div></div>`
+                : '';
             return `
                 <div class="ax-review-item">
-                    <div>
-                        <span style="color:#d97706; font-size:0.8rem; letter-spacing:1px;">${stars}</span>
-                        <strong style="font-size:0.84rem; color:var(--ax-text-primary); margin-left:6px;">${window.mallEscapeHtml(r.author)}</strong>
-                        <div style="font-size:0.86rem; color:var(--ax-text-secondary); margin-top:4px; white-space:pre-line;">${window.mallEscapeHtml(r.content)}</div>
+                    <div style="flex:1; min-width:0;">
+                        <div class="ax-review-score-row">
+                            <span class="ax-review-stars">${stars}</span>
+                            <strong>${esc(r.author)}</strong>
+                            ${verifiedBadge}
+                        </div>
+                        <div class="ax-review-body">${esc(r.content)}</div>
+                        ${photosHtml}
+                        ${replyHtml}
                     </div>
-                    <div class="ax-num" style="font-size:0.74rem; color:var(--ax-text-muted); white-space:nowrap;">${window.mallEscapeHtml(r.created_at || '')}</div>
+                    <div class="ax-num" style="font-size:0.74rem; color:var(--ax-text-muted); white-space:nowrap;">${esc(r.created_at || '')}</div>
                 </div>
             `;
         }).join('');
@@ -837,7 +859,7 @@
         const ratingEl = document.getElementById('revRating');
         const contentEl = document.getElementById('revContent');
         const submitBtn = document.getElementById('revSubmitBtn');
-        const rating = ratingEl ? ratingEl.value : 5;
+        const rating = Number(ratingEl ? ratingEl.value : 5);
         const content = contentEl ? contentEl.value.trim() : '';
         if (content.length < 2) {
             alert('리뷰 내용을 2자 이상 입력해 주세요.');

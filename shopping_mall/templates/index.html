@@ -77,32 +77,58 @@
 </section>
 {% endif %}
 
-<!-- 카테고리 Segmented Bar + 검색/정렬 툴바 -->
+<!-- 카테고리 Segmented Bar + 검색/필터/정렬 툴바 -->
 {% set q_suffix = ('&q=' ~ (search_query | urlencode)) if search_query else '' %}
 {% set s_suffix = ('&sort=' ~ (current_sort | urlencode)) if (current_sort and current_sort != 'num_asc') else '' %}
+{% set ex_suffix = '&exclude_sold_out=1' if exclude_sold_out else '' %}
+{% set min_suffix = ('&min_price=' ~ (min_price | urlencode)) if min_price else '' %}
+{% set max_suffix = ('&max_price=' ~ (max_price | urlencode)) if max_price else '' %}
+{% set pp_raw = request.args.get('per_page', '') %}
+{% set pp_suffix = ('&per_page=' ~ (pp_raw | urlencode)) if pp_raw else '' %}
+{% set filter_suffix = q_suffix ~ s_suffix ~ ex_suffix ~ min_suffix ~ max_suffix ~ pp_suffix %}
+{% set total_matched = pagination.total_count if pagination is defined else products|length %}
+{% set has_active_filters = exclude_sold_out or min_price or max_price or (current_sort and current_sort != 'num_asc') %}
 <div class="ax-toolbar">
     <div class="ax-toolbar-left">
         <nav class="ax-segmented-bar" aria-label="상품 카테고리">
-            <a href="/?category=ALL{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'ALL' %}active{% endif %}">전체</a>
+            <a href="/?category=ALL{{ filter_suffix }}" class="ax-tab-btn {% if current_category == 'ALL' %}active{% endif %}">전체</a>
             {% for cat in (mall_categories or []) %}
-            <a href="/?category={{ cat.code | urlencode }}{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == cat.code %}active{% endif %}">{{ cat.name }}</a>
+            <a href="/?category={{ cat.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if current_category == cat.code %}active{% endif %}">{{ cat.name }}</a>
             {% endfor %}
             {% if has_etc_products or current_category == 'ETC' %}
-            <a href="/?category=ETC{{ q_suffix }}{{ s_suffix }}" class="ax-tab-btn {% if current_category == 'ETC' %}active{% endif %}">기타</a>
+            <a href="/?category=ETC{{ filter_suffix }}" class="ax-tab-btn {% if current_category == 'ETC' %}active{% endif %}">기타</a>
             {% endif %}
         </nav>
-        <span class="ax-badge ax-badge-neutral ax-num">등록 상품 {{ products|length }}건</span>
+        <span id="homeProductCountBadge" class="ax-badge ax-badge-neutral ax-num">등록 상품 {{ total_matched }}건</span>
     </div>
 
-    <form method="GET" action="/" class="ax-toolbar-sort">
+    <form id="homeFilterForm" method="GET" action="/" class="ax-filter-form">
         <input type="hidden" name="category" value="{{ current_category }}">
         {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
-        <select name="sort" onchange="this.form.submit()" class="ax-select" aria-label="상품 정렬">
+        {% if pp_raw %}<input type="hidden" name="per_page" value="{{ pp_raw }}">{% endif %}
+        <label class="ax-inline-check-label" for="filterExcludeSoldOut">
+            {% if exclude_sold_out %}
+            <input type="checkbox" id="filterExcludeSoldOut" name="exclude_sold_out" value="1" checked>
+            {% else %}
+            <input type="checkbox" id="filterExcludeSoldOut" name="exclude_sold_out" value="1">
+            {% endif %}
+            <span>품절 제외</span>
+        </label>
+        <div class="ax-filter-price-group">
+            <input type="number" id="filterMinPrice" name="min_price" class="ax-input ax-input-compact ax-num ax-filter-price-input" min="0" step="1000" value="{{ min_price or '' }}" placeholder="최소 가격" aria-label="최소 가격">
+            <span style="color:var(--ax-text-muted); font-size:0.8rem;">~</span>
+            <input type="number" id="filterMaxPrice" name="max_price" class="ax-input ax-input-compact ax-num ax-filter-price-input" min="0" step="1000" value="{{ max_price or '' }}" placeholder="최대 가격" aria-label="최대 가격">
+            <button type="submit" id="btnApplyPriceFilter" class="ax-btn ax-btn-charcoal ax-btn-sm">적용</button>
+        </div>
+        <select id="homeSortSelect" name="sort" class="ax-select ax-select-compact" aria-label="상품 정렬">
             {% if current_sort == 'num_asc' %}<option value="num_asc" selected>상품번호순</option>{% else %}<option value="num_asc">상품번호순</option>{% endif %}
             {% if current_sort == 'newest' %}<option value="newest" selected>최신등록순</option>{% else %}<option value="newest">최신등록순</option>{% endif %}
             {% if current_sort == 'price_asc' %}<option value="price_asc" selected>낮은가격순</option>{% else %}<option value="price_asc">낮은가격순</option>{% endif %}
             {% if current_sort == 'price_desc' %}<option value="price_desc" selected>높은가격순</option>{% else %}<option value="price_desc">높은가격순</option>{% endif %}
         </select>
+        {% if has_active_filters %}
+        <a href="/?category={{ current_category | urlencode }}{{ q_suffix }}{{ pp_suffix }}" id="btnResetHomeFilters" class="ax-btn ax-btn-secondary ax-btn-sm">초기화</a>
+        {% endif %}
     </form>
 </div>
 
@@ -110,9 +136,9 @@
 <div id="homeSearchActiveBar" class="ax-search-active-bar">
     <div>
         <span class="ax-badge ax-badge-indigo" style="margin-right:6px;">검색 결과</span>
-        <strong>'{{ search_query }}'</strong> 검색 상품 <span class="ax-num">({{ products|length }}건)</span>
+        <strong>'{{ search_query }}'</strong> 검색 상품 <span class="ax-num">({{ total_matched }}건)</span>
     </div>
-    <a href="/?category={{ current_category | urlencode }}" class="ax-btn ax-btn-secondary ax-btn-sm">검색 초기화</a>
+    <a href="/?category={{ current_category | urlencode }}{{ s_suffix }}{{ ex_suffix }}{{ min_suffix }}{{ max_suffix }}{{ pp_suffix }}" class="ax-btn ax-btn-secondary ax-btn-sm">검색 초기화</a>
 </div>
 {% endif %}
 
@@ -175,6 +201,23 @@
     </article>
     {% endfor %}
 </div>
+{% if pagination is defined and pagination.total_pages > 1 %}
+<nav id="homePaginationBar" class="ax-pagination" aria-label="상품 페이지네이션">
+    {% if pagination.has_prev %}
+    <a href="/?category={{ current_category | urlencode }}{{ filter_suffix }}&page={{ pagination.page - 1 }}" class="ax-page-btn" aria-label="이전 페이지">이전</a>
+    {% else %}
+    <span class="ax-page-btn is-disabled" aria-disabled="true">이전</span>
+    {% endif %}
+    {% for pno in range(1, pagination.total_pages + 1) %}
+    <a href="/?category={{ current_category | urlencode }}{{ filter_suffix }}&page={{ pno }}" class="ax-page-btn ax-num {% if pno == pagination.page %}active{% endif %}">{{ pno }}</a>
+    {% endfor %}
+    {% if pagination.has_next %}
+    <a href="/?category={{ current_category | urlencode }}{{ filter_suffix }}&page={{ pagination.page + 1 }}" class="ax-page-btn" aria-label="다음 페이지">다음</a>
+    {% else %}
+    <span class="ax-page-btn is-disabled" aria-disabled="true">다음</span>
+    {% endif %}
+</nav>
+{% endif %}
 {% else %}
 <div class="ax-card" style="padding:56px 24px; text-align:center;">
     <div style="width:52px; height:52px; margin:0 auto 12px; border-radius:14px; background:var(--ax-surface-tertiary); display:flex; align-items:center; justify-content:center; color:var(--ax-text-muted);">
@@ -280,6 +323,13 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const homeFilterForm = document.getElementById('homeFilterForm');
+        document.getElementById('filterExcludeSoldOut')?.addEventListener('change', () => {
+            if (homeFilterForm) homeFilterForm.submit();
+        });
+        document.getElementById('homeSortSelect')?.addEventListener('change', () => {
+            if (homeFilterForm) homeFilterForm.submit();
+        });
         const heroEl = document.getElementById('mallHeroSection');
         if (heroEl) {
             _startHeroAutoPlay();

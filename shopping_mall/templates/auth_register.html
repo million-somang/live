@@ -41,7 +41,11 @@
         </div>
 
         <div class="ax-field">
-            <label class="ax-label" for="regAddress">기본 배송지 주소 (선택)</label>
+            <label class="ax-label" for="regZipcode">기본 배송지 주소 (선택)</label>
+            <div class="ax-postcode-row">
+                <input type="text" id="regZipcode" name="zipcode" value="{{ prefill.zipcode if prefill and prefill.zipcode is defined else '' }}" placeholder="우편번호 (5자리)" maxlength="10" inputmode="numeric" class="ax-input ax-num ax-postcode-input">
+                <button type="button" id="btnRegPostcode" class="ax-btn ax-btn-secondary ax-btn-sm" data-zip-id="regZipcode" data-addr-id="regAddress" data-detail-id="regAddressDetail" onclick="openMallPostcodeSearch(this.dataset)">우편번호 검색</button>
+            </div>
             <input type="text" id="regAddress" name="address" value="{{ prefill.address if prefill else '' }}" placeholder="도로명 또는 지번 주소" class="ax-input" style="margin-bottom:7px;">
             <input type="text" id="regAddressDetail" name="address_detail" value="{{ prefill.address_detail if prefill else '' }}" placeholder="상세 주소 (동/호수)" class="ax-input">
         </div>

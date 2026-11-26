@@ -19,6 +19,15 @@
 <form id="checkoutForm" onsubmit="submitCheckoutForm(event)" class="ax-split-layout-wide">
     <div class="ax-card ax-card-pad">
         <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:16px;">배송지 정보</h3>
+        {% if current_mall_user %}
+        <div id="coAddressBookBar" class="ax-address-picker-bar ax-is-hidden">
+            <div class="ax-address-picker-head">
+                <label class="ax-label" for="coAddressBookSelect">저장된 배송지 선택</label>
+                <a href="/mypage" class="ax-auth-link-accent">배송지 주소록 관리</a>
+            </div>
+            <select id="coAddressBookSelect" class="ax-select ax-select-compact"></select>
+        </div>
+        {% endif %}
         <div class="ax-form-row-2">
             <div class="ax-field">
                 <label class="ax-label" for="coBuyerName">수령인 성함 *</label>
@@ -30,7 +39,11 @@
             </div>
         </div>
         <div class="ax-field">
-            <label class="ax-label" for="coAddress">배송지 주소 *</label>
+            <label class="ax-label" for="coZipcode">배송지 주소 *</label>
+            <div class="ax-postcode-row">
+                <input type="text" id="coZipcode" name="zipcode" class="ax-input ax-num ax-postcode-input" maxlength="10" inputmode="numeric" placeholder="우편번호" value="{{ current_mall_user.zipcode if current_mall_user else '' }}">
+                <button type="button" id="btnCoPostcode" class="ax-btn ax-btn-secondary ax-btn-sm" data-zip-id="coZipcode" data-addr-id="coAddress" data-detail-id="coAddressDetail" onclick="openMallPostcodeSearch(this.dataset)">우편번호 검색</button>
+            </div>
             <input type="text" id="coAddress" class="ax-input" required placeholder="기본 주소 입력" style="margin-bottom:8px;" value="{{ current_mall_user.address if current_mall_user else '' }}">
             <input type="text" id="coAddressDetail" class="ax-input" placeholder="상세 주소 입력" value="{{ current_mall_user.address_detail if current_mall_user else '' }}">
         </div>
@@ -46,34 +59,102 @@
             <input type="text" id="coMemo" class="ax-input" placeholder="부재 시 문 앞에 놓아주세요">
         </div>
 
-        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin:24px 0 12px;">결제 수단 (계좌입금 전용)</h3>
-        <select id="coPaymentMethod" class="ax-select" style="font-weight:700;">
-            <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{ store_info.bank_holder }})</option>
-        </select>
-        <div class="ax-bank-box" style="margin-top:10px;">
-            <div>
-                <div style="font-size:0.76rem; font-weight:700; color:var(--ax-warning);">입금 계좌 번호 (택배비 4,000원 포함 총 결제금액 입금)</div>
-                <div class="ax-num" style="font-size:1rem; font-weight:800; color:var(--ax-text-primary); margin-top:3px;">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{ store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
+        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin:24px 0 12px;">쿠폰 · 적립금(포인트) 할인</h3>
+        <div class="ax-promo-box">
+            {% if current_mall_user %}
+            <div id="coCouponWalletBar" class="ax-field ax-is-hidden">
+                <label class="ax-label" for="coCouponSelect">보유 쿠폰 선택</label>
+                <select id="coCouponSelect" class="ax-select ax-select-compact"></select>
             </div>
-            <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌번호 복사</button>
+            {% endif %}
+            <div class="ax-field">
+                <label class="ax-label" for="coCouponCode">쿠폰 / 프로모션 코드</label>
+                <div class="ax-coupon-row">
+                    <input type="text" id="coCouponCode" name="coupon_code" class="ax-input" maxlength="40" placeholder="쿠폰 코드 입력 (예: WELCOME3000)">
+                    <button type="button" id="btnCoApplyCoupon" class="ax-btn ax-btn-charcoal ax-btn-sm">쿠폰 적용</button>
+                    <button type="button" id="btnCoClearCoupon" class="ax-btn ax-btn-secondary ax-btn-sm ax-is-hidden">적용 해제</button>
+                </div>
+                <div id="coCouponMessage" class="ax-promo-feedback"></div>
+            </div>
+            {% if current_mall_user %}
+            <div id="coPointsBox" class="ax-field">
+                <label class="ax-label" for="coPointsUsed">적립금 사용 · 보유 <strong id="coAvailablePoints" class="ax-num">{{ "{:,}".format((current_mall_user.points_balance or 0)|int) }}P</strong></label>
+                <div class="ax-points-row">
+                    <input type="number" id="coPointsUsed" name="points_used" class="ax-input ax-num" min="0" step="100" value="0" placeholder="사용할 포인트 입력">
+                    <button type="button" id="btnCoUseAllPoints" class="ax-btn ax-btn-secondary ax-btn-sm">전액 사용</button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin:24px 0 12px;">결제 수단 선택</h3>
+        <select id="coPaymentMethod" name="payment_method" class="ax-select">
+            <option value="BANK" selected>계좌입금 ({{ store_info.bank_name }} {{ store_info.bank_account }} {{ store_info.bank_holder }})</option>
+            <option value="PORTONE_V2">포트원 V2 간편결제 / 카드</option>
+            <option value="TOSS_PAYMENTS">토스페이먼츠 간편결제 / 카드</option>
+        </select>
+        <div id="coBankExtras" class="ax-bank-extras-box">
+            <div class="ax-bank-box">
+                <div>
+                    <div id="coBankShippingNotice" style="font-size:0.76rem; font-weight:700; color:var(--ax-warning);">입금 계좌 번호 (배송비 포함 총 결제금액 입금)</div>
+                    <div class="ax-num" style="font-size:1rem; font-weight:800; color:var(--ax-text-primary); margin-top:3px;">{{ store_info.bank_name }} <span style="color:var(--ax-warning);">{{ store_info.bank_account }}</span> (예금주: {{ store_info.bank_holder }})</div>
+                </div>
+                <button type="button" onclick="copyMallBankAccount()" class="ax-btn ax-btn-secondary ax-btn-sm">계좌번호 복사</button>
+            </div>
+            <div class="ax-form-row-2 ax-mt-12">
+                <div class="ax-field">
+                    <label class="ax-label" for="coDepositorName">입금자명</label>
+                    <input type="text" id="coDepositorName" name="depositor_name" class="ax-input" maxlength="60" placeholder="미입력 시 수령인 성함으로 확인">
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="coCashReceiptType">현금영수증 신청</label>
+                    <select id="coCashReceiptType" name="cash_receipt_type" class="ax-select">
+                        <option value="NONE" selected>신청안함</option>
+                        <option value="INCOME">소득공제 (휴대폰)</option>
+                        <option value="EXPENSE">지출증빙 (사업자번호)</option>
+                    </select>
+                </div>
+            </div>
+            <div id="coCashReceiptNoWrap" class="ax-field ax-is-hidden">
+                <label class="ax-label" for="coCashReceiptNo">현금영수증 발급번호 *</label>
+                <input type="text" id="coCashReceiptNo" name="cash_receipt_no" class="ax-input ax-num" maxlength="32" placeholder="휴대폰 번호 또는 사업자등록번호 입력">
+            </div>
+        </div>
+        <div id="coPgNoticeBox" class="ax-callout-indigo ax-mt-12 ax-is-hidden">
+            PG 결제 어댑터가 선택되었습니다. 주문 생성 후 결제 확인 페이지에서 결제를 진행하거나 즉시 상태를 확인할 수 있습니다.
         </div>
     </div>
 
     <div class="ax-card ax-card-pad ax-sticky-panel">
         <h3 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary); margin-bottom:14px;">주문 상품 확인</h3>
+        <div id="coRevalidateAlert" class="ax-callout-warning ax-mb-12 ax-is-hidden" role="status" aria-live="polite"></div>
         <div id="coOrderItemsSummary" style="margin-bottom:14px;"></div>
         <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.88rem; color:var(--ax-text-secondary);">
             <span>총 상품 금액</span>
             <strong id="coSubtotalAmount" class="ax-num" style="color:var(--ax-text-primary);">0원</strong>
         </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.88rem; color:var(--ax-text-secondary);">
-            <span>택배비용 (필수 추가)</span>
-            <strong id="coShippingAmount" class="ax-num" style="color:var(--ax-text-primary);">+4,000원</strong>
+        <div id="coCouponDiscountRow" class="ax-promo-summary-row ax-is-hidden">
+            <span>쿠폰 할인</span>
+            <strong id="coCouponDiscountAmount" class="ax-num ax-promo-summary-discount">-0원</strong>
         </div>
-        <div style="border-top:1px solid var(--ax-border-subtle); padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px;">
+        <div id="coPointsUsedRow" class="ax-promo-summary-row ax-is-hidden">
+            <span>적립금 사용</span>
+            <strong id="coPointsUsedAmount" class="ax-num ax-promo-summary-discount">-0P</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:14px; font-size:0.88rem; color:var(--ax-text-secondary);">
+            <span>배송비</span>
+            <strong id="coShippingAmount" class="ax-num" style="color:var(--ax-text-primary);">0원</strong>
+        </div>
+        <div id="coShippingGuide" class="ax-shipping-guide ax-is-hidden" aria-live="polite"></div>
+        <div style="border-top:1px solid var(--ax-border-subtle); padding-top:14px; display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;">
             <span style="font-weight:800; color:var(--ax-text-primary);">최종 결제 금액</span>
             <span id="coTotalAmount" class="ax-num" style="font-size:1.45rem; font-weight:800; color:var(--ax-accent-primary);">0원</span>
         </div>
+        <div id="coPointsEarnedRow" class="ax-promo-summary-row ax-is-hidden">
+            <span>배송완료 시 적립 예정</span>
+            <strong id="coPointsEarnedAmount" class="ax-num ax-promo-summary-earn">+0P</strong>
+        </div>
+        <div class="ax-mb-16"></div>
         <button type="submit" id="coSubmitBtn" class="ax-btn ax-btn-primary ax-btn-lg ax-btn-block">
             주문 완료하기 (계좌입금)
         </button>
@@ -83,55 +164,428 @@
 
 {% block extra_scripts %}
 <script>
-    function initCheckoutPage() {
+    let __coSubtotal = 0;
+    let __coShippingFee = 0;
+    let __coTargetItems = [];
+    let __coUsingSelection = false;
+    let __coHasBlocked = false;
+    let __coPromoState = { coupon_code: '', coupon_discount: 0, points_used: 0 };
+
+    function _getCheckoutTargetItems() {
+        try {
+            const rawSel = sessionStorage.getItem(MALL_CHECKOUT_ITEMS_KEY);
+            if (rawSel) {
+                const parsed = JSON.parse(rawSel);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    __coUsingSelection = true;
+                    return parsed;
+                }
+            }
+        } catch (e) {}
+        __coUsingSelection = false;
+        return getMallCart();
+    }
+
+    function _computeCheckoutTotalValue() {
+        const sub = Math.max(0, Math.round(Number(__coSubtotal) || 0));
+        const ship = Math.max(0, Math.round(Number(__coShippingFee) || 0));
+        const cDisc = Math.min(sub, Math.max(0, Math.round(Number(__coPromoState.coupon_discount) || 0)));
+        const maxPts = window.__MALL_USER_LOGGED_IN__
+            ? Math.min(window.__MALL_USER_POINTS__ || 0, Math.max(0, sub - cDisc))
+            : 0;
+        const ptsUsed = Math.min(maxPts, Math.max(0, Math.floor(Number(__coPromoState.points_used) || 0)));
+        return Math.max(0, sub - cDisc - ptsUsed) + ship;
+    }
+
+    function _renderCheckoutItemsSummary(items, serverSubtotal, serverShipping) {
+        let sub = 0;
+        const box = document.getElementById('coOrderItemsSummary');
+        if (box) {
+            box.innerHTML = (items || []).map(it => {
+                const line = (Number(it.price) || 0) * (Number(it.quantity) || 1);
+                sub += line;
+                const safeNum = Number(it.num) || 0;
+                const safeQty = Number(it.quantity) || 1;
+                return `
+                    <div style="padding:10px 0; border-bottom:1px solid var(--ax-border-subtle); font-size:0.85rem; overflow-wrap:anywhere;">
+                        <div style="font-weight:700; color:var(--ax-text-primary);">#${safeNum} ${window.mallEscapeHtml(it.name)}</div>
+                        <div class="ax-num" style="color:var(--ax-text-secondary); margin-top:2px;">${window.mallEscapeHtml(it.color)}/${window.mallEscapeHtml(it.size)} × ${safeQty}개 = <strong style="color:var(--ax-text-primary);">${line.toLocaleString()}원</strong></div>
+                    </div>
+                `;
+            }).join('');
+        }
+        const effectiveSub = (typeof serverSubtotal === 'number' && serverSubtotal >= 0) ? serverSubtotal : sub;
+        const ship = (typeof serverShipping === 'number' && serverShipping >= 0) ? serverShipping : window.calculateMallShippingFee(effectiveSub);
+        __coSubtotal = effectiveSub;
+        __coShippingFee = ship;
+        const subEl = document.getElementById('coSubtotalAmount');
+        if (subEl) subEl.innerText = `${effectiveSub.toLocaleString()}원`;
+        const shipEl = document.getElementById('coShippingAmount');
+        if (shipEl) shipEl.innerText = ship === 0 ? '무료배송 (0원)' : `+${ship.toLocaleString()}원`;
+        const bankNoticeEl = document.getElementById('coBankShippingNotice');
+        if (bankNoticeEl) {
+            bankNoticeEl.innerText = `입금 계좌 번호 (${ship === 0 ? '무료배송 적용' : `택배비 ${ship.toLocaleString()}원 포함`} 총 결제금액 입금)`;
+        }
+        window.renderMallShippingGuideBox(document.getElementById('coShippingGuide'), effectiveSub);
+        renderCheckoutTotals();
+    }
+
+    function _renderCheckoutAlert(payload) {
+        const alertEl = document.getElementById('coRevalidateAlert');
+        if (!alertEl) return;
+        const msgs = [];
+        if (payload && Array.isArray(payload.errors)) {
+            payload.errors.forEach(m => {
+                if (m && !msgs.includes(m)) msgs.push(m);
+            });
+        }
+        if (msgs.length === 0) {
+            alertEl.innerHTML = '';
+            alertEl.classList.add('ax-is-hidden');
+            return;
+        }
+        const esc = window.mallEscapeHtml;
+        alertEl.innerHTML = `<strong>주문 상품 실시간 확인 안내</strong><ul style="margin:6px 0 0 18px; padding:0;">${msgs.map(m => `<li>${esc(m)}</li>`).join('')}</ul>`;
+        alertEl.classList.remove('ax-is-hidden');
+    }
+
+    async function revalidateCheckoutItems() {
+        if (!Array.isArray(__coTargetItems) || __coTargetItems.length === 0) return null;
+        try {
+            const sentCouponCode = String(__coPromoState.coupon_code || '').trim();
+            const ptsInp = document.getElementById('coPointsUsed');
+            const curPts = window.__MALL_USER_LOGGED_IN__
+                ? Math.max(0, Math.floor(Number(ptsInp ? ptsInp.value : __coPromoState.points_used) || 0))
+                : 0;
+            const res = await fetch('/api/cart/revalidate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: __coTargetItems,
+                    source_page: 'CART_CHECKOUT',
+                    coupon_code: sentCouponCode,
+                    points_used: curPts
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !Array.isArray(data.items)) {
+                return null;
+            }
+            const fullCart = getMallCart();
+            let cartMutated = false;
+            data.items.forEach((srv, idx) => {
+                const target = __coTargetItems[idx];
+                if (!target || !srv.exists) return;
+                const srvPrice = Number(srv.unit_price ?? srv.price ?? 0);
+                if (Number(target.price || 0) !== srvPrice) {
+                    target.price = srvPrice;
+                }
+                if (srv.name) target.name = srv.name;
+                const matchInCart = fullCart.find(c =>
+                    Number(c.num) === Number(target.num)
+                    && String(c.color || '-') === String(target.color || '-')
+                    && String(c.size || '-') === String(target.size || '-')
+                );
+                if (matchInCart) {
+                    if (Number(matchInCart.price || 0) !== srvPrice) {
+                        matchInCart.price = srvPrice;
+                        cartMutated = true;
+                    }
+                    if (srv.name && matchInCart.name !== srv.name) {
+                        matchInCart.name = srv.name;
+                        cartMutated = true;
+                    }
+                }
+            });
+            if (cartMutated) {
+                saveMallCart(fullCart, { preserveCheckoutSelection: true });
+            }
+            if (__coUsingSelection) {
+                try {
+                    sessionStorage.setItem(MALL_CHECKOUT_ITEMS_KEY, JSON.stringify(__coTargetItems));
+                } catch (e) {}
+            }
+            if (sentCouponCode) {
+                const couponInp = document.getElementById('coCouponCode');
+                const couponMsg = document.getElementById('coCouponMessage');
+                const clearBtn = document.getElementById('btnCoClearCoupon');
+                const couponSel = document.getElementById('coCouponSelect');
+                if (data.coupon_valid !== false && !data.promo_error && data.coupon_code) {
+                    __coPromoState.coupon_code = String(data.coupon_code);
+                    __coPromoState.coupon_discount = Math.max(0, Math.round(Number(data.coupon_discount || 0)));
+                    if (couponInp) couponInp.value = __coPromoState.coupon_code;
+                    if (clearBtn) clearBtn.classList.remove('ax-is-hidden');
+                    if (couponMsg) {
+                        couponMsg.textContent = `적용 완료 (-${__coPromoState.coupon_discount.toLocaleString()}원)`;
+                        couponMsg.className = 'ax-promo-feedback is-ok';
+                    }
+                } else {
+                    __coPromoState.coupon_code = '';
+                    __coPromoState.coupon_discount = 0;
+                    if (couponSel) couponSel.value = '';
+                    if (clearBtn) clearBtn.classList.add('ax-is-hidden');
+                    if (couponMsg) {
+                        couponMsg.textContent = data.promo_error || '주문 조건 변경으로 쿠폰 적용이 해제되었습니다.';
+                        couponMsg.className = 'ax-promo-feedback is-err';
+                    }
+                }
+            }
+            const srvSub = Math.max(0, Math.round(Number(data.subtotal ?? __coSubtotal) || 0));
+            const effDisc = Math.min(srvSub, Math.max(0, Math.round(Number(__coPromoState.coupon_discount) || 0)));
+            const maxAllowedPts = window.__MALL_USER_LOGGED_IN__
+                ? Math.min(window.__MALL_USER_POINTS__ || 0, Math.max(0, srvSub - effDisc))
+                : 0;
+            const srvPts = typeof data.points_used === 'number'
+                ? Math.max(0, Math.floor(data.points_used))
+                : curPts;
+            const clampedPts = Math.min(maxAllowedPts, srvPts);
+            __coPromoState.points_used = clampedPts;
+            if (ptsInp) ptsInp.value = String(clampedPts);
+
+            __coHasBlocked = Boolean(data.has_blocked);
+            const submitBtn = document.getElementById('coSubmitBtn');
+            if (submitBtn) submitBtn.disabled = __coHasBlocked;
+            _renderCheckoutAlert(data);
+            _renderCheckoutItemsSummary(__coTargetItems, Number(data.subtotal), Number(data.shipping_fee));
+            return data;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function _removeOrderedItemsFromCart(orderedItems) {
         const cart = getMallCart();
-        if (cart.length === 0) {
+        const remaining = [];
+        const toRemove = (orderedItems || []).map(it => ({
+            num: Number(it.num),
+            color: String(it.color || '-').trim() || '-',
+            size: String(it.size || '-').trim() || '-',
+            quantity: Math.max(1, Number(it.quantity) || 1)
+        }));
+        for (const c of cart) {
+            const cc = String(c.color || '-').trim() || '-';
+            const cs = String(c.size || '-').trim() || '-';
+            const matchIdx = toRemove.findIndex(r => r.num === Number(c.num) && r.color === cc && r.size === cs && r.quantity > 0);
+            if (matchIdx === -1) {
+                remaining.push(c);
+                continue;
+            }
+            const cq = Math.max(1, Number(c.quantity) || 1);
+            if (cq > toRemove[matchIdx].quantity) {
+                const clone = Object.assign({}, c, { quantity: cq - toRemove[matchIdx].quantity });
+                toRemove[matchIdx].quantity = 0;
+                remaining.push(clone);
+            } else {
+                toRemove[matchIdx].quantity -= cq;
+            }
+        }
+        saveMallCart(remaining);
+    }
+
+    function renderCheckoutTotals() {
+        const sub = Math.max(0, Math.round(Number(__coSubtotal) || 0));
+        const ship = Math.max(0, Math.round(Number(__coShippingFee) || 0));
+        const cDisc = Math.min(sub, Math.max(0, Math.round(Number(__coPromoState.coupon_discount) || 0)));
+        const maxPts = window.__MALL_USER_LOGGED_IN__
+            ? Math.min(window.__MALL_USER_POINTS__ || 0, Math.max(0, sub - cDisc))
+            : 0;
+        const ptsInp = document.getElementById('coPointsUsed');
+        const rawPts = ptsInp ? Math.max(0, Math.floor(Number(ptsInp.value) || 0)) : 0;
+        const ptsUsed = Math.min(maxPts, rawPts);
+        if (ptsInp && rawPts !== ptsUsed && ptsInp !== document.activeElement) {
+            ptsInp.value = String(ptsUsed);
+        }
+        __coPromoState.points_used = ptsUsed;
+        const total = Math.max(0, sub - cDisc - ptsUsed) + ship;
+
+        const cRow = document.getElementById('coCouponDiscountRow');
+        const cAmt = document.getElementById('coCouponDiscountAmount');
+        if (cRow) cRow.classList.toggle('ax-is-hidden', cDisc <= 0);
+        if (cAmt) cAmt.innerText = `-${cDisc.toLocaleString()}원`;
+
+        const pRow = document.getElementById('coPointsUsedRow');
+        const pAmt = document.getElementById('coPointsUsedAmount');
+        if (pRow) pRow.classList.toggle('ax-is-hidden', ptsUsed <= 0);
+        if (pAmt) pAmt.innerText = `-${ptsUsed.toLocaleString()}P`;
+
+        const rate = window.getMallPointEarnRate ? window.getMallPointEarnRate() : 1;
+        const earned = window.__MALL_USER_LOGGED_IN__ ? Math.floor(sub * rate / 100 + 1e-9) : 0;
+        const eRow = document.getElementById('coPointsEarnedRow');
+        const eAmt = document.getElementById('coPointsEarnedAmount');
+        if (eRow) eRow.classList.toggle('ax-is-hidden', earned <= 0);
+        if (eAmt) eAmt.innerText = `+${earned.toLocaleString()}P`;
+
+        const totalEl = document.getElementById('coTotalAmount');
+        if (totalEl) totalEl.innerText = `${total.toLocaleString()}원`;
+    }
+
+    async function loadCheckoutCoupons() {
+        const bar = document.getElementById('coCouponWalletBar');
+        const sel = document.getElementById('coCouponSelect');
+        if (!bar || !sel) return;
+        try {
+            const res = await fetch('/api/mypage/coupons');
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !Array.isArray(data.coupons)) {
+                bar.classList.add('ax-is-hidden');
+                return;
+            }
+            const avail = data.coupons.filter(c => String(c.status || '').toUpperCase() === 'AVAILABLE' && c.is_active);
+            if (avail.length === 0) {
+                bar.classList.add('ax-is-hidden');
+                return;
+            }
+            sel.innerHTML = '<option value="">보유 쿠폰 선택...</option>' + avail.map(c => {
+                const benefit = c.discount_type === 'PERCENT' ? `${c.discount_value}%` : `${Number(c.discount_value || 0).toLocaleString()}원`;
+                return `<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)} (${benefit} 할인 · ${window.mallEscapeHtml(c.code)})</option>`;
+            }).join('');
+            bar.classList.remove('ax-is-hidden');
+            if (!sel.dataset.boundChange) {
+                sel.dataset.boundChange = '1';
+                sel.addEventListener('change', () => {
+                    const code = sel.value.trim();
+                    const inp = document.getElementById('coCouponCode');
+                    if (inp) inp.value = code;
+                    if (code) applyCheckoutCoupon();
+                });
+            }
+        } catch (e) {}
+    }
+
+    async function applyCheckoutCoupon() {
+        const inp = document.getElementById('coCouponCode');
+        const msg = document.getElementById('coCouponMessage');
+        const clearBtn = document.getElementById('btnCoClearCoupon');
+        const code = (inp?.value || '').trim().toUpperCase();
+        if (!code) {
+            if (msg) {
+                msg.textContent = '쿠폰 코드를 입력해 주세요.';
+                msg.className = 'ax-promo-feedback is-err';
+            }
+            return;
+        }
+        try {
+            const res = await fetch('/api/coupons/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, subtotal: __coSubtotal, source_page: 'STORE' })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.valid) {
+                __coPromoState.coupon_code = '';
+                __coPromoState.coupon_discount = 0;
+                if (clearBtn) clearBtn.classList.add('ax-is-hidden');
+                if (msg) {
+                    msg.textContent = (data && data.message) || '사용할 수 없는 쿠폰입니다.';
+                    msg.className = 'ax-promo-feedback is-err';
+                }
+                renderCheckoutTotals();
+                return;
+            }
+            __coPromoState.coupon_code = data.coupon ? data.coupon.code : code;
+            __coPromoState.coupon_discount = Number(data.discount_amount || 0);
+            if (inp) inp.value = __coPromoState.coupon_code;
+            if (clearBtn) clearBtn.classList.remove('ax-is-hidden');
+            if (msg) {
+                msg.textContent = `적용 완료 (-${__coPromoState.coupon_discount.toLocaleString()}원)`;
+                msg.className = 'ax-promo-feedback is-ok';
+            }
+            renderCheckoutTotals();
+        } catch (err) {
+            if (msg) {
+                msg.textContent = '쿠폰 검증 중 오류가 발생했습니다.';
+                msg.className = 'ax-promo-feedback is-err';
+            }
+        }
+    }
+
+    function initCheckoutPage() {
+        __coTargetItems = _getCheckoutTargetItems();
+        if (__coTargetItems.length === 0) {
             window.location.href = '/cart';
             return;
         }
-        let sub = 0;
-        const box = document.getElementById('coOrderItemsSummary');
-        box.innerHTML = cart.map(it => {
-            const line = (Number(it.price) || 0) * (Number(it.quantity) || 1);
-            sub += line;
-            return `
-                <div style="padding:10px 0; border-bottom:1px solid var(--ax-border-subtle); font-size:0.85rem;">
-                    <div style="font-weight:700; color:var(--ax-text-primary);">#${it.num} ${it.name}</div>
-                    <div class="ax-num" style="color:var(--ax-text-secondary); margin-top:2px;">${it.color}/${it.size} × ${it.quantity}개 = <strong style="color:var(--ax-text-primary);">${line.toLocaleString()}원</strong></div>
-                </div>
-            `;
-        }).join('');
-        const ship = 4000;
-        const subEl = document.getElementById('coSubtotalAmount');
-        if (subEl) subEl.innerText = `${sub.toLocaleString()}원`;
-        const shipEl = document.getElementById('coShippingAmount');
-        if (shipEl) shipEl.innerText = `+${ship.toLocaleString()}원`;
-        document.getElementById('coTotalAmount').innerText = `${(sub + ship).toLocaleString()}원`;
+        _renderCheckoutItemsSummary(__coTargetItems);
 
         try {
-            if (!window.__MALL_USER_LOGGED_IN__) {
+            if (window.__MALL_USER_LOGGED_IN__) {
+                loadCheckoutAddressBook();
+                loadCheckoutCoupons();
+            } else {
                 const savedBuyer = JSON.parse(localStorage.getItem('mall_last_buyer_v1') || '{}');
                 if (savedBuyer.name && !document.getElementById('coBuyerName').value) document.getElementById('coBuyerName').value = savedBuyer.name;
                 if (savedBuyer.phone && !document.getElementById('coBuyerPhone').value) document.getElementById('coBuyerPhone').value = savedBuyer.phone;
+                const zipEl = document.getElementById('coZipcode');
+                if (savedBuyer.zipcode && zipEl && !zipEl.value) zipEl.value = savedBuyer.zipcode;
                 if (savedBuyer.address && !document.getElementById('coAddress').value) document.getElementById('coAddress').value = savedBuyer.address;
                 if (savedBuyer.address_detail && !document.getElementById('coAddressDetail').value) document.getElementById('coAddressDetail').value = savedBuyer.address_detail;
+            }
+        } catch (e) {}
+
+        revalidateCheckoutItems();
+    }
+
+    async function loadCheckoutAddressBook() {
+        const bar = document.getElementById('coAddressBookBar');
+        const sel = document.getElementById('coAddressBookSelect');
+        if (!bar || !sel) return;
+        try {
+            const res = await fetch('/api/mypage/addresses');
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok' || !Array.isArray(data.addresses) || data.addresses.length === 0) {
+                bar.classList.add('ax-is-hidden');
+                return;
+            }
+            const addrList = data.addresses;
+            sel.innerHTML = '<option value="">저장된 배송지 선택...</option>' + addrList.map((a) => {
+                const defTag = a.is_default ? '[기본] ' : '';
+                const zipTxt = a.zipcode ? `[${a.zipcode}] ` : '';
+                return `<option value="${Number(a.id)}">${window.mallEscapeHtml(defTag + (a.label || '배송지') + ' - ' + zipTxt + a.address)}</option>`;
+            }).join('');
+            bar.classList.remove('ax-is-hidden');
+            if (!sel.dataset.boundChange) {
+                sel.dataset.boundChange = '1';
+                sel.addEventListener('change', () => {
+                    const chosen = addrList.find((x) => Number(x.id) === Number(sel.value));
+                    if (!chosen) return;
+                    const nmEl = document.getElementById('coBuyerName');
+                    const phEl = document.getElementById('coBuyerPhone');
+                    const zpEl = document.getElementById('coZipcode');
+                    const adEl = document.getElementById('coAddress');
+                    const dtEl = document.getElementById('coAddressDetail');
+                    if (nmEl && chosen.recipient_name) nmEl.value = chosen.recipient_name;
+                    if (phEl && chosen.recipient_phone) phEl.value = chosen.recipient_phone;
+                    if (zpEl) zpEl.value = chosen.zipcode || '';
+                    if (adEl && chosen.address) adEl.value = chosen.address;
+                    if (dtEl) dtEl.value = chosen.address_detail || '';
+                });
             }
         } catch (e) {}
     }
 
     async function submitCheckoutForm(e) {
         e.preventDefault();
-        const cart = getMallCart();
-        if (cart.length === 0) return;
+        if (__coTargetItems.length === 0) __coTargetItems = _getCheckoutTargetItems();
+        if (__coTargetItems.length === 0) return;
         const btn = document.getElementById('coSubmitBtn');
         const buyer_name = document.getElementById('coBuyerName').value.trim();
         const buyer_phone = document.getElementById('coBuyerPhone').value.trim();
+        const zipcode = (document.getElementById('coZipcode')?.value || '').trim();
         const address = document.getElementById('coAddress').value.trim();
         const address_detail = document.getElementById('coAddressDetail').value.trim();
         const delivery_memo = document.getElementById('coMemo').value.trim();
         const payment_method = document.getElementById('coPaymentMethod').value;
+        const depositor_name = (document.getElementById('coDepositorName')?.value || '').trim();
+        const cash_receipt_type = (document.getElementById('coCashReceiptType')?.value || 'NONE').trim();
+        const cash_receipt_no = (document.getElementById('coCashReceiptNo')?.value || '').trim();
         const guestPwEl = document.getElementById('coGuestPassword');
         const guest_password = guestPwEl ? guestPwEl.value.trim() : '';
+
+        if (payment_method === 'BANK' && cash_receipt_type !== 'NONE' && !cash_receipt_no) {
+            alert('현금영수증 발급번호를 입력해 주세요.');
+            document.getElementById('coCashReceiptNo')?.focus();
+            return;
+        }
 
         if (!window.__MALL_USER_LOGGED_IN__ && guest_password.length < 4) {
             alert('비회원 주문 조회 시 사용할 비밀번호를 4자 이상 입력해 주세요.');
@@ -141,9 +595,18 @@
 
         try {
             localStorage.setItem('mall_last_buyer_v1', JSON.stringify({
-                name: buyer_name, phone: buyer_phone, address: address, address_detail: address_detail
+                name: buyer_name, phone: buyer_phone, zipcode: zipcode, address: address, address_detail: address_detail
             }));
         } catch (err) {}
+
+        const expected_items = __coTargetItems.map(it => ({
+            num: Number(it.num),
+            color: String(it.color || '-').trim() || '-',
+            size: String(it.size || '-').trim() || '-',
+            quantity: Math.max(1, Number(it.quantity) || 1),
+            unit_price: Math.max(0, Math.round(Number(it.price) || 0))
+        }));
+        const expected_total = _computeCheckoutTotalValue();
 
         try {
             btn.disabled = true;
@@ -154,21 +617,33 @@
                 body: JSON.stringify({
                     buyer_name,
                     buyer_phone,
+                    zipcode,
                     address,
                     address_detail,
                     delivery_memo,
                     payment_method,
+                    depositor_name: payment_method === 'BANK' ? depositor_name : '',
+                    cash_receipt_type: payment_method === 'BANK' ? cash_receipt_type : 'NONE',
+                    cash_receipt_no: payment_method === 'BANK' && cash_receipt_type !== 'NONE' ? cash_receipt_no : '',
                     guest_password,
+                    coupon_code: __coPromoState.coupon_code || '',
+                    points_used: window.__MALL_USER_LOGGED_IN__ ? Math.max(0, Number(__coPromoState.points_used) || 0) : 0,
                     source_page: 'CART_CHECKOUT',
-                    items: cart
+                    items: __coTargetItems,
+                    expected_items,
+                    expected_total
                 })
             });
             const data = await res.json();
             if (!res.ok || data.status !== 'ok') {
+                if (res.status === 409 || data.code === 'PRICE_CHANGED' || data.code === 'OUT_OF_STOCK' || data.code === 'INSUFFICIENT_STOCK') {
+                    await revalidateCheckoutItems();
+                }
                 alert(data.message || '주문 처리에 실패했습니다.');
                 return;
             }
-            saveMallCart([]);
+            _removeOrderedItemsFromCart(__coTargetItems);
+            try { sessionStorage.removeItem(MALL_CHECKOUT_ITEMS_KEY); } catch (e) {}
             try {
                 if (!window.__MALL_USER_LOGGED_IN__) {
                     sessionStorage.setItem('mall_last_guest_lookup_v1', JSON.stringify({
@@ -178,15 +653,65 @@
                     }));
                 }
             } catch (e) {}
-            window.location.href = '/orders';
+            window.location.href = data.redirect_url || ('/order-complete/' + encodeURIComponent(data.order.order_code));
         } catch (err) {
             alert('오류: ' + err.message);
         } finally {
-            btn.disabled = false;
-            btn.innerText = '주문 완료하기 (계좌입금)';
+            btn.disabled = __coHasBlocked;
+            const pmSel = document.getElementById('coPaymentMethod');
+            const isBank = !pmSel || pmSel.value === 'BANK';
+            btn.innerText = isBank ? '주문 완료하기 (계좌입금)' : '주문 생성 및 결제 진행';
         }
     }
 
-    document.addEventListener('DOMContentLoaded', initCheckoutPage);
+    function syncCheckoutPaymentUi() {
+        const pmSel = document.getElementById('coPaymentMethod');
+        const bankExtras = document.getElementById('coBankExtras');
+        const pgBox = document.getElementById('coPgNoticeBox');
+        const crSel = document.getElementById('coCashReceiptType');
+        const crNoWrap = document.getElementById('coCashReceiptNoWrap');
+        const crNoInput = document.getElementById('coCashReceiptNo');
+        const submitBtn = document.getElementById('coSubmitBtn');
+
+        const isBank = !pmSel || pmSel.value === 'BANK';
+        if (bankExtras) bankExtras.classList.toggle('ax-is-hidden', !isBank);
+        if (pgBox) pgBox.classList.toggle('ax-is-hidden', isBank);
+        const needsCrNo = isBank && crSel && crSel.value !== 'NONE';
+        if (crNoWrap) crNoWrap.classList.toggle('ax-is-hidden', !needsCrNo);
+        if (crNoInput) crNoInput.required = Boolean(needsCrNo);
+        if (submitBtn) {
+            submitBtn.innerText = isBank ? '주문 완료하기 (계좌입금)' : '주문 생성 및 결제 진행';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initCheckoutPage();
+        document.getElementById('coPaymentMethod')?.addEventListener('change', syncCheckoutPaymentUi);
+        document.getElementById('coCashReceiptType')?.addEventListener('change', syncCheckoutPaymentUi);
+        document.getElementById('btnCoApplyCoupon')?.addEventListener('click', applyCheckoutCoupon);
+        document.getElementById('btnCoClearCoupon')?.addEventListener('click', () => {
+            __coPromoState.coupon_code = '';
+            __coPromoState.coupon_discount = 0;
+            const inp = document.getElementById('coCouponCode');
+            const msg = document.getElementById('coCouponMessage');
+            const sel = document.getElementById('coCouponSelect');
+            if (inp) inp.value = '';
+            if (sel) sel.value = '';
+            document.getElementById('btnCoClearCoupon')?.classList.add('ax-is-hidden');
+            if (msg) {
+                msg.textContent = '';
+                msg.className = 'ax-promo-feedback';
+            }
+            renderCheckoutTotals();
+        });
+        document.getElementById('coPointsUsed')?.addEventListener('input', renderCheckoutTotals);
+        document.getElementById('btnCoUseAllPoints')?.addEventListener('click', () => {
+            const maxP = Math.min(window.__MALL_USER_POINTS__ || 0, Math.max(0, __coSubtotal - (__coPromoState.coupon_discount || 0)));
+            const inp = document.getElementById('coPointsUsed');
+            if (inp) inp.value = String(maxP);
+            renderCheckoutTotals();
+        });
+        syncCheckoutPaymentUi();
+    });
 </script>
 {% endblock %}
