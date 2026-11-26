@@ -1762,6 +1762,217 @@ def studio_portal_view():
     )
 
 
+_MONITOR_LAYOUT_PROGRAMS = ("obs_studio", "broadcast_chat", "host_prompter")
+
+
+def _portal_monitor_layout_key(user) -> str:
+    if isinstance(user, dict) and user.get("id"):
+        return f"portal_monitor_layout_u{int(user['id'])}"
+    return "portal_monitor_layout_default"
+
+
+def _default_portal_monitor_layout() -> dict:
+    return {
+        "configured": False,
+        "monitors": [],
+        "assignments": {
+            "obs_studio": "unassigned",
+            "broadcast_chat": "unassigned",
+            "host_prompter": "unassigned",
+        },
+        "updated_at": None,
+    }
+
+
+def _parse_finite_coord(val, field_name: str, min_val: float = -65536.0, max_val: float = 65536.0) -> int:
+    import math
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        raise ValueError(f"{field_name} must be a finite number")
+    try:
+        num = float(val)
+    except OverflowError as exc:
+        raise ValueError(f"{field_name} out of range") from exc
+    if not math.isfinite(num) or num < min_val or num > max_val:
+        raise ValueError(f"{field_name} out of range")
+    return int(round(num))
+
+
+def _sanitize_monitor_descriptor(raw, fallback_index: int = 0) -> dict:
+    import math
+    if not isinstance(raw, dict):
+        raise ValueError("monitor entry must be an object")
+    key = str(raw.get("key") or raw.get("monitorKey") or "").strip()
+    if not key or len(key) > 256:
+        raise ValueError("monitor key must be a non-empty string up to 256 chars")
+
+    raw_idx = raw.get("index", fallback_index)
+    idx_int = _parse_finite_coord(raw_idx, "monitor index", 0, 64)
+
+    label = str(raw.get("label") or "").strip()[:200]
+    raw_label = str(raw.get("rawLabel") or "").strip()[:200]
+
+    width = _parse_finite_coord(raw.get("width"), "width", 1, 65536)
+    height = _parse_finite_coord(raw.get("height"), "height", 1, 65536)
+    left = _parse_finite_coord(raw.get("left", 0), "left", -65536, 65536)
+    top = _parse_finite_coord(raw.get("top", 0), "top", -65536, 65536)
+
+    avail_width = _parse_finite_coord(raw.get("availWidth", width), "availWidth", 1, 65536)
+    avail_height = _parse_finite_coord(raw.get("availHeight", height), "availHeight", 1, 65536)
+    avail_left = _parse_finite_coord(raw.get("availLeft", left), "availLeft", -65536, 65536)
+    avail_top = _parse_finite_coord(raw.get("availTop", top), "availTop", -65536, 65536)
+
+    dpr_raw = raw.get("devicePixelRatio", 1.0)
+    if isinstance(dpr_raw, bool) or not isinstance(dpr_raw, (int, float)):
+        raise ValueError("devicePixelRatio is invalid")
+    try:
+        dpr_num = float(dpr_raw)
+    except OverflowError as exc:
+        raise ValueError("devicePixelRatio is invalid") from exc
+    if not math.isfinite(dpr_num) or dpr_num <= 0 or dpr_num > 16:
+        raise ValueError("devicePixelRatio is invalid")
+
+    return {
+        "key": key,
+        "index": idx_int,
+        "label": label or f"모니터 {idx_int + 1}",
+        "rawLabel": raw_label,
+        "isPrimary": bool(raw.get("isPrimary", False)),
+        "isInternal": bool(raw.get("isInternal", False)),
+        "left": left,
+        "top": top,
+        "width": width,
+        "height": height,
+        "availLeft": avail_left,
+        "availTop": avail_top,
+        "availWidth": avail_width,
+        "availHeight": avail_height,
+        "devicePixelRatio": round(dpr_num, 3),
+        "isFallback": bool(raw.get("isFallback", False)),
+    }
+
+
+def _sanitize_monitor_assignment(raw_val):
+    if raw_val is None:
+        return "unassigned"
+    if isinstance(raw_val, str):
+        s = raw_val.strip()
+        if not s or s.lower() == "unassigned":
+            return "unassigned"
+        if len(s) > 256:
+            raise ValueError("assignment key too long")
+        return s
+    if isinstance(raw_val, dict):
+        mode = str(raw_val.get("mode") or "").strip().lower()
+        key = str(raw_val.get("monitorKey") or raw_val.get("key") or "").strip()
+        if mode == "unassigned" or key.lower() == "unassigned":
+            return "unassigned"
+        if not key or len(key) > 256:
+            raise ValueError("assignment monitorKey is required")
+        sanitized = {
+            "monitorKey": key,
+            "label": str(raw_val.get("label") or "").strip()[:200],
+            "rawLabel": str(raw_val.get("rawLabel") or "").strip()[:200],
+            "isPrimary": bool(raw_val.get("isPrimary", False)),
+            "isInternal": bool(raw_val.get("isInternal", False)),
+            "isFallback": bool(raw_val.get("isFallback", False)),
+        }
+        if raw_val.get("index") is not None:
+            sanitized["index"] = _parse_finite_coord(raw_val.get("index"), "assignment.index", 0, 64)
+        if any(k in raw_val for k in ("width", "height", "availWidth", "availHeight", "left", "top", "availLeft", "availTop")):
+            w = _parse_finite_coord(raw_val.get("width", raw_val.get("availWidth")), "assignment.width", 1, 65536)
+            h = _parse_finite_coord(raw_val.get("height", raw_val.get("availHeight")), "assignment.height", 1, 65536)
+            l = _parse_finite_coord(raw_val.get("left", raw_val.get("availLeft", 0)), "assignment.left", -65536, 65536)
+            t = _parse_finite_coord(raw_val.get("top", raw_val.get("availTop", 0)), "assignment.top", -65536, 65536)
+            aw = _parse_finite_coord(raw_val.get("availWidth", w), "assignment.availWidth", 1, 65536)
+            ah = _parse_finite_coord(raw_val.get("availHeight", h), "assignment.availHeight", 1, 65536)
+            al = _parse_finite_coord(raw_val.get("availLeft", l), "assignment.availLeft", -65536, 65536)
+            at = _parse_finite_coord(raw_val.get("availTop", t), "assignment.availTop", -65536, 65536)
+            sanitized.update({
+                "left": l,
+                "top": t,
+                "width": w,
+                "height": h,
+                "availLeft": al,
+                "availTop": at,
+                "availWidth": aw,
+                "availHeight": ah,
+            })
+        if raw_val.get("devicePixelRatio") is not None:
+            import math
+            dpr = raw_val.get("devicePixelRatio")
+            if isinstance(dpr, bool) or not isinstance(dpr, (int, float)):
+                raise ValueError("assignment.devicePixelRatio is invalid")
+            try:
+                dpr_num = float(dpr)
+            except OverflowError as exc:
+                raise ValueError("assignment.devicePixelRatio is invalid") from exc
+            if not math.isfinite(dpr_num) or dpr_num <= 0 or dpr_num > 16:
+                raise ValueError("assignment.devicePixelRatio is invalid")
+            sanitized["devicePixelRatio"] = round(dpr_num, 3)
+        return sanitized
+    raise ValueError("invalid assignment value")
+
+
+@app.route('/api/portal/monitor-layout', methods=['GET', 'POST'])
+def api_portal_monitor_layout():
+    """메인 포털 다중 모니터 배치 설정 조회/저장 API (세션 사용자별 저장)"""
+    user = get_current_studio_user()
+    state_key = _portal_monitor_layout_key(user)
+
+    if request.method == 'GET':
+        saved = database.get_overlay_state(state_key, None)
+        if not isinstance(saved, dict):
+            return jsonify({"status": "ok", "layout": _default_portal_monitor_layout()}), 200
+        default_layout = _default_portal_monitor_layout()
+        raw_assignments = saved.get("assignments") if isinstance(saved.get("assignments"), dict) else {}
+        merged_assignments = {
+            prog: raw_assignments.get(prog, "unassigned")
+            for prog in _MONITOR_LAYOUT_PROGRAMS
+        }
+        layout = {
+            "configured": bool(saved.get("configured", True)),
+            "monitors": saved.get("monitors") if isinstance(saved.get("monitors"), list) else [],
+            "assignments": merged_assignments,
+            "updated_at": saved.get("updated_at") or default_layout["updated_at"],
+        }
+        return jsonify({"status": "ok", "layout": layout}), 200
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"status": "error", "message": "유효한 JSON 요청 본문이 필요합니다."}), 400
+
+    raw_assignments = data.get("assignments")
+    if not isinstance(raw_assignments, dict):
+        return jsonify({"status": "error", "message": "assignments 객체가 필요합니다."}), 400
+
+    unknown_programs = [k for k in raw_assignments.keys() if k not in _MONITOR_LAYOUT_PROGRAMS]
+    if unknown_programs:
+        return jsonify({"status": "error", "message": f"허용되지 않은 프로그램 키입니다: {', '.join(unknown_programs)}"}), 400
+
+    raw_monitors = data.get("monitors", [])
+    if not isinstance(raw_monitors, list) or len(raw_monitors) > 32:
+        return jsonify({"status": "error", "message": "monitors는 최대 32개 이하의 배열이어야 합니다."}), 400
+
+    try:
+        sanitized_monitors = [_sanitize_monitor_descriptor(m, idx) for idx, m in enumerate(raw_monitors)]
+        sanitized_assignments = {
+            prog: _sanitize_monitor_assignment(raw_assignments.get(prog, "unassigned"))
+            for prog in _MONITOR_LAYOUT_PROGRAMS
+        }
+    except ValueError as exc:
+        return jsonify({"status": "error", "message": f"잘못된 모니터 배치 설정입니다: {exc}"}), 400
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    layout = {
+        "configured": True,
+        "monitors": sanitized_monitors,
+        "assignments": sanitized_assignments,
+        "updated_at": now_str,
+    }
+    database.set_overlay_state(state_key, layout)
+    return jsonify({"status": "ok", "layout": layout}), 200
+
+
 @app.route('/auth/login', methods=['GET', 'POST'])
 def studio_auth_login():
     """OBS 스튜디오 방송자 로그인 (로그인 성공 시 기본 /portal 로 이동)"""
