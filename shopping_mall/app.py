@@ -738,6 +738,7 @@ def mall_home():
 
     all_prods = mall_database.get_all_mall_products()
     has_etc = any((p.get("category") or "").upper() == "ETC" for p in all_prods)
+    cat_nav = mall_database.get_mall_category_drilldown_state(category)
     page_res = mall_database.query_mall_products_paginated(
         category=category,
         search=search,
@@ -768,6 +769,7 @@ def mall_home():
         max_price=max_price_raw,
         live_state=live_state,
         has_etc_products=has_etc,
+        cat_nav=cat_nav,
         current_category=category,
         search_query=search,
         current_sort=sort,
@@ -813,6 +815,7 @@ def mall_product_detail(num):
     reviews = mall_database.get_mall_reviews(num, viewer=viewer)
     review_summary = mall_database.get_mall_review_summary(num)
     raw_related = mall_database.get_related_mall_products(raw_product, limit=4)
+    product_category_path = mall_database.get_mall_category_breadcrumb(raw_product.get("category"))
     product = _sanitize_store_product_for_view(raw_product)
     related = [_sanitize_store_product_for_view(p) for p in raw_related]
     live_state = mall_database.get_full_live_state()
@@ -821,6 +824,7 @@ def mall_product_detail(num):
     return render_template(
         "product_detail.html",
         product=product,
+        product_category_path=product_category_path,
         reviews=reviews,
         review_summary=review_summary,
         qna_items=qna_items,
@@ -2616,25 +2620,38 @@ def api_mall_admin_categories_save():
     data, err_resp = _read_json_dict()
     if err_resp:
         return err_resp
+
+    has_parent_key = "parent_id" in data
+    raw_parent_id = data.get("parent_id")
+    parsed_parent_id = None
+    if raw_parent_id not in (None, ""):
+        parsed_parent_id = mall_database.parse_strict_int64(raw_parent_id, min_val=1)
+        if parsed_parent_id is None:
+            return jsonify({"status": "error", "message": "유효하지 않은 상위 카테고리 ID입니다."}), 400
+
     raw_cat_id = data.get("id")
     if raw_cat_id not in (None, ""):
         parsed_cat_id = mall_database.parse_strict_int64(raw_cat_id, min_val=1)
         if parsed_cat_id is None:
             return jsonify({"status": "error", "message": "유효하지 않은 카테고리 ID입니다."}), 400
         cat_id = parsed_cat_id
-        res = mall_database.update_mall_category(
-            cat_id=parsed_cat_id,
-            name=data.get("name"),
-            sort_order=data.get("sort_order"),
-            is_active=data.get("is_active")
-        )
+        update_kwargs = {
+            "cat_id": parsed_cat_id,
+            "name": data.get("name"),
+            "sort_order": data.get("sort_order"),
+            "is_active": data.get("is_active"),
+        }
+        if has_parent_key:
+            update_kwargs["parent_id"] = parsed_parent_id
+        res = mall_database.update_mall_category(**update_kwargs)
     else:
         cat_id = None
         res = mall_database.create_mall_category(
             name=str(data.get("name") or ""),
             code=str(data.get("code") or ""),
             sort_order=data.get("sort_order"),
-            is_active=bool(data.get("is_active", True))
+            is_active=bool(data.get("is_active", True)),
+            parent_id=parsed_parent_id,
         )
     if not res.get("ok"):
         return jsonify({"status": "error", "message": res.get("message", "카테고리 저장 실패")}), 400
@@ -2646,6 +2663,7 @@ def api_mall_admin_categories_save():
         target_id=saved_cat.get("code") or res.get("code") or saved_cat.get("id") or cat_id or data.get("code") or "",
         detail_dict={
             "cat_id": saved_cat.get("id") or cat_id,
+            "parent_id": saved_cat.get("parent_id") if saved_cat else parsed_parent_id,
             "name": saved_cat.get("name") or data.get("name"),
             "code": saved_cat.get("code") or data.get("code"),
             "sort_order": saved_cat.get("sort_order") if saved_cat else data.get("sort_order"),

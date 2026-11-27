@@ -153,16 +153,22 @@
 <section id="adminPanelCategories" class="ax-card ax-card-pad ax-is-hidden">
     <div class="ax-admin-subbar">
         <div>
-            <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 카테고리 관리</h2>
-            <p style="font-size:0.8125rem; color:var(--ax-text-secondary); margin-top:2px;">등록·수정한 카테고리는 스토어 홈 상단 필터에 즉시 반영되며, 삭제된 카테고리의 상품은 자동으로 기타(ETC)로 이동합니다.</p>
+            <h2 style="font-size:1.05rem; font-weight:800; color:var(--ax-text-primary);">쇼핑몰 카테고리 관리 (최대 3단계)</h2>
+            <p style="font-size:0.8125rem; color:var(--ax-text-secondary); margin-top:2px;">1차 대분류 &gt; 2차 중분류 &gt; 3차 소분류까지 구성할 수 있습니다. 하위 카테고리가 있는 상위 카테고리는 삭제할 수 없으며, 하위가 없는 카테고리를 삭제하면 소속 상품만 기타(ETC)로 이동합니다.</p>
         </div>
         <span id="adminCatCountBadge" class="ax-badge ax-badge-indigo ax-num">{{ (all_categories or [])|length }}개 카테고리</span>
     </div>
 
     <form id="catCreateForm" class="ax-cat-create-form" onsubmit="createAdminCategory(event)">
         <div>
+            <label class="ax-label" for="catNewParent">상위 카테고리</label>
+            <select id="catNewParent" class="ax-select ax-select-compact">
+                <option value="">없음 (1차 대분류)</option>
+            </select>
+        </div>
+        <div>
             <label class="ax-label" for="catNewName">카테고리명 *</label>
-            <input type="text" id="catNewName" class="ax-input ax-input-compact" placeholder="예: 슈즈/가방, 뷰티, 홈웨어" maxlength="40" required>
+            <input type="text" id="catNewName" class="ax-input ax-input-compact" placeholder="예: 의류, 상의, 셔츠" maxlength="40" required>
         </div>
         <div>
             <label class="ax-label" for="catNewCode">코드 (영문, 선택)</label>
@@ -177,18 +183,21 @@
             <span>스토어 노출</span>
         </label>
         <button type="submit" id="btnCreateCategory" class="ax-btn ax-btn-primary ax-btn-sm" style="height:36px;">카테고리 추가</button>
+        <div id="catNewDepthHint" class="ax-cat-depth-hint">1차 대분류로 등록됩니다. (최대 3단계: 대분류 &gt; 중분류 &gt; 소분류)</div>
     </form>
 
     <div class="ax-table-wrap">
         <table class="ax-table">
             <thead>
                 <tr>
-                    <th style="width:90px;">정렬순서</th>
+                    <th style="width:120px;">단계 / 계층</th>
+                    <th style="width:200px;">상위 카테고리</th>
+                    <th style="width:86px;">정렬순서</th>
                     <th style="width:130px;">코드</th>
                     <th>카테고리명</th>
-                    <th style="width:96px;">소속 상품</th>
-                    <th style="width:100px;">스토어 노출</th>
-                    <th style="width:150px;">관리</th>
+                    <th style="width:120px;">소속 상품</th>
+                    <th style="width:90px;">스토어 노출</th>
+                    <th style="width:205px;">관리</th>
                 </tr>
             </thead>
             <tbody id="adminCategoriesTbody"></tbody>
@@ -1350,15 +1359,25 @@
                 <div class="ax-admin-modal-section-head">
                     <span class="ax-admin-modal-section-title">1. 기본 정보 · 카테고리 · 가격</span>
                 </div>
-                <div class="ax-form-row-2">
-                    <div class="ax-field">
-                        <label class="ax-label" for="apNum">상품 번호 *</label>
-                        <input type="number" id="apNum" class="ax-input ax-num" min="1" required>
+                <div class="ax-field">
+                    <label class="ax-label" for="apNum">상품 번호 *</label>
+                    <input type="number" id="apNum" class="ax-input ax-num" min="1" required>
+                </div>
+                <div class="ax-field">
+                    <label class="ax-label" for="apCatL1">카테고리 (1차 &gt; 2차 &gt; 3차) *</label>
+                    <input type="hidden" id="apCategory" value="ETC">
+                    <div class="ax-cat-cascade-grid">
+                        <div>
+                            <select id="apCatL1" class="ax-select" aria-label="1차 대분류" required></select>
+                        </div>
+                        <div>
+                            <select id="apCatL2" class="ax-select" aria-label="2차 중분류"></select>
+                        </div>
+                        <div>
+                            <select id="apCatL3" class="ax-select" aria-label="3차 소분류"></select>
+                        </div>
                     </div>
-                    <div class="ax-field">
-                        <label class="ax-label" for="apCategory">카테고리 *</label>
-                        <select id="apCategory" class="ax-select" required></select>
-                    </div>
+                    <div id="apCategoryPathPreview" class="ax-cat-cascade-preview"></div>
                 </div>
                 <div class="ax-field">
                     <label class="ax-label" for="apName">상품명 *</label>
@@ -1594,40 +1613,204 @@
     function rebuildCategoryLabelsMap() {
         const nextMap = {};
         (adminCategories || []).forEach(c => {
-            if (c && c.code) nextMap[String(c.code).toUpperCase()] = c.name || c.code;
+            if (c && c.code) {
+                nextMap[String(c.code).toUpperCase()] = c.full_path || c.name || c.code;
+            }
         });
         nextMap.ETC = '기타';
         adminCategoryLabels = nextMap;
     }
 
+    function getAdminCategorySubtreeHeight(catId) {
+        const cid = Number(catId);
+        let maxChildH = 0;
+        (adminCategories || []).forEach(c => {
+            if (Number(c.parent_id || 0) === cid) {
+                maxChildH = Math.max(maxChildH, getAdminCategorySubtreeHeight(c.id));
+            }
+        });
+        return 1 + maxChildH;
+    }
+
+    function getAdminDescendantCodes(catCode) {
+        const clean = String(catCode || '').trim().toUpperCase();
+        if (!clean || clean === 'ALL') return new Set();
+        const target = (adminCategories || []).find(c => String(c.code || '').toUpperCase() === clean);
+        if (!target) return new Set([clean]);
+        const tid = Number(target.id);
+        const out = new Set([clean]);
+        (adminCategories || []).forEach(c => {
+            if (Array.isArray(c.path_ids) && c.path_ids.map(Number).includes(tid)) {
+                out.add(String(c.code || '').toUpperCase());
+            }
+        });
+        return out;
+    }
+
+    function updateCategoryDepthHint() {
+        const parentSel = document.getElementById('catNewParent');
+        const hintEl = document.getElementById('catNewDepthHint');
+        if (!hintEl) return;
+        const rawPid = parentSel ? parentSel.value : '';
+        if (!rawPid) {
+            hintEl.textContent = '1차 대분류로 등록됩니다. (최대 3단계: 대분류 > 중분류 > 소분류)';
+            return;
+        }
+        const pCat = (adminCategories || []).find(c => Number(c.id) === Number(rawPid));
+        if (!pCat) {
+            hintEl.textContent = '1차 대분류로 등록됩니다.';
+            return;
+        }
+        const nextDepth = Number(pCat.depth || 1) + 1;
+        hintEl.textContent = `[${pCat.full_path || pCat.name}] 하위의 ${nextDepth}차 카테고리로 등록됩니다.`;
+    }
+
+    function prepareSubcategoryCreate(parentId) {
+        const parentSel = document.getElementById('catNewParent');
+        const nameEl = document.getElementById('catNewName');
+        if (parentSel) {
+            parentSel.value = String(parentId);
+            updateCategoryDepthHint();
+        }
+        if (nameEl) {
+            nameEl.focus();
+            nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function syncAdminProductCategoryPreview() {
+        const hiddenEl = document.getElementById('apCategory');
+        const previewEl = document.getElementById('apCategoryPathPreview');
+        const code = String(hiddenEl?.value || 'ETC').toUpperCase();
+        if (!previewEl) return;
+        const label = adminCategoryLabels[code] || (code === 'ETC' ? '기타' : code);
+        previewEl.textContent = `선택된 카테고리 경로: ${label}`;
+    }
+
+    function syncAdminProductCategoryValue() {
+        const l1 = document.getElementById('apCatL1')?.value || '';
+        const l2 = document.getElementById('apCatL2')?.value || '';
+        const l3 = document.getElementById('apCatL3')?.value || '';
+        const hiddenEl = document.getElementById('apCategory');
+        const chosen = (l3 || l2 || l1 || 'ETC').toUpperCase();
+        if (hiddenEl) hiddenEl.value = chosen;
+        syncAdminProductCategoryPreview();
+    }
+
+    function populateAdminProductCatL3(selectedCode = '') {
+        const l2Sel = document.getElementById('apCatL2');
+        const l3Sel = document.getElementById('apCatL3');
+        if (!l3Sel) return;
+        const l2Code = String(l2Sel?.value || '').toUpperCase();
+        const l2Cat = (adminCategories || []).find(c => String(c.code || '').toUpperCase() === l2Code && Number(c.depth || 1) === 2);
+        const children = l2Cat
+            ? (adminCategories || []).filter(c => Number(c.parent_id || 0) === Number(l2Cat.id) && Number(c.depth || 1) === 3)
+            : [];
+        if (!l2Cat || children.length === 0) {
+            l3Sel.innerHTML = '<option value="">3차 소분류 없음</option>';
+            l3Sel.disabled = true;
+            l3Sel.value = '';
+        } else {
+            const opts = ['<option value="">(2차까지 선택)</option>'];
+            children.forEach(c => {
+                opts.push(`<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)}</option>`);
+            });
+            l3Sel.innerHTML = opts.join('');
+            l3Sel.disabled = false;
+            const target = String(selectedCode || '').toUpperCase();
+            l3Sel.value = Array.from(l3Sel.options).some(o => o.value.toUpperCase() === target) ? target : '';
+        }
+        syncAdminProductCategoryValue();
+    }
+
+    function populateAdminProductCatL2(selectedL2Code = '', selectedL3Code = '') {
+        const l1Sel = document.getElementById('apCatL1');
+        const l2Sel = document.getElementById('apCatL2');
+        if (!l2Sel) return;
+        const l1Code = String(l1Sel?.value || '').toUpperCase();
+        const l1Cat = (adminCategories || []).find(c => String(c.code || '').toUpperCase() === l1Code && Number(c.depth || 1) === 1);
+        const children = l1Cat
+            ? (adminCategories || []).filter(c => Number(c.parent_id || 0) === Number(l1Cat.id) && Number(c.depth || 1) === 2)
+            : [];
+        if (!l1Cat || children.length === 0) {
+            l2Sel.innerHTML = '<option value="">2차 중분류 없음</option>';
+            l2Sel.disabled = true;
+            l2Sel.value = '';
+        } else {
+            const opts = ['<option value="">(1차까지 선택)</option>'];
+            children.forEach(c => {
+                opts.push(`<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)}</option>`);
+            });
+            l2Sel.innerHTML = opts.join('');
+            l2Sel.disabled = false;
+            const target = String(selectedL2Code || '').toUpperCase();
+            l2Sel.value = Array.from(l2Sel.options).some(o => o.value.toUpperCase() === target) ? target : '';
+        }
+        populateAdminProductCatL3(selectedL3Code);
+    }
+
+    function setAdminProductCategoryCascade(rawCode) {
+        const l1Sel = document.getElementById('apCatL1');
+        if (!l1Sel) return;
+        const target = String(rawCode || 'ETC').trim().toUpperCase() || 'ETC';
+        const l1Cats = (adminCategories || []).filter(c => Number(c.depth || 1) === 1);
+        const opts = l1Cats.map(c =>
+            `<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)} (${window.mallEscapeHtml(c.code)})</option>`
+        );
+        opts.push('<option value="ETC">기타 (ETC)</option>');
+
+        const found = (adminCategories || []).find(c => String(c.code || '').toUpperCase() === target);
+        const pathCodes = (found && Array.isArray(found.path_codes)) ? found.path_codes.map(x => String(x).toUpperCase()) : [];
+
+        if (!found && target !== 'ETC') {
+            opts.push(`<option value="${window.mallEscapeHtml(target)}">${window.mallEscapeHtml(target)}</option>`);
+        }
+        l1Sel.innerHTML = opts.join('');
+
+        if (pathCodes.length >= 1) {
+            l1Sel.value = pathCodes[0];
+            populateAdminProductCatL2(pathCodes[1] || '', pathCodes[2] || '');
+        } else if (target === 'ETC' || !found) {
+            l1Sel.value = Array.from(l1Sel.options).some(o => o.value.toUpperCase() === target) ? target : 'ETC';
+            populateAdminProductCatL2('', '');
+        } else {
+            l1Sel.value = l1Cats.length > 0 ? l1Cats[0].code : 'ETC';
+            populateAdminProductCatL2('', '');
+        }
+    }
+
     function populateCategorySelects() {
         const filterSel = document.getElementById('adminProdCatFilter');
         const prevFilter = filterSel ? filterSel.value : 'ALL';
-        const modalSel = document.getElementById('apCategory');
-        const prevModal = modalSel ? modalSel.value : '';
+        const newParentSel = document.getElementById('catNewParent');
+        const prevNewParent = newParentSel ? newParentSel.value : '';
+        const hiddenModalCat = document.getElementById('apCategory')?.value || '';
 
         if (filterSel) {
             const opts = ['<option value="ALL">전체 카테고리</option>'];
             adminCategories.forEach(c => {
-                opts.push(`<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)}</option>`);
+                opts.push(`<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.full_path || c.name)}</option>`);
             });
             opts.push('<option value="ETC">기타</option>');
             filterSel.innerHTML = opts.join('');
             filterSel.value = Array.from(filterSel.options).some(o => o.value === prevFilter) ? prevFilter : 'ALL';
         }
 
-        if (modalSel) {
-            const opts = adminCategories.map(c =>
-                `<option value="${window.mallEscapeHtml(c.code)}">${window.mallEscapeHtml(c.name)} (${window.mallEscapeHtml(c.code)})</option>`
-            );
-            opts.push('<option value="ETC">기타 (ETC)</option>');
-            modalSel.innerHTML = opts.join('');
-            if (prevModal && Array.from(modalSel.options).some(o => o.value === prevModal)) {
-                modalSel.value = prevModal;
-            } else if (adminCategories.length > 0) {
-                modalSel.value = adminCategories[0].code;
-            }
+        if (newParentSel) {
+            const pOpts = ['<option value="">없음 (1차 대분류)</option>'];
+            adminCategories.forEach(c => {
+                const d = Number(c.depth || 1);
+                if (d < 3) {
+                    pOpts.push(`<option value="${Number(c.id)}">[${d}차] ${window.mallEscapeHtml(c.full_path || c.name)}</option>`);
+                }
+            });
+            newParentSel.innerHTML = pOpts.join('');
+            newParentSel.value = Array.from(newParentSel.options).some(o => o.value === prevNewParent) ? prevNewParent : '';
+            updateCategoryDepthHint();
         }
+
+        const fallbackCode = hiddenModalCat || (adminCategories.find(c => Number(c.depth || 1) === 1)?.code) || 'ETC';
+        setAdminProductCategoryCascade(fallbackCode);
     }
 
     function renderAdminProductsList() {
@@ -1637,11 +1820,12 @@
         if (tabCnt) tabCnt.innerText = String(adminProducts.length);
 
         const catFilter = String(document.getElementById('adminProdCatFilter')?.value || 'ALL').toUpperCase();
+        const catFilterSet = getAdminDescendantCodes(catFilter);
         const searchQ = String(document.getElementById('adminProdSearchInput')?.value || '').trim().toLowerCase();
 
         const filtered = adminProducts.filter(p => {
             const pCat = String(p.category || '').toUpperCase();
-            if (catFilter !== 'ALL' && pCat !== catFilter) return false;
+            if (catFilter !== 'ALL' && !catFilterSet.has(pCat)) return false;
             if (searchQ) {
                 const hay = `${p.num} ${p.name || ''} ${p.specs || ''}`.toLowerCase();
                 if (!hay.includes(searchQ)) return false;
@@ -1706,27 +1890,70 @@
         if (!tbody) return;
 
         if (adminCategories.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--ax-text-muted); padding:24px;">등록된 카테고리가 없습니다. 위에서 새 카테고리를 추가하세요.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--ax-text-muted); padding:24px;">등록된 카테고리가 없습니다. 위에서 새 카테고리를 추가하세요.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = adminCategories.map(c => `
-            <tr data-cat-row-id="${Number(c.id)}">
-                <td><input type="number" class="ax-input ax-input-compact ax-num" id="catOrder_${Number(c.id)}" value="${Number(c.sort_order || 0)}" min="0" max="9999"></td>
-                <td><span class="ax-code-chip">${window.mallEscapeHtml(c.code)}</span></td>
-                <td><input type="text" class="ax-input ax-input-compact" id="catName_${Number(c.id)}" value="${window.mallEscapeHtml(c.name)}" maxlength="40"></td>
-                <td class="ax-num" style="font-weight:700;">${Number(c.product_count || 0)}개</td>
-                <td style="text-align:center;">
-                    <input type="checkbox" id="catActive_${Number(c.id)}" ${c.is_active ? 'checked' : ''} aria-label="스토어 노출 여부" style="accent-color:var(--ax-accent-primary); width:16px; height:16px;">
-                </td>
-                <td>
-                    <div style="display:flex; gap:6px;">
-                        <button type="button" data-cat-id="${Number(c.id)}" onclick="saveAdminCategoryRow(Number(this.dataset.catId))" class="ax-btn ax-btn-charcoal ax-btn-sm">저장</button>
-                        <button type="button" data-cat-id="${Number(c.id)}" data-cat-name="${window.mallEscapeHtml(c.name)}" onclick="deleteAdminCategoryRow(Number(this.dataset.catId), this.dataset.catName)" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = adminCategories.map(c => {
+            const cid = Number(c.id);
+            const depth = Number(c.depth || 1);
+            const curPid = c.parent_id ? Number(c.parent_id) : '';
+            const subtreeH = getAdminCategorySubtreeHeight(cid);
+            const indentCls = depth === 2 ? 'ax-cat-indent-l2' : (depth >= 3 ? 'ax-cat-indent-l3' : '');
+            const branchHtml = depth > 1 ? '<span class="ax-cat-branch-mark">└</span>' : '';
+            const depthBadgeCls = depth === 1 ? 'is-l1' : (depth === 2 ? 'is-l2' : 'is-l3');
+
+            const parentOpts = ['<option value="">없음 (1차 대분류)</option>'];
+            adminCategories.forEach(cand => {
+                const candId = Number(cand.id);
+                const candDepth = Number(cand.depth || 1);
+                const isSelfOrDesc = Array.isArray(cand.path_ids) && cand.path_ids.map(Number).includes(cid);
+                if (candId === cid || isSelfOrDesc) return;
+                if (candDepth + subtreeH > 3) return;
+                const selAttr = (curPid !== '' && candId === curPid) ? ' selected' : '';
+                parentOpts.push(`<option value="${candId}"${selAttr}>[${candDepth}차] ${window.mallEscapeHtml(cand.full_path || cand.name)}</option>`);
+            });
+
+            const directCnt = Number(c.direct_product_count !== undefined ? c.direct_product_count : (c.product_count || 0));
+            const totalCnt = Number(c.total_product_count !== undefined ? c.total_product_count : directCnt);
+            const childCnt = Number(c.child_count || 0);
+            const countHtml = (childCnt > 0 && totalCnt !== directCnt)
+                ? `${directCnt}개 <span style="font-size:0.74rem; color:var(--ax-text-secondary); font-weight:600;">(하위포함 ${totalCnt}개)</span>`
+                : `${directCnt}개`;
+            const subAddBtn = depth < 3
+                ? `<button type="button" data-cat-id="${cid}" onclick="prepareSubcategoryCreate(Number(this.dataset.catId))" class="ax-btn ax-btn-secondary ax-btn-sm">+ 하위</button>`
+                : '';
+
+            return `
+                <tr data-cat-row-id="${cid}">
+                    <td>
+                        <div class="ax-cat-tree-cell ${indentCls}">
+                            ${branchHtml}
+                            <span class="ax-cat-depth-badge ${depthBadgeCls}">${depth}차</span>
+                        </div>
+                    </td>
+                    <td>
+                        <select class="ax-select ax-select-compact" id="catParent_${cid}" aria-label="상위 카테고리">
+                            ${parentOpts.join('')}
+                        </select>
+                    </td>
+                    <td><input type="number" class="ax-input ax-input-compact ax-num" id="catOrder_${cid}" value="${Number(c.sort_order || 0)}" min="0" max="9999"></td>
+                    <td><span class="ax-code-chip">${window.mallEscapeHtml(c.code)}</span></td>
+                    <td><input type="text" class="ax-input ax-input-compact" id="catName_${cid}" value="${window.mallEscapeHtml(c.name)}" maxlength="40"></td>
+                    <td class="ax-num" style="font-weight:700;">${countHtml}</td>
+                    <td style="text-align:center;">
+                        <input type="checkbox" id="catActive_${cid}" ${c.is_active ? 'checked' : ''} aria-label="스토어 노출 여부" style="accent-color:var(--ax-accent-primary); width:16px; height:16px;">
+                    </td>
+                    <td>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            ${subAddBtn}
+                            <button type="button" data-cat-id="${cid}" onclick="saveAdminCategoryRow(Number(this.dataset.catId))" class="ax-btn ax-btn-charcoal ax-btn-sm">저장</button>
+                            <button type="button" data-cat-id="${cid}" data-cat-name="${window.mallEscapeHtml(c.name)}" data-child-count="${childCnt}" onclick="deleteAdminCategoryRow(Number(this.dataset.catId), this.dataset.catName, Number(this.dataset.childCount || 0))" class="ax-btn ax-btn-danger-soft ax-btn-sm">삭제</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
     }
 
     function applyCategoriesPayload(cats) {
@@ -1739,6 +1966,7 @@
 
     async function createAdminCategory(e) {
         e.preventDefault();
+        const parentEl = document.getElementById('catNewParent');
         const nameEl = document.getElementById('catNewName');
         const codeEl = document.getElementById('catNewCode');
         const orderEl = document.getElementById('catNewOrder');
@@ -1750,12 +1978,14 @@
             alert('카테고리명을 입력해 주세요.');
             return;
         }
+        const rawParent = parentEl ? parentEl.value.trim() : '';
         if (btn) btn.disabled = true;
         try {
             const res = await fetch('/api/admin/categories/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    parent_id: rawParent ? Number(rawParent) : null,
                     name: name,
                     code: codeEl ? codeEl.value.trim() : '',
                     sort_order: orderEl ? Number(orderEl.value || 0) : 0,
@@ -1780,6 +2010,7 @@
 
     async function saveAdminCategoryRow(catId) {
         const name = document.getElementById(`catName_${catId}`)?.value.trim() || '';
+        const rawParent = document.getElementById(`catParent_${catId}`)?.value || '';
         const sortOrder = Number(document.getElementById(`catOrder_${catId}`)?.value || 0);
         const isActive = Boolean(document.getElementById(`catActive_${catId}`)?.checked);
         if (!name) {
@@ -1790,7 +2021,13 @@
             const res = await fetch('/api/admin/categories/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: catId, name, sort_order: sortOrder, is_active: isActive })
+                body: JSON.stringify({
+                    id: catId,
+                    parent_id: rawParent ? Number(rawParent) : null,
+                    name,
+                    sort_order: sortOrder,
+                    is_active: isActive
+                })
             });
             const data = await res.json();
             if (!res.ok || data.status !== 'ok') {
@@ -1804,7 +2041,11 @@
         }
     }
 
-    async function deleteAdminCategoryRow(catId, catName) {
+    async function deleteAdminCategoryRow(catId, catName, childCount) {
+        if (Number(childCount || 0) > 0) {
+            alert(`[${catName}]에 하위 카테고리가 ${Number(childCount)}개 있어 삭제할 수 없습니다.\n하위 카테고리를 먼저 삭제하거나 다른 상위로 이동해 주세요.`);
+            return;
+        }
         if (!confirm(`[${catName}] 카테고리를 삭제하시겠습니까?\n이 카테고리에 속한 상품은 삭제되지 않고 [기타(ETC)]로 이동됩니다.`)) {
             return;
         }
@@ -2061,16 +2302,7 @@
             if (titleEl) titleEl.innerText = `#${prod.num}번 상품 수정`;
             if (submitBtn) submitBtn.innerText = '수정 내용 저장';
             document.getElementById('apNum').value = prod.num;
-
-            const catSel = document.getElementById('apCategory');
-            const pCat = String(prod.category || 'ETC').toUpperCase();
-            if (catSel && !Array.from(catSel.options).some(o => o.value === pCat)) {
-                const extraOpt = document.createElement('option');
-                extraOpt.value = pCat;
-                extraOpt.text = pCat;
-                catSel.appendChild(extraOpt);
-            }
-            if (catSel) catSel.value = pCat;
+            setAdminProductCategoryCascade(prod.category || 'ETC');
 
             document.getElementById('apName').value = prod.name || '';
             document.getElementById('apConsumerPrice').value = prod.consumer_price || prod.price || 0;
@@ -2099,6 +2331,8 @@
             if (submitBtn) submitBtn.innerText = '상품 등록 완료';
             const maxNum = adminProducts.reduce((m, p) => Math.max(m, Number(p.num) || 0), 0);
             document.getElementById('apNum').value = String(maxNum + 1);
+            const firstL1 = adminCategories.find(c => Number(c.depth || 1) === 1);
+            setAdminProductCategoryCascade(firstL1 ? firstL1.code : 'ETC');
             document.getElementById('apName').value = '';
             document.getElementById('apConsumerPrice').value = '';
             document.getElementById('apPrice').value = '';
@@ -4685,6 +4919,10 @@
         rebuildCategoryLabelsMap();
         populateCategorySelects();
         populateSupplierSelects();
+        document.getElementById('catNewParent')?.addEventListener('change', updateCategoryDepthHint);
+        document.getElementById('apCatL1')?.addEventListener('change', () => populateAdminProductCatL2('', ''));
+        document.getElementById('apCatL2')?.addEventListener('change', () => populateAdminProductCatL3(''));
+        document.getElementById('apCatL3')?.addEventListener('change', syncAdminProductCategoryValue);
         const settlePaidEl = document.getElementById('settlePaidAt');
         if (settlePaidEl && !settlePaidEl.value) {
             settlePaidEl.value = _formatIsoLocalDate(new Date());

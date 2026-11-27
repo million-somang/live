@@ -89,47 +89,82 @@
 {% set total_matched = pagination.total_count if pagination is defined else products|length %}
 {% set has_active_filters = exclude_sold_out or min_price or max_price or (current_sort and current_sort != 'num_asc') %}
 <div class="ax-toolbar">
-    <div class="ax-toolbar-left">
-        <nav class="ax-segmented-bar" aria-label="상품 카테고리">
-            <a href="/?category=ALL{{ filter_suffix }}" class="ax-tab-btn {% if current_category == 'ALL' %}active{% endif %}">전체</a>
-            {% for cat in (mall_categories or []) %}
-            <a href="/?category={{ cat.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if current_category == cat.code %}active{% endif %}">{{ cat.name }}</a>
-            {% endfor %}
-            {% if has_etc_products or current_category == 'ETC' %}
-            <a href="/?category=ETC{{ filter_suffix }}" class="ax-tab-btn {% if current_category == 'ETC' %}active{% endif %}">기타</a>
+    <div class="ax-toolbar-main">
+        <div class="ax-toolbar-left">
+            <nav class="ax-segmented-bar" id="homeCategoryBarL1" aria-label="1차 상품 카테고리">
+                <a href="/?category=ALL{{ filter_suffix }}" class="ax-tab-btn {% if current_category == 'ALL' %}active{% endif %}">전체</a>
+                {% set l1_list = cat_nav.level1_cats if cat_nav is defined else (mall_categories or []) %}
+                {% set sel_l1_code = cat_nav.selected_l1.code if (cat_nav is defined and cat_nav.selected_l1) else current_category %}
+                {% for cat in l1_list %}
+                <a href="/?category={{ cat.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if sel_l1_code == cat.code %}active{% endif %}">{{ cat.name }}</a>
+                {% endfor %}
+                {% if has_etc_products or current_category == 'ETC' %}
+                <a href="/?category=ETC{{ filter_suffix }}" class="ax-tab-btn {% if current_category == 'ETC' %}active{% endif %}">기타</a>
+                {% endif %}
+            </nav>
+        </div>
+
+        <form id="homeFilterForm" method="GET" action="/" class="ax-filter-form">
+            <input type="hidden" name="category" value="{{ current_category }}">
+            {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+            {% if pp_raw %}<input type="hidden" name="per_page" value="{{ pp_raw }}">{% endif %}
+            <label class="ax-inline-check-label" for="filterExcludeSoldOut">
+                {% if exclude_sold_out %}
+                <input type="checkbox" id="filterExcludeSoldOut" name="exclude_sold_out" value="1" checked>
+                {% else %}
+                <input type="checkbox" id="filterExcludeSoldOut" name="exclude_sold_out" value="1">
+                {% endif %}
+                <span>품절 제외</span>
+            </label>
+            <div class="ax-filter-price-group">
+                <input type="number" id="filterMinPrice" name="min_price" class="ax-input ax-input-compact ax-num ax-filter-price-input" min="0" step="1000" value="{{ min_price or '' }}" placeholder="최소 가격" aria-label="최소 가격">
+                <span style="color:var(--ax-text-muted); font-size:0.8rem;">~</span>
+                <input type="number" id="filterMaxPrice" name="max_price" class="ax-input ax-input-compact ax-num ax-filter-price-input" min="0" step="1000" value="{{ max_price or '' }}" placeholder="최대 가격" aria-label="최대 가격">
+                <button type="submit" id="btnApplyPriceFilter" class="ax-btn ax-btn-charcoal ax-btn-sm">적용</button>
+            </div>
+            <select id="homeSortSelect" name="sort" class="ax-select ax-select-compact" aria-label="상품 정렬">
+                {% if current_sort == 'num_asc' %}<option value="num_asc" selected>상품번호순</option>{% else %}<option value="num_asc">상품번호순</option>{% endif %}
+                {% if current_sort == 'newest' %}<option value="newest" selected>최신등록순</option>{% else %}<option value="newest">최신등록순</option>{% endif %}
+                {% if current_sort == 'price_asc' %}<option value="price_asc" selected>낮은가격순</option>{% else %}<option value="price_asc">낮은가격순</option>{% endif %}
+                {% if current_sort == 'price_desc' %}<option value="price_desc" selected>높은가격순</option>{% else %}<option value="price_desc">높은가격순</option>{% endif %}
+            </select>
+            {% if has_active_filters %}
+            <a href="/?category={{ current_category | urlencode }}{{ q_suffix }}{{ pp_suffix }}" id="btnResetHomeFilters" class="ax-btn ax-btn-secondary ax-btn-sm">초기화</a>
             {% endif %}
-        </nav>
-        <span id="homeProductCountBadge" class="ax-badge ax-badge-neutral ax-num">등록 상품 {{ total_matched }}건</span>
+        </form>
     </div>
 
-    <form id="homeFilterForm" method="GET" action="/" class="ax-filter-form">
-        <input type="hidden" name="category" value="{{ current_category }}">
-        {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
-        {% if pp_raw %}<input type="hidden" name="per_page" value="{{ pp_raw }}">{% endif %}
-        <label class="ax-inline-check-label" for="filterExcludeSoldOut">
-            {% if exclude_sold_out %}
-            <input type="checkbox" id="filterExcludeSoldOut" name="exclude_sold_out" value="1" checked>
-            {% else %}
-            <input type="checkbox" id="filterExcludeSoldOut" name="exclude_sold_out" value="1">
-            {% endif %}
-            <span>품절 제외</span>
-        </label>
-        <div class="ax-filter-price-group">
-            <input type="number" id="filterMinPrice" name="min_price" class="ax-input ax-input-compact ax-num ax-filter-price-input" min="0" step="1000" value="{{ min_price or '' }}" placeholder="최소 가격" aria-label="최소 가격">
-            <span style="color:var(--ax-text-muted); font-size:0.8rem;">~</span>
-            <input type="number" id="filterMaxPrice" name="max_price" class="ax-input ax-input-compact ax-num ax-filter-price-input" min="0" step="1000" value="{{ max_price or '' }}" placeholder="최대 가격" aria-label="최대 가격">
-            <button type="submit" id="btnApplyPriceFilter" class="ax-btn ax-btn-charcoal ax-btn-sm">적용</button>
-        </div>
-        <select id="homeSortSelect" name="sort" class="ax-select ax-select-compact" aria-label="상품 정렬">
-            {% if current_sort == 'num_asc' %}<option value="num_asc" selected>상품번호순</option>{% else %}<option value="num_asc">상품번호순</option>{% endif %}
-            {% if current_sort == 'newest' %}<option value="newest" selected>최신등록순</option>{% else %}<option value="newest">최신등록순</option>{% endif %}
-            {% if current_sort == 'price_asc' %}<option value="price_asc" selected>낮은가격순</option>{% else %}<option value="price_asc">낮은가격순</option>{% endif %}
-            {% if current_sort == 'price_desc' %}<option value="price_desc" selected>높은가격순</option>{% else %}<option value="price_desc">높은가격순</option>{% endif %}
-        </select>
-        {% if has_active_filters %}
-        <a href="/?category={{ current_category | urlencode }}{{ q_suffix }}{{ pp_suffix }}" id="btnResetHomeFilters" class="ax-btn ax-btn-secondary ax-btn-sm">초기화</a>
-        {% endif %}
-    </form>
+    {% if cat_nav is defined and cat_nav.level2_cats %}
+    <div class="ax-cat-subrow" id="homeCategoryBarL2Wrap">
+        <span class="ax-cat-depth-label">
+            <span>{{ cat_nav.selected_l1.name }}</span>
+            <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </span>
+        <nav class="ax-segmented-bar ax-segmented-bar-sub" id="homeCategoryBarL2" aria-label="2차 상품 카테고리">
+            <a href="/?category={{ cat_nav.selected_l1.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if current_category == cat_nav.selected_l1.code %}active{% endif %}">{{ cat_nav.selected_l1.name }} 전체</a>
+            {% set sel_l2_code = cat_nav.selected_l2.code if cat_nav.selected_l2 else '' %}
+            {% for sub2 in cat_nav.level2_cats %}
+            <a href="/?category={{ sub2.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if sel_l2_code == sub2.code %}active{% endif %}">{{ sub2.name }}</a>
+            {% endfor %}
+        </nav>
+    </div>
+    {% endif %}
+
+    {% if cat_nav is defined and cat_nav.level3_cats %}
+    <div class="ax-cat-subrow ax-cat-subrow-l3" id="homeCategoryBarL3Wrap">
+        <span class="ax-cat-depth-label">
+            <span>{{ cat_nav.selected_l2.name }}</span>
+            <svg class="ax-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </span>
+        <nav class="ax-segmented-bar ax-segmented-bar-sub" id="homeCategoryBarL3" aria-label="3차 상품 카테고리">
+            <a href="/?category={{ cat_nav.selected_l2.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if current_category == cat_nav.selected_l2.code %}active{% endif %}">{{ cat_nav.selected_l2.name }} 전체</a>
+            {% set sel_l3_code = cat_nav.selected_l3.code if cat_nav.selected_l3 else '' %}
+            {% for sub3 in cat_nav.level3_cats %}
+            <a href="/?category={{ sub3.code | urlencode }}{{ filter_suffix }}" class="ax-tab-btn {% if sel_l3_code == sub3.code %}active{% endif %}">{{ sub3.name }}</a>
+            {% endfor %}
+        </nav>
+    </div>
+    {% endif %}
 </div>
 
 {% if search_query %}
@@ -167,7 +202,7 @@
         </div>
         <div class="ax-product-body">
             {% set cat_disp = category_labels.get(p.category, p.category) if category_labels is defined else p.category %}
-            <div data-csr-stock-num="{{ p.num }}" data-csr-cat="{{ cat_disp }}" class="ax-product-meta ax-num">
+            <div data-csr-stock-num="{{ p.num }}" data-csr-cat="{{ cat_disp }}" title="{{ cat_disp }}" class="ax-product-meta ax-num">
                 {{ cat_disp }} · 잔여 {{ p.total_stock }}개
             </div>
             <a href="/product/{{ p.num }}" class="ax-product-title">

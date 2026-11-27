@@ -135,6 +135,9 @@ def validate_live_state_bundle(state_dict: Any) -> Optional[dict]:
     return out
 
 
+MAX_CATEGORY_DEPTH = 3
+_UNSET = object()
+
 DEFAULT_MALL_CATEGORIES = [
     ("TOP", "상의/탑", 10),
     ("OUTER", "아우터", 20),
@@ -489,17 +492,23 @@ def init_mall_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_orders_user ON mall_orders (user_id, id DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_reviews_num ON mall_reviews (product_num, id DESC)")
 
-            # 8. 쇼핑몰 동적 카테고리 테이블 (mall_categories)
+            # 8. 쇼핑몰 동적 카테고리 테이블 (mall_categories - 최대 3단계 계층 지원)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS mall_categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     code TEXT UNIQUE NOT NULL,
                     name TEXT NOT NULL,
+                    parent_id INTEGER DEFAULT NULL,
                     sort_order INTEGER NOT NULL DEFAULT 0,
                     is_active INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL
                 )
             """)
+            cur.execute("PRAGMA table_info(mall_categories)")
+            cat_cols = {str(r["name"]) for r in cur.fetchall()}
+            if "parent_id" not in cat_cols:
+                cur.execute("ALTER TABLE mall_categories ADD COLUMN parent_id INTEGER DEFAULT NULL")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_mall_categories_parent ON mall_categories (parent_id, sort_order, id)")
             cur.execute("SELECT COUNT(*) FROM mall_categories")
             if int(cur.fetchone()[0] or 0) == 0:
                 seed_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1268,54 +1277,324 @@ def delete_product_by_num_or_obs_id(num=None, obs_product_id=None):
 # 🗂️ 동적 카테고리 관리 & 쇼핑몰 관리자 직접 상품/안내 CRUD
 # ==============================================================================
 
+def _load_category_hierarchy_conn(conn, active_only: bool = False) -> tuple[list[dict], list[dict]]:
+    """
+    mall_categories 테이블을 계층(최대 3단계) 구조로 로드하여
+    (DFS 전위 순회 평면 리스트, 중첩 트리 리스트)를 반환합니다.
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, code, name, parent_id, sort_order, is_active, created_at
+        FROM mall_categories
+        ORDER BY sort_order ASC, id ASC
+    """)
+    raw_rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT UPPER(COALESCE(category, '')) AS cat_code, COUNT(*) AS cnt
+        FROM mall_products
+        GROUP BY UPPER(COALESCE(category, ''))
+    """)
+    direct_counts = {str(r["cat_code"] or ""): int(r["cnt"] or 0) for r in cur.fetchall()}
+
+    by_id: dict[int, dict] = {}
+    for r in raw_rows:
+        cid = int(r["id"])
+        raw_pid = r["parent_id"] if "parent_id" in r.keys() else None
+        pid = int(raw_pid) if raw_pid not in (None, "", 0) else None
+        by_id[cid] = {
+            "id": cid,
+            "code": str(r["code"] or "").strip(),
+            "name": str(r["name"] or "").strip(),
+            "parent_id": pid,
+            "sort_order": int(r["sort_order"] or 0),
+            "is_active": bool(r["is_active"]),
+            "created_at": str(r["created_at"] or ""),
+        }
+
+    children_map: dict[Optional[int], list[int]] = {}
+    for cid, node in by_id.items():
+        pid = node["parent_id"]
+        if pid is not None and (pid == cid or pid not in by_id):
+            pid = None
+            node["parent_id"] = None
+        children_map.setdefault(pid, []).append(cid)
+
+    for pid in children_map:
+        children_map[pid].sort(key=lambda x: (by_id[x]["sort_order"], x))
+
+    flat_list: list[dict] = []
+    tree_list: list[dict] = []
+    visited: set[int] = set()
+
+    def _visit(
+        cid: int,
+        depth: int,
+        anc_ids: list[int],
+        anc_codes: list[str],
+        anc_names: list[str],
+        anc_active: bool,
+    ) -> Optional[dict]:
+        if cid in visited or depth > MAX_CATEGORY_DEPTH:
+            return None
+        visited.add(cid)
+        raw = by_id[cid]
+        eff_active = anc_active and bool(raw["is_active"])
+        if active_only and not eff_active:
+            return None
+
+        code_up = raw["code"].upper()
+        direct_cnt = direct_counts.get(code_up, 0)
+        p_ids = [*anc_ids, cid]
+        p_codes = [*anc_codes, raw["code"]]
+        p_names = [*anc_names, raw["name"]]
+        full_path = " > ".join(p_names)
+
+        flat_item = {
+            "id": cid,
+            "code": raw["code"],
+            "name": raw["name"],
+            "parent_id": raw["parent_id"],
+            "depth": depth,
+            "path_ids": p_ids,
+            "path_codes": p_codes,
+            "path_names": p_names,
+            "full_path": full_path,
+            "sort_order": raw["sort_order"],
+            "is_active": raw["is_active"],
+            "effective_active": eff_active,
+            "direct_product_count": direct_cnt,
+            "total_product_count": direct_cnt,
+            "product_count": direct_cnt,
+            "child_count": 0,
+            "created_at": raw["created_at"],
+        }
+        flat_list.append(flat_item)
+
+        child_nodes: list[dict] = []
+        total_cnt = direct_cnt
+        for child_id in children_map.get(cid, []):
+            c_node = _visit(child_id, depth + 1, p_ids, p_codes, p_names, eff_active)
+            if c_node is not None:
+                child_nodes.append(c_node)
+                total_cnt += int(c_node["total_product_count"] or 0)
+
+        flat_item["total_product_count"] = total_cnt
+        flat_item["child_count"] = len(child_nodes)
+
+        tree_node = dict(flat_item)
+        tree_node["children"] = child_nodes
+        return tree_node
+
+    for root_id in children_map.get(None, []):
+        root_node = _visit(root_id, 1, [], [], [], True)
+        if root_node is not None:
+            tree_list.append(root_node)
+
+    # 사이클 등으로 고립된 노드가 남아있다면(정상 입력에서는 불가능) active_only=False일 때 루트로 복구 노출 방지/안전 처리
+    return flat_list, tree_list
+
+
+def _resolve_descendant_codes_conn(conn, code: str) -> list[str]:
+    """특정 카테고리 코드와 그 하위 자손 카테고리 코드 전체(대문자) 목록을 반환합니다."""
+    clean = str(code or "").strip().upper()
+    if not clean or clean == "ALL":
+        return []
+    flat_list, _ = _load_category_hierarchy_conn(conn, active_only=False)
+    target = next((c for c in flat_list if str(c["code"]).upper() == clean), None)
+    if not target:
+        return [clean]
+    target_id = int(target["id"])
+    codes: list[str] = []
+    seen: set[str] = set()
+    for c in flat_list:
+        if target_id in c["path_ids"]:
+            cu = str(c["code"]).upper()
+            if cu not in seen:
+                seen.add(cu)
+                codes.append(cu)
+    return codes or [clean]
+
+
 def get_mall_categories(active_only=False):
-    """등록된 쇼핑몰 카테고리 목록과 각 카테고리별 소속 상품 수를 반환합니다."""
+    """등록된 쇼핑몰 카테고리 목록(최대 3단계 계층 메타 포함, DFS 전위 순회)을 반환합니다."""
     with mall_db_lock:
         conn = get_connection()
         try:
-            cur = conn.cursor()
-            where_sql = "WHERE c.is_active = 1" if active_only else ""
-            cur.execute(f"""
-                SELECT c.id, c.code, c.name, c.sort_order, c.is_active, c.created_at,
-                       COUNT(p.id) AS product_count
-                FROM mall_categories c
-                LEFT JOIN mall_products p ON UPPER(COALESCE(p.category, '')) = UPPER(c.code)
-                {where_sql}
-                GROUP BY c.id
-                ORDER BY c.sort_order ASC, c.id ASC
-            """)
-            return [
-                {
-                    "id": int(r["id"]),
-                    "code": str(r["code"]),
-                    "name": str(r["name"]),
-                    "sort_order": int(r["sort_order"] or 0),
-                    "is_active": bool(r["is_active"]),
-                    "product_count": int(r["product_count"] or 0),
-                    "created_at": str(r["created_at"] or ""),
-                }
-                for r in cur.fetchall()
-            ]
+            flat_list, _ = _load_category_hierarchy_conn(conn, active_only=bool(active_only))
+            return flat_list
+        finally:
+            conn.close()
+
+
+def get_mall_category_tree(active_only: bool = True) -> list[dict]:
+    """등록된 쇼핑몰 카테고리를 중첩 트리 구조(children 포함)로 반환합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            _, tree_list = _load_category_hierarchy_conn(conn, active_only=bool(active_only))
+            return tree_list
         finally:
             conn.close()
 
 
 def get_mall_category_label_map():
-    """카테고리 코드 -> 한글 표시명 매핑 딕셔너리를 반환합니다."""
+    """카테고리 코드 -> 전체 계층 경로 표시명(예: '의류 > 상의 > 셔츠') 매핑 딕셔너리를 반환합니다."""
     cats = get_mall_categories(active_only=False)
-    labels = {str(c["code"]).upper(): str(c["name"]) for c in cats}
+    labels = {str(c["code"]).upper(): str(c.get("full_path") or c["name"]) for c in cats}
     labels.setdefault("ETC", "기타")
     return labels
 
 
-def create_mall_category(name: str, code: str = "", sort_order=None, is_active: bool = True) -> dict:
-    """새 쇼핑몰 카테고리를 등록합니다."""
+def get_mall_category_breadcrumb(code: str) -> list[dict]:
+    """카테고리 코드에 해당하는 1차->2차->3차 브레드크럼 리스트를 반환합니다."""
+    clean = str(code or "").strip().upper()
+    if not clean or clean == "ETC":
+        return [{"id": None, "code": "ETC", "name": "기타", "depth": 1}]
+    cats = get_mall_categories(active_only=False)
+    by_id = {int(c["id"]): c for c in cats}
+    target = next((c for c in cats if str(c["code"]).upper() == clean), None)
+    if not target:
+        return [{"id": None, "code": clean, "name": "기타" if clean == "ETC" else clean, "depth": 1}]
+    crumbs: list[dict] = []
+    for cid in target["path_ids"]:
+        node = by_id.get(int(cid))
+        if node:
+            crumbs.append({
+                "id": int(node["id"]),
+                "code": str(node["code"]),
+                "name": str(node["name"]),
+                "depth": int(node["depth"]),
+            })
+    return crumbs or [{"id": None, "code": "ETC", "name": "기타", "depth": 1}]
+
+
+def get_mall_category_descendant_codes(code: str, active_only: bool = False) -> list[str]:
+    """외부 호출용: 특정 카테고리와 모든 하위 카테고리 코드 목록을 반환합니다."""
+    clean = str(code or "").strip().upper()
+    if not clean or clean == "ALL":
+        return []
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            flat_list, _ = _load_category_hierarchy_conn(conn, active_only=bool(active_only))
+            target = next((c for c in flat_list if str(c["code"]).upper() == clean), None)
+            if not target:
+                return [clean]
+            tid = int(target["id"])
+            out: list[str] = []
+            for c in flat_list:
+                if tid in c["path_ids"]:
+                    out.append(str(c["code"]).upper())
+            return out or [clean]
+        finally:
+            conn.close()
+
+
+def get_mall_category_drilldown_state(current_category: str = "ALL") -> dict:
+    """스토어 홈(/) 다단 드릴다운 카테고리 바 렌더링을 위한 1·2·3차 상태 정보를 계산합니다."""
+    with mall_db_lock:
+        conn = get_connection()
+        try:
+            flat_list, tree_list = _load_category_hierarchy_conn(conn, active_only=True)
+        finally:
+            conn.close()
+
+    clean = str(current_category or "").strip().upper()
+    selected = next((c for c in flat_list if str(c["code"]).upper() == clean), None) if clean not in ("", "ALL", "ETC") else None
+
+    tree_by_id: dict[int, dict] = {}
+    def _index_tree(nodes: list[dict]):
+        for n in nodes:
+            tree_by_id[int(n["id"])] = n
+            _index_tree(n.get("children") or [])
+    _index_tree(tree_list)
+
+    active_path: list[dict] = []
+    if selected:
+        for cid in selected["path_ids"]:
+            node = tree_by_id.get(int(cid))
+            if node:
+                active_path.append(node)
+
+    selected_l1 = active_path[0] if len(active_path) >= 1 else None
+    selected_l2 = active_path[1] if len(active_path) >= 2 else None
+    selected_l3 = active_path[2] if len(active_path) >= 3 else None
+
+    level2_cats = list(selected_l1.get("children") or []) if selected_l1 else []
+    level3_cats = list(selected_l2.get("children") or []) if selected_l2 else []
+
+    return {
+        "level1_cats": tree_list,
+        "level2_cats": level2_cats,
+        "level3_cats": level3_cats,
+        "selected_l1": selected_l1,
+        "selected_l2": selected_l2,
+        "selected_l3": selected_l3,
+        "active_path": active_path,
+    }
+
+
+def _compute_category_depth_conn(cur, cat_id: Optional[int]) -> Optional[int]:
+    """주어진 카테고리 ID의 깊이(1~3)를 계산합니다. 존재하지 않거나 순환이면 None을 반환합니다."""
+    if cat_id is None:
+        return 0
+    depth = 0
+    curr = int(cat_id)
+    seen: set[int] = set()
+    while curr is not None:
+        if curr in seen:
+            return None
+        seen.add(curr)
+        cur.execute("SELECT id, parent_id FROM mall_categories WHERE id = ?", (curr,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        depth += 1
+        raw_pid = row["parent_id"] if "parent_id" in row.keys() else None
+        curr = int(raw_pid) if raw_pid not in (None, "", 0) else None
+    return depth
+
+
+def _compute_subtree_info_conn(cur, root_id: int) -> tuple[set[int], int]:
+    """주어진 노드(root_id 포함)의 모든 자손 ID 집합과 루트 포함 최대 서브트리 높이(최소 1)를 반환합니다."""
+    cur.execute("SELECT id, parent_id FROM mall_categories")
+    children_map: dict[Optional[int], list[int]] = {}
+    for r in cur.fetchall():
+        cid = int(r["id"])
+        raw_pid = r["parent_id"] if "parent_id" in r.keys() else None
+        pid = int(raw_pid) if raw_pid not in (None, "", 0) else None
+        children_map.setdefault(pid, []).append(cid)
+
+    descendants: set[int] = set()
+    def _walk(nid: int) -> int:
+        if nid in descendants:
+            return 0
+        descendants.add(nid)
+        max_child_h = 0
+        for ch_id in children_map.get(nid, []):
+            max_child_h = max(max_child_h, _walk(ch_id))
+        return 1 + max_child_h
+
+    height = _walk(int(root_id))
+    return descendants, height
+
+
+def create_mall_category(name: str, code: str = "", sort_order=None, is_active: bool = True, parent_id=None) -> dict:
+    """새 쇼핑몰 카테고리(최대 3단계)를 등록합니다."""
     nm = str(name or "").strip()
     if not nm or len(nm) > 40:
         return {"ok": False, "message": "카테고리명은 1~40자 이내로 입력해 주세요."}
 
+    parsed_parent_id: Optional[int] = None
+    if parent_id not in (None, ""):
+        parsed_parent_id = parse_strict_int64(parent_id, min_val=1)
+        if parsed_parent_id is None:
+            return {"ok": False, "message": "유효하지 않은 상위 카테고리 ID입니다."}
+
     raw_code = str(code or "").strip().upper()
-    if raw_code:
+    explicit_code = bool(raw_code)
+    if explicit_code:
         sanitized = re.sub(r"[^A-Z0-9_]", "_", raw_code).strip("_")[:24]
         if not sanitized:
             return {"ok": False, "message": "카테고리 코드는 영문 대문자, 숫자, 밑줄(_)만 사용할 수 있습니다."}
@@ -1331,12 +1610,34 @@ def create_mall_category(name: str, code: str = "", sort_order=None, is_active: 
         conn = get_connection()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT id FROM mall_categories WHERE UPPER(code) = ? OR name = ?", (sanitized, nm))
+            if parsed_parent_id is not None:
+                parent_depth = _compute_category_depth_conn(cur, parsed_parent_id)
+                if parent_depth is None:
+                    return {"ok": False, "message": "선택한 상위 카테고리를 찾을 수 없습니다."}
+                if parent_depth >= MAX_CATEGORY_DEPTH:
+                    return {"ok": False, "message": "최대 3단계(대분류 > 중분류 > 소분류)까지만 하위 카테고리를 등록할 수 있습니다."}
+
+            # 동일 상위 내 형제 카테고리 이름 중복 차단 (다른 상위 아래 동명은 허용)
+            cur.execute("SELECT id FROM mall_categories WHERE name = ? AND parent_id IS ?", (nm, parsed_parent_id))
             if cur.fetchone():
-                return {"ok": False, "message": "이미 동일한 이름 또는 코드의 카테고리가 존재합니다."}
+                return {"ok": False, "message": "같은 상위 카테고리 내에 동일한 이름의 카테고리가 이미 존재합니다."}
+
+            cur.execute("SELECT id FROM mall_categories WHERE UPPER(code) = ?", (sanitized,))
+            if cur.fetchone():
+                if explicit_code:
+                    return {"ok": False, "message": "이미 동일한 코드의 카테고리가 존재합니다."}
+                base_slug = sanitized[:17].rstrip("_") or "CAT"
+                for _ in range(10):
+                    candidate = f"{base_slug}_{_secrets.token_hex(2).upper()}"
+                    cur.execute("SELECT id FROM mall_categories WHERE UPPER(code) = ?", (candidate,))
+                    if not cur.fetchone():
+                        sanitized = candidate
+                        break
+                else:
+                    return {"ok": False, "message": "카테고리 코드 자동 생성에 실패했습니다. 코드를 직접 입력해 주세요."}
 
             if sort_order is None or str(sort_order).strip() == "":
-                cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 10 FROM mall_categories")
+                cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 10 FROM mall_categories WHERE parent_id IS ?", (parsed_parent_id,))
                 order_val = int(cur.fetchone()[0] or 10)
             else:
                 parsed_order = parse_strict_int64(sort_order, min_val=0)
@@ -1345,19 +1646,19 @@ def create_mall_category(name: str, code: str = "", sort_order=None, is_active: 
                 order_val = parsed_order
 
             cur.execute("""
-                INSERT INTO mall_categories (code, name, sort_order, is_active, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (sanitized, nm, order_val, 1 if is_active else 0, now_str))
+                INSERT INTO mall_categories (code, name, parent_id, sort_order, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (sanitized, nm, parsed_parent_id, order_val, 1 if is_active else 0, now_str))
             new_id = int(cur.lastrowid or 0)
             conn.commit()
             bump_state_version(bump_catalog=True)
-            return {"ok": True, "id": new_id, "code": sanitized}
+            return {"ok": True, "id": new_id, "code": sanitized, "parent_id": parsed_parent_id}
         finally:
             conn.close()
 
 
-def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None) -> dict:
-    """기존 쇼핑몰 카테고리의 이름, 정렬 순서, 스토어 노출 여부를 수정합니다."""
+def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None, parent_id=_UNSET) -> dict:
+    """기존 쇼핑몰 카테고리의 이름, 상위 카테고리, 정렬 순서, 스토어 노출 여부를 수정합니다."""
     parsed_cid = parse_strict_int64(cat_id, min_val=1)
     if parsed_cid is None:
         return {"ok": False, "message": "유효하지 않은 카테고리 ID입니다."}
@@ -1370,13 +1671,41 @@ def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None
             if not existing:
                 return {"ok": False, "message": "수정할 카테고리를 찾을 수 없습니다."}
 
+            raw_existing_pid = existing["parent_id"] if "parent_id" in existing.keys() else None
+            existing_pid = int(raw_existing_pid) if raw_existing_pid not in (None, "", 0) else None
+
+            if parent_id is _UNSET:
+                new_parent_id = existing_pid
+            elif parent_id in (None, ""):
+                new_parent_id = None
+            else:
+                parsed_new_pid = parse_strict_int64(parent_id, min_val=1)
+                if parsed_new_pid is None:
+                    return {"ok": False, "message": "유효하지 않은 상위 카테고리 ID입니다."}
+                if parsed_new_pid == parsed_cid:
+                    return {"ok": False, "message": "자기 자신을 상위 카테고리로 지정할 수 없습니다."}
+                new_parent_id = parsed_new_pid
+
+            if new_parent_id is not None and new_parent_id != existing_pid:
+                descendants, subtree_height = _compute_subtree_info_conn(cur, parsed_cid)
+                if new_parent_id in descendants:
+                    return {"ok": False, "message": "하위 카테고리를 상위 카테고리로 이동할 수 없습니다."}
+                new_parent_depth = _compute_category_depth_conn(cur, new_parent_id)
+                if new_parent_depth is None:
+                    return {"ok": False, "message": "선택한 상위 카테고리를 찾을 수 없습니다."}
+                if new_parent_depth + subtree_height > MAX_CATEGORY_DEPTH:
+                    return {"ok": False, "message": "하위 카테고리 포함 최대 3단계를 초과하여 이동할 수 없습니다."}
+
             new_name = str(name).strip() if name is not None else str(existing["name"])
             if not new_name or len(new_name) > 40:
                 return {"ok": False, "message": "카테고리명은 1~40자 이내로 입력해 주세요."}
 
-            cur.execute("SELECT id FROM mall_categories WHERE name = ? AND id != ?", (new_name, parsed_cid))
+            cur.execute(
+                "SELECT id FROM mall_categories WHERE name = ? AND parent_id IS ? AND id != ?",
+                (new_name, new_parent_id, parsed_cid),
+            )
             if cur.fetchone():
-                return {"ok": False, "message": "이미 동일한 이름의 카테고리가 존재합니다."}
+                return {"ok": False, "message": "같은 상위 카테고리 내에 동일한 이름의 카테고리가 이미 존재합니다."}
 
             if sort_order is None or str(sort_order).strip() == "":
                 new_order = int(existing["sort_order"] or 0)
@@ -1389,9 +1718,9 @@ def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None
 
             cur.execute("""
                 UPDATE mall_categories
-                SET name = ?, sort_order = ?, is_active = ?
+                SET name = ?, parent_id = ?, sort_order = ?, is_active = ?
                 WHERE id = ?
-            """, (new_name, new_order, new_active, parsed_cid))
+            """, (new_name, new_parent_id, new_order, new_active, parsed_cid))
             conn.commit()
             bump_state_version(bump_catalog=True)
             return {"ok": True}
@@ -1400,7 +1729,7 @@ def update_mall_category(cat_id: int, name=None, sort_order=None, is_active=None
 
 
 def delete_mall_category(cat_id: int) -> dict:
-    """카테고리를 삭제하고 해당 카테고리에 속해 있던 상품은 기타(ETC)로 이동합니다."""
+    """카테고리를 삭제합니다. 하위 카테고리가 있으면 삭제를 차단하며, 하위가 없으면 소속 상품을 기타(ETC)로 이동합니다."""
     parsed_cid = parse_strict_int64(cat_id, min_val=1)
     if parsed_cid is None:
         return {"ok": False, "message": "유효하지 않은 카테고리 ID입니다."}
@@ -1412,6 +1741,14 @@ def delete_mall_category(cat_id: int) -> dict:
             row = cur.fetchone()
             if not row:
                 return {"ok": False, "message": "삭제할 카테고리를 찾을 수 없습니다."}
+
+            cur.execute("SELECT COUNT(*) FROM mall_categories WHERE parent_id = ?", (parsed_cid,))
+            child_cnt = int(cur.fetchone()[0] or 0)
+            if child_cnt > 0:
+                return {
+                    "ok": False,
+                    "message": f"하위 카테고리가 {child_cnt}개 있어 삭제할 수 없습니다. 하위 카테고리를 먼저 삭제하거나 다른 상위로 이동해 주세요.",
+                }
 
             old_code = str(row["code"] or "").strip().upper()
             cur.execute("UPDATE mall_products SET category = 'ETC' WHERE UPPER(COALESCE(category, '')) = ?", (old_code,))
@@ -1882,8 +2219,11 @@ def get_all_mall_products(category=None, search=None, sort="num_asc"):
             params = []
 
             if category and str(category).upper() not in ("ALL", ""):
-                where_clauses.append("category = ?")
-                params.append(str(category).upper())
+                target_codes = _resolve_descendant_codes_conn(conn, str(category))
+                if target_codes:
+                    placeholders = ", ".join("?" for _ in target_codes)
+                    where_clauses.append(f"UPPER(COALESCE(category, '')) IN ({placeholders})")
+                    params.extend(target_codes)
 
             if search and str(search).strip():
                 q = f"%{str(search).strip()}%"
@@ -2009,8 +2349,11 @@ def query_mall_products_paginated(
             params: list[Any] = []
 
             if clean_cat and clean_cat != "ALL":
-                where_clauses.append("UPPER(COALESCE(p.category, '')) = ?")
-                params.append(clean_cat)
+                target_codes = _resolve_descendant_codes_conn(conn, clean_cat)
+                if target_codes:
+                    placeholders = ", ".join("?" for _ in target_codes)
+                    where_clauses.append(f"UPPER(COALESCE(p.category, '')) IN ({placeholders})")
+                    params.extend(target_codes)
 
             if clean_search:
                 q = f"%{clean_search}%"
@@ -2141,8 +2484,10 @@ def get_related_mall_products(product: Optional[dict], limit: int = 4) -> list[d
     우선순위:
     1) 동일 카테고리 + 재고 있음(판매중)
     2) 동일 카테고리 + 품절
-    3) 타 카테고리 + 재고 있음(판매중)
-    4) 타 카테고리 + 품절
+    3) 동일 1차 대분류 계열 + 재고 있음(판매중)
+    4) 동일 1차 대분류 계열 + 품절
+    5) 타 카테고리 + 재고 있음(판매중)
+    6) 타 카테고리 + 품절
     (현재 상품 num 제외, num ASC 정렬)
     """
     if not isinstance(product, dict):
@@ -2156,10 +2501,25 @@ def get_related_mall_products(product: Optional[dict], limit: int = 4) -> list[d
     if max_items <= 0:
         return []
 
+    cats = get_mall_categories(active_only=False)
+    code_to_root = {
+        str(c["code"]).upper(): str(c["path_codes"][0]).upper()
+        for c in cats
+        if c.get("path_codes")
+    }
+    cur_root = code_to_root.get(cur_cat, "")
+
+    def _cat_rank(p_cat: str) -> int:
+        if p_cat == cur_cat:
+            return 0
+        if cur_root and code_to_root.get(p_cat, "") == cur_root:
+            return 1
+        return 2
+
     candidates = [p for p in get_all_mall_products(sort="num_asc") if int(p.get("num") or 0) != cur_num]
     candidates.sort(
         key=lambda p: (
-            0 if str(p.get("category") or "").strip().upper() == cur_cat else 1,
+            _cat_rank(str(p.get("category") or "").strip().upper()),
             0 if not p.get("is_sold_out") else 1,
             int(p.get("num") or 0),
         )
